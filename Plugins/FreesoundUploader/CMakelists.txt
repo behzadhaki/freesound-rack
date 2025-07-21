@@ -12,7 +12,7 @@ juce_add_plugin("${BaseTargetName}"
         NEEDS_MIDI_OUTPUT FALSE
         IS_MIDI_EFFECT FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-        COPY_PLUGIN_AFTER_BUILD TRUE`
+        COPY_PLUGIN_AFTER_BUILD TRUE
         PLUGIN_MANUFACTURER_CODE Juce
         PLUGIN_CODE FrUP
         FORMATS AU VST3 Standalone
@@ -40,29 +40,118 @@ target_link_libraries(${BaseTargetName} PRIVATE
 
 
 # -------------------------------------
-# API Key Handling
+# Freesound API Configuration Handling
 # -------------------------------------
 
-# -------------------------------------
-# API Key Handling
-# -------------------------------------
+# Path to the FreesoundKeys.h file
+set(FREESOUND_KEYS_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/Source/FreesoundKeys.h")
 
-# Define a cache variable for the API key if it's not already set
-if(NOT DEFINED FREESOUND_API_KEY OR FREESOUND_API_KEY STREQUAL "")
-    message(FATAL_ERROR
-            "\nFREESOUND_API_KEY not set.\n"
-            "You must provide your Freesound API key when configuring the project.\n"
-            "\nTo do this, run:\n"
-            "  cmake -DFREESOUND_API_KEY=your_api_key_here .\n")
+# Check if FreesoundKeys.h exists and contains valid keys
+set(NEED_API_SETUP FALSE)
+
+if(NOT EXISTS ${FREESOUND_KEYS_HEADER})
+    set(NEED_API_SETUP TRUE)
+else()
+    # Check if the file contains placeholder values
+    file(READ ${FREESOUND_KEYS_HEADER} KEYS_CONTENT)
+    if(KEYS_CONTENT MATCHES "INSERT_API_KEY_HERE" OR KEYS_CONTENT MATCHES "INSERT_CLIENT_ID_HERE")
+        set(NEED_API_SETUP TRUE)
+    endif()
 endif()
 
-# Path to the generated header
-set(API_KEY_HEADER "Source/api_key.h")
+if(NEED_API_SETUP)
+    message(STATUS "\n=== Freesound API Configuration Required ===")
+    message(STATUS "FreesoundKeys.h not found or contains placeholder values.")
+    message(STATUS "")
+    message(STATUS "To use this plugin, you need Freesound API credentials.")
+    message(STATUS "Get them at: https://freesound.org/apiv2/apply/")
+    message(STATUS "")
 
-# Write the API key to the header file
-file(WRITE ${API_KEY_HEADER}
-        "#pragma once\n\n#define FREESOUND_API_KEY \"${FREESOUND_API_KEY}\"\n")
+    # Prompt for API Key
+    if(NOT DEFINED FREESOUND_API_KEY OR FREESOUND_API_KEY STREQUAL "")
+        message(STATUS "Enter your Freesound API Key and press Enter:")
+        execute_process(
+                COMMAND ${CMAKE_COMMAND} -E env bash -c "read -r input && echo \$input"
+                OUTPUT_VARIABLE FREESOUND_API_KEY
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+        )
+        # Alternative for non-bash systems
+        if(FREESOUND_API_KEY STREQUAL "")
+            file(WRITE "${CMAKE_BINARY_DIR}/get_input.py"
+                    "import sys\n"
+                    "try:\n"
+                    "    key = input('Enter your Freesound API Key: ')\n"
+                    "    print(key)\n"
+                    "except:\n"
+                    "    pass\n"
+            )
+            execute_process(
+                    COMMAND python3 "${CMAKE_BINARY_DIR}/get_input.py"
+                    OUTPUT_VARIABLE FREESOUND_API_KEY
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET
+            )
+        endif()
+    endif()
+
+    # Validate API Key
+    if(FREESOUND_API_KEY STREQUAL "" OR NOT DEFINED FREESOUND_API_KEY)
+        message(FATAL_ERROR "\nNo API Key provided. Build aborted.")
+    endif()
+
+    # Prompt for Client ID
+    if(NOT DEFINED FREESOUND_CLIENT_ID OR FREESOUND_CLIENT_ID STREQUAL "")
+        message(STATUS "Enter your Freesound Client ID and press Enter:")
+        execute_process(
+                COMMAND ${CMAKE_COMMAND} -E env bash -c "read -r input && echo \$input"
+                OUTPUT_VARIABLE FREESOUND_CLIENT_ID
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+        )
+        # Alternative for non-bash systems
+        if(FREESOUND_CLIENT_ID STREQUAL "")
+            file(WRITE "${CMAKE_BINARY_DIR}/get_client_id.py"
+                    "import sys\n"
+                    "try:\n"
+                    "    client_id = input('Enter your Freesound Client ID: ')\n"
+                    "    print(client_id)\n"
+                    "except:\n"
+                    "    pass\n"
+            )
+            execute_process(
+                    COMMAND python3 "${CMAKE_BINARY_DIR}/get_client_id.py"
+                    OUTPUT_VARIABLE FREESOUND_CLIENT_ID
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET
+            )
+        endif()
+    endif()
+
+    # Validate Client ID
+    if(FREESOUND_CLIENT_ID STREQUAL "" OR NOT DEFINED FREESOUND_CLIENT_ID)
+        message(FATAL_ERROR "\nNo Client ID provided. Build aborted.")
+    endif()
+
+    # Create the Source directory if it doesn't exist
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+
+    # Generate the FreesoundKeys.h file with the provided credentials
+    file(WRITE ${FREESOUND_KEYS_HEADER}
+            "#pragma once\n\n"
+            "#define FREESOUND_API_KEY \"${FREESOUND_API_KEY}\"\n"
+            "#define FREESOUND_CLIENT_ID \"${FREESOUND_CLIENT_ID}\"\n")
+
+    message(STATUS "✓ FreesoundKeys.h has been generated successfully!")
+    message(STATUS "✓ API Key: ${FREESOUND_API_KEY}")
+    message(STATUS "✓ Client ID: ${FREESOUND_CLIENT_ID}")
+    message(STATUS "")
+else()
+    message(STATUS "✓ FreesoundKeys.h found with valid configuration")
+endif()
 
 # Ensure the directory is included so the file can be found by your code
-include_directories(Source)
+target_include_directories(${BaseTargetName} PRIVATE Source)
 
+# Add the generated header as a dependency to ensure proper rebuilds
+set_property(TARGET ${BaseTargetName} APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${FREESOUND_KEYS_HEADER})
