@@ -1,0 +1,68 @@
+project(FreesoundSimpleSampler VERSION 0.0.1)
+
+set (BaseTargetName FreesoundSimpleSampler)
+
+juce_add_plugin("${BaseTargetName}"
+        # VERSION ...                               # Set this if the plugin version is different to the project version
+        # ICON_BIG ...                              # ICON_* arguments specify a path to an image file to use as an icon for the Standalone
+        # ICON_SMALL ...
+        COMPANY_NAME "MusicTechnologyGroup"
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT TRUE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD TRUE`
+        PLUGIN_MANUFACTURER_CODE Juce
+        PLUGIN_CODE FrSU
+        FORMATS AU VST3 Standalone
+        PRODUCT_NAME "Freesound Simple Sampler")
+
+
+target_sources(${BaseTargetName} PRIVATE
+        ../../shared_plugin_helpers/shared_plugin_helpers.cpp
+        ../../FreesoundAPI/FreesoundAPI.cpp
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+)
+
+target_compile_definitions(${BaseTargetName}
+        PUBLIC
+        JUCE_WEB_BROWSER=1
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_link_libraries(${BaseTargetName} PRIVATE
+        shared_plugin_helpers
+        juce_recommended_config_flags
+        juce_recommended_lto_flags
+        juce_recommended_warning_flags)
+
+
+# -------------------------------------
+# API Key Handling
+# -------------------------------------
+
+# -------------------------------------
+# API Key Handling
+# -------------------------------------
+
+# Define a cache variable for the API key if it's not already set
+if(NOT DEFINED FREESOUND_API_KEY OR FREESOUND_API_KEY STREQUAL "")
+    message(FATAL_ERROR
+            "\nFREESOUND_API_KEY not set.\n"
+            "You must provide your Freesound API key when configuring the project.\n"
+            "\nTo do this, run:\n"
+            "  cmake -DFREESOUND_API_KEY=your_api_key_here .\n")
+endif()
+
+# Path to the generated header
+set(API_KEY_HEADER "Source/api_key.h")
+
+# Write the API key to the header file
+file(WRITE ${API_KEY_HEADER}
+        "#pragma once\n\n#define FREESOUND_API_KEY \"${FREESOUND_API_KEY}\"\n")
+
+# Ensure the directory is included so the file can be found by your code
+include_directories(Source)
+

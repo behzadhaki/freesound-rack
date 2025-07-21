@@ -41,3 +41,10 @@ Check out this cool example apps:
  * [Demo app](https://github.com/aframires/freesound-juce/blob/master/Source/Main.cpp): simple command-line utility that makes some queries to Freesound to demonstrate how the client works. Includes OAuth2 authentication example as well.
  * [FreesoundUploader](https://github.com/aframires/FreesoundUploader): let's you upload sounds to Freesound directly from your DAW!
  * [FreesoundSimpleSampler](https://github.com/ffont/FreesoundSimpleSampler): let's you search in Freesound and automatically build a simple sampler based on the results.
+
+
+
+# Make sure you pass your actual Freesound API key when running cmake:
+
+# cmake -DFREESOUND_API_KEY=your_actual_api_key . 
+

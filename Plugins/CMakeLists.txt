@@ -1,0 +1,2 @@
+add_subdirectory(FreesoundUploader)
+add_subdirectory(FreesoundSimpleSampler)
