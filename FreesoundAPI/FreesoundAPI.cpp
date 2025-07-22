@@ -742,7 +742,6 @@ void FreesoundClientComponent::startAuthentication(int mode)
 
 
 void FreesoundClientComponent::pageFinishedLoading(const String &url) {
-	std::cout << url << std::endl;
 	if (url.startsWith("https://freesound.org/home/app_permissions/permission_granted/")) {
 		URL recUrl(url);
 		StringArray paramNames = recUrl.getParameterNames();
@@ -892,6 +891,8 @@ FSSound::FSSound(var sound)
 	analysisStats = URL(sound["analysis_stats"]);
 	analysisFrames = URL(sound["analysis_frames"]);
 	acAnalysis = sound["ac_analysis"];
+
+	std::cout << "FSSound created with id: " << id << std::endl;
 
 }
 
