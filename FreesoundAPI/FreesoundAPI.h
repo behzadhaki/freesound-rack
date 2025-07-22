@@ -468,7 +468,7 @@ public:
 	URL comment;
 	/** \brief	URI pointing to the similarity resource (to get a list of similar sounds) */
 	URL similarSounds;
-	/** \brief	Dictionary containing requested descriptors information according to the 
+	/** \brief	Dictionary containing requested descriptors information according to the
 				descriptors request parameter */
 	var analysis;
 	/** \brief	URI pointing to the complete analysis results of the sound */
@@ -482,7 +482,7 @@ public:
 	 * \fn	FSSound::FSSound();
 	 *
 	 * \brief	Default constructor, creates an empty FSSound object
-	 *	
+	 *
 	 * \author	Antonio
 	 * \date	09/07/2019
 	 */
@@ -514,7 +514,7 @@ public:
 	 */
 
 	URL getDownload();
-    
+
     /**
      * \fn    URL FSSound::getOGGPreviewURL();
      *
@@ -525,7 +525,7 @@ public:
      *
      * \returns    The OGG preview URL.
      */
-    
+
     URL getOGGPreviewURL();
 };
 
