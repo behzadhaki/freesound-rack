@@ -160,11 +160,13 @@ public:
         FreesoundClient client(FREESOUND_API_KEY);
         SoundList list = client.textSearch(query, "duration:[0 TO 0.5]", "score", 1, -1, 150, "id,name,username,license,previews");
         Array<FSSound> sounds = list.toArrayOfSounds();
+        auto num_sounds = sounds.size();
 
         std::random_device rd;
         std::mt19937 g(rd());
         std::shuffle(sounds.begin(), sounds.end(), g);
-        sounds.resize(16);   // FIXME - ensure that the number of sounds does not exceed the number of pads
+        // minimum of 16 sounds, or the number of sounds available
+        sounds.resize(std::min(num_sounds, 16));
 
         // Update results table
         searchResults.clearItems();
