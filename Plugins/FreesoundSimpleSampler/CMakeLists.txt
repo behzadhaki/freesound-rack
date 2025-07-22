@@ -24,6 +24,7 @@ target_sources(${BaseTargetName} PRIVATE
         ../../FreesoundAPI/FreesoundAPI.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
+        Source/AudioDownloadManager.cpp
 )
 
 target_compile_definitions(${BaseTargetName}
