@@ -142,8 +142,6 @@ public:
         {
             Array<FSSound> sounds = searchSounds();
 
-            std::cout << "[FreesoundSearchComponent] Found " << sounds.size() << " sounds for query: " << searchInput.getText(true) << std::endl;
-
             if (sounds.size() == 0) {
                 AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon, "No results", "No sounds found for the query: " + searchInput.getText(true));
                 return;
@@ -166,8 +164,8 @@ public:
         std::random_device rd;
         std::mt19937 g(rd());
         std::shuffle(sounds.begin(), sounds.end(), g);
-        sounds.resize(16);
-        
+        sounds.resize(16);   // FIXME - ensure that the number of sounds does not exceed the number of pads
+
         // Update results table
         searchResults.clearItems();
         for (int i=0; i<sounds.size(); i++){

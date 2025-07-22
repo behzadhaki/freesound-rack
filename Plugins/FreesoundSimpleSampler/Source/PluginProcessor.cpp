@@ -14,14 +14,14 @@
 //==============================================================================
 FreesoundSimpleSamplerAudioProcessor::FreesoundSimpleSamplerAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-     : 		 AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  AudioChannelSet::stereo(), true)
-                      #endif
-                       .withOutput ("Output", AudioChannelSet::stereo(), true)
-                     #endif
-                       )
+	 : 		 AudioProcessor (BusesProperties()
+					 #if ! JucePlugin_IsMidiEffect
+					  #if ! JucePlugin_IsSynth
+					   .withInput  ("Input",  AudioChannelSet::stereo(), true)
+					  #endif
+					   .withOutput ("Output", AudioChannelSet::stereo(), true)
+					 #endif
+					   )
 #endif
 {
 	tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundSimpleSampler");
@@ -29,17 +29,19 @@ FreesoundSimpleSamplerAudioProcessor::FreesoundSimpleSamplerAudioProcessor()
 	tmpDownloadLocation.createDirectory();
 	midicounter = 1;
 	startTime = Time::getMillisecondCounterHiRes() * 0.001;
+
+	// Add download manager listener
+	downloadManager.addListener(this);
 }
 
 FreesoundSimpleSamplerAudioProcessor::~FreesoundSimpleSamplerAudioProcessor()
 {
-    // Deletes the tmp directory so downloaded files do not stay there
-    tmpDownloadLocation.deleteRecursively();
-	for (int i = 0; i < downloadTasksToDelete.size(); i++) {
-	
-		delete downloadTasksToDelete.at(i);
-	
-	}
+	// Remove download manager listener
+	downloadManager.removeListener(this);
+
+	// Deletes the tmp directory so downloaded files do not stay there
+	tmpDownloadLocation.deleteRecursively();
+
 }
 
 //==============================================================================
@@ -184,37 +186,70 @@ void FreesoundSimpleSamplerAudioProcessor::setStateInformation (const void* data
 //==============================================================================
 void FreesoundSimpleSamplerAudioProcessor::newSoundsReady (Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)
 {
-    // This method is called by the FreesoundSearchComponent when a new query has
-    // been made and new sounda have been selected for loading into the sampler.
-    // This methods downloads the sounds, sotres in tmp directory and...
-    
-    // Download the sounds
-    
-    std::cout << "Downloading new sounds for Query: " << textQuery << std::endl;
-
-    FreesoundClient client(FREESOUND_API_KEY);
-    for (int i=0; i<sounds.size(); i++){
-    	std::cout<< "Sound URL" << sounds[i].url.toString(0)<<std::endl;
-        File location = tmpDownloadLocation.getChildFile(sounds[i].id).withFileExtension("mp3");
-        std::cout << location.getFullPathName() << std::endl;
-		auto downloadTask = client.downloadSound(sounds[i], location);
-	    if (downloadTask != nullptr) {
-	    	downloadTasksToDelete.push_back(downloadTask);
-    	} else {
-    		std::cout << "Client Failed" << std::endl;
-    	}
-    }
-
-	setSources();
+	// Store the query and sound info
 	query = textQuery;
 	soundsArray = soundInfo;
 
+	// Start downloads using the new download manager
+	startDownloads(sounds);
+}
+
+// new download methods
+void FreesoundSimpleSamplerAudioProcessor::startDownloads(const Array<FSSound>& sounds)
+{
+	tmpDownloadLocation.deleteRecursively();
+	tmpDownloadLocation.createDirectory();
+
+	downloadManager.startDownloads(sounds, tmpDownloadLocation);
+}
+
+void FreesoundSimpleSamplerAudioProcessor::cancelDownloads()
+{
+	downloadManager.stopThread(2000);
+}
+
+void FreesoundSimpleSamplerAudioProcessor::downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress)
+{
+	// Forward to editor listeners
+	downloadListeners.call([progress](DownloadListener& l) {
+		l.downloadProgressChanged(progress);
+	});
+}
+
+void FreesoundSimpleSamplerAudioProcessor::downloadCompleted(bool success)
+{
+	if (success)
+	{
+		// Set up the sampler with the downloaded files
+		setSources();
+	}
+
+	// Forward to editor listeners
+	downloadListeners.call([success](DownloadListener& l) {
+		l.downloadCompleted(success);
+	});
+}
+
+void FreesoundSimpleSamplerAudioProcessor::addDownloadListener(DownloadListener* listener)
+{
+	downloadListeners.add(listener);
+}
+
+void FreesoundSimpleSamplerAudioProcessor::removeDownloadListener(DownloadListener* listener)
+{
+	downloadListeners.remove(listener);
 }
 
 void FreesoundSimpleSamplerAudioProcessor::setSources()
 {
+	// Clear existing sounds and voices before adding new ones
+	sampler.clearSounds();
+	sampler.clearVoices();
+
 	int poliphony = 16;
 	int maxLength = 10;
+
+	// Add voices
 	for (int i = 0; i < poliphony; i++) {
 		sampler.addVoice(new SamplerVoice());
 	}
@@ -226,13 +261,14 @@ void FreesoundSimpleSamplerAudioProcessor::setSources()
 	Array<File> files = tmpDownloadLocation.findChildFiles(2, false);
 	for (int i = 0; i < files.size(); i++) {
 		std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(files[i]));
-		BigInteger notes;
-		notes.setRange(i * 8, i * 8 + 7, true);
-		sampler.addSound(new SamplerSound(String(i), *reader, notes, i*8, 0, maxLength, maxLength));
-		//reader.release();
+
+		if (reader != nullptr) // Add null check for safety
+		{
+			BigInteger notes;
+			notes.setRange(i * 8, i * 8 + 7, true);
+			sampler.addSound(new SamplerSound(String(i), *reader, notes, i*8, 0, maxLength, maxLength));
+		}
 	}
-
-
 }
 
 void FreesoundSimpleSamplerAudioProcessor::addToMidiBuffer(int notenumber)
@@ -268,7 +304,7 @@ String FreesoundSimpleSamplerAudioProcessor::getQuery()
 
 std::vector<juce::StringArray> FreesoundSimpleSamplerAudioProcessor::getData()
 {
-	
+
 	return soundsArray;
 }
 
@@ -278,7 +314,6 @@ AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new FreesoundSimpleSamplerAudioProcessor();
 }
-
 
 
 
