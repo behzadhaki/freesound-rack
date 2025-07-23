@@ -20,6 +20,7 @@ SamplePad::SamplePad(int index)
     , audioThumbnailCache(5)
     , audioThumbnail(512, formatManager, audioThumbnailCache)
     , freesoundId(String())
+    , licenseType(String())
     , playheadPosition(0.0f)
     , isPlaying(false)
     , hasValidSample(false)
@@ -79,6 +80,15 @@ void SamplePad::paint(Graphics& g)
         auto textBounds = bounds.reduced(4);
         g.drawText(sampleName, textBounds.removeFromTop(12), Justification::centredTop, true);
         g.drawText(authorName, textBounds.removeFromBottom(12), Justification::centredBottom, true);
+
+        // Draw license type in bottom right corner
+        if (licenseType.isNotEmpty())
+        {
+            g.setFont(8.0f);
+            g.setColour(Colours::yellow.withAlpha(0.8f));
+            String shortLicense = getLicenseShortName(licenseType);
+            g.drawText(shortLicense, bounds.reduced(2), Justification::bottomRight);
+        }
     }
     else
     {
@@ -117,12 +127,13 @@ void SamplePad::mouseDown(const MouseEvent& event)
     }
 }
 
-void SamplePad::setSample(const File& file, const String& name, const String& author, String fsId)
+void SamplePad::setSample(const File& file, const String& name, const String& author, String fsId, String license)
 {
     audioFile = file;
     sampleName = name;
     authorName = author;
     freesoundId = fsId;
+    licenseType = license;
 
     loadWaveform();
     hasValidSample = audioFile.existsAsFile();
@@ -192,9 +203,25 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.sampleName = sampleName;
     info.authorName = authorName;
     info.freesoundId = freesoundId;
+    info.licenseType = licenseType;
     info.hasValidSample = hasValidSample;
     info.padIndex = 0; // Will be set by SampleGridComponent
     return info;
+}
+
+String SamplePad::getLicenseShortName(const String& license) const
+{
+    // Convert full license names to short abbreviations for display
+    if (license.contains("Creative Commons 0"))
+        return "CC0";
+    else if (license.contains("Attribution Noncommercial"))
+        return "CC BY-NC";
+    else if (license.contains("Attribution"))
+        return "CC BY";
+    else if (license.contains("Sampling+"))
+        return "S+";
+    else
+        return "?"; // Unknown license
 }
 
 //==============================================================================
@@ -286,6 +313,7 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
     {
         String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Sample " + String(i + 1);
         String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
+        String license = (i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : "Unknown";
         String freesoundId = sounds[i].id;
 
         // Create the expected filename based on the simple pad index naming pattern
@@ -297,7 +325,7 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
         // Only proceed if the file exists
         if (audioFile.existsAsFile())
         {
-            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId);
+            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
         }
     }
 }
@@ -306,7 +334,7 @@ void SampleGridComponent::clearSamples()
 {
     for (auto& pad : samplePads)
     {
-        pad->setSample(File(), "", "", String());
+        pad->setSample(File(), "", "", String(), String());
     }
 }
 

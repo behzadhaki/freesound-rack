@@ -23,7 +23,7 @@ public:
     void resized() override;
     void mouseDown(const MouseEvent& event) override;
 
-    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String());
+    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String());
     void setPlayheadPosition(float position); // 0.0 to 1.0
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
@@ -34,6 +34,7 @@ public:
         String sampleName;
         String authorName;
         String freesoundId;
+        String licenseType;
         bool hasValidSample;
         int padIndex; // Index of the pad (1-based)
     };
@@ -43,6 +44,7 @@ private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
+    String getLicenseShortName(const String& license) const;
 
     int padIndex;
     FreesoundAdvancedSamplerAudioProcessor* processor;
@@ -56,6 +58,7 @@ private:
     String authorName;
     File audioFile;
     String freesoundId;
+    String licenseType;
 
     float playheadPosition;
     bool isPlaying;

@@ -238,6 +238,9 @@ void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>
     // Store the current download location for this session
     currentSessionDownloadLocation = currentDownloadLocation;
 
+    // Generate README file with search information
+    generateReadmeFile(sounds, soundsArray, query);
+
     downloadManager.startDownloads(sounds, currentDownloadLocation);
 }
 
@@ -374,6 +377,102 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int n
     playbackListeners.call([noteNumber, position](PlaybackListener& l) {
         l.playheadPositionChanged(noteNumber, position);
     });
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery)
+{
+    if (currentSessionDownloadLocation.exists())
+    {
+        File readmeFile = currentSessionDownloadLocation.getChildFile("README.md");
+
+        // Get current date and time
+        Time currentTime = Time::getCurrentTime();
+        String dateTimeStr = currentTime.formatted("%B %d, %Y at %H:%M:%S");
+
+        String readmeContent;
+
+        // Header section
+        readmeContent += "# Freesound Sample Collection\n\n";
+        readmeContent += "**Search Query:** `" + searchQuery + "`\n";
+        readmeContent += "**Date Downloaded:** " + dateTimeStr + "\n";
+        readmeContent += "**Total Samples:** " + String(sounds.size()) + "\n\n";
+
+        // Description
+        readmeContent += "## Description\n\n";
+        readmeContent += "This collection contains audio samples downloaded from [Freesound.org](https://freesound.org) ";
+        readmeContent += "using the search query \"" + searchQuery + "\". ";
+        readmeContent += "Each sample is organized by pad index (01-16) for use in the grid sampler.\n\n";
+
+        // Table header
+        readmeContent += "## Sample Details\n\n";
+        readmeContent += "| Pad | File Name | Sample Name | Author | License | Duration | File Size | Freesound ID | URL |\n";
+        readmeContent += "|-----|-----------|-------------|--------|---------|----------|-----------|--------------|-----|\n";
+
+        // Table rows
+        for (int i = 0; i < sounds.size(); ++i)
+        {
+            const FSSound& sound = sounds[i];
+
+            // Pad index (1-based)
+            String padIndex = String(i + 1).paddedLeft('0', 2);
+
+            // File name
+            String fileName = padIndex + "_FS_ID_" + sound.id + ".ogg";
+
+            // Sample info
+            String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Unknown";
+            String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
+            String license = (i < soundInfo.size()) ? soundInfo[i][2] : "Unknown";
+
+            // Clean up text for markdown table (escape pipes and newlines)
+            sampleName = sampleName.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+            authorName = authorName.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+            license = license.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+
+            // Duration (convert to human readable)
+            String durationStr = String(sound.duration) + "s";
+
+            // File size (convert to human readable)
+            String fileSizeStr;
+            if (sound.filesize > 1024 * 1024)
+                fileSizeStr = String(sound.filesize / (1024 * 1024)) + " MB";
+            else if (sound.filesize > 1024)
+                fileSizeStr = String(sound.filesize / 1024) + " KB";
+            else
+                fileSizeStr = String(sound.filesize) + " B";
+
+            // Freesound URL
+            String freesoundUrl = "https://freesound.org/s/" + sound.id + "/";
+
+            // Add table row
+            readmeContent += "| " + padIndex + " | ";
+            readmeContent += "`" + fileName + "` | ";
+            readmeContent += sampleName + " | ";
+            readmeContent += authorName + " | ";
+            readmeContent += license + " | ";
+            readmeContent += durationStr + " | ";
+            readmeContent += fileSizeStr + " | ";
+            readmeContent += sound.id + " | ";
+            readmeContent += "[Link](" + freesoundUrl + ") |\n";
+        }
+
+        // Footer section
+        readmeContent += "\n## License Information\n\n";
+        readmeContent += "All samples are licensed under their respective Creative Commons licenses as shown in the table above. ";
+        readmeContent += "Please respect the license terms when using these samples. ";
+        readmeContent += "More information about each sample and its license can be found by clicking the Freesound URL links.\n\n";
+
+        readmeContent += "## Usage\n\n";
+        readmeContent += "- **Pad Index:** Corresponds to the grid position (01 = bottom-left, 16 = top-right)\n";
+        readmeContent += "- **MIDI Mapping:** Each pad responds to 8 MIDI notes starting from `(pad_index - 1) * 8`\n";
+        readmeContent += "- **File Format:** All samples are in OGG format (Freesound previews)\n\n";
+
+        readmeContent += "---\n";
+        readmeContent += "*Generated by Freesound Advanced Sampler*\n";
+
+        // Write to file
+        readmeFile.replaceWithText(readmeContent);
+    }
 }
 
 //==============================================================================
