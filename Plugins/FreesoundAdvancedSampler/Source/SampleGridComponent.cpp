@@ -101,6 +101,26 @@ void SamplePad::paint(Graphics& g)
             g.setColour(Colours::black);
             g.drawText(shortLicense, licenseBounds, Justification::centred);
         }
+
+        // Draw "Web" badge in bottom left corner
+        if (freesoundId.isNotEmpty())
+        {
+            g.setFont(9.0f);
+
+            // Create web badge in bottom-left corner
+            auto webBounds = bounds.reduced(3);
+            int badgeWidth = 30;
+            int badgeHeight = 12;
+            webBounds = webBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+            // Draw blue background
+            g.setColour(Colours::blue.withAlpha(0.8f));
+            g.fillRoundedRectangle(webBounds.toFloat(), 2.0f);
+
+            // Draw white text
+            g.setColour(Colours::white);
+            g.drawText("Web", webBounds, Justification::centred);
+        }
     }
     else
     {
@@ -125,7 +145,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    // Check if clicked on license badge
+    // Check if clicked on license badge (bottom-right)
     if (licenseType.isNotEmpty())
     {
         auto bounds = getLocalBounds();
@@ -142,15 +162,27 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
-    if (event.mods.isShiftDown() && freesoundId.isNotEmpty())
+    // Check if clicked on web badge (bottom-left)
+    if (freesoundId.isNotEmpty())
     {
-        // Open Freesound page in browser
-        String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
-        URL(freesoundUrl).launchInDefaultBrowser();
+        auto bounds = getLocalBounds();
+        auto webBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
+        webBounds = webBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (webBounds.contains(event.getPosition()))
+        {
+            // Open Freesound page in browser
+            String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+            URL(freesoundUrl).launchInDefaultBrowser();
+            return;
+        }
     }
-    else if (processor)
+
+    // Normal click - play the sample
+    if (processor)
     {
-        // Play the sample
         int noteNumber = padIndex * 8;
         processor->addToMidiBuffer(noteNumber);
     }
@@ -256,7 +288,7 @@ String SamplePad::getLicenseShortName(const String& license) const
     else if (lowerLicense.contains("sampling+"))
         return "by-nc"; // Sampling+ is treated as by-nc according to Freesound
     else
-        return "???"; // Default to most restrictive for unknown licenses
+        return "by-nc"; // Default to most restrictive for unknown licenses
 }
 
 //==============================================================================
@@ -501,50 +533,20 @@ void SampleDragArea::mouseDrag(const MouseEvent& event)
 
     // Create StringArray of file paths for drag operation
     StringArray filePaths;
-    Array<File> tempFiles;
-
-    // Create temporary directory for renamed files
-    File tempDir = File::getSpecialLocation(File::tempDirectory).getChildFile("FreesoundDragExport_" + String(Time::getCurrentTime().toMilliseconds()));
-    tempDir.createDirectory();
 
     for (const auto& sample : samples)
     {
         if (sample.hasValidSample && sample.audioFile.existsAsFile())
         {
-            // Create new filename: {padIndex}_{author}_{filename}_{id}.ogg
-            String originalName = sample.audioFile.getFileNameWithoutExtension();
-            String extension = sample.audioFile.getFileExtension();
-
-            // Clean up names for filename (remove invalid characters)
-            String cleanAuthor = sample.authorName.replaceCharacters("\\/:*?\"<>|", "_");
-            String cleanName = sample.sampleName.replaceCharacters("\\/:*?\"<>|", "_");
-            String cleanId = sample.freesoundId;
-
-            // Format pad index with two digits (01, 02, etc.)
-            String padIndexStr = String(sample.padIndex).paddedLeft('0', 2);
-
-            String newFileName = padIndexStr + "_" + cleanAuthor + "_" + cleanName + "_" + cleanId + extension;
-
-            File tempFile = tempDir.getChildFile(newFileName);
-
-            // Copy the original file to the new location with the new name
-            if (sample.audioFile.copyFileTo(tempFile))
-            {
-                filePaths.add(tempFile.getFullPathName());
-                tempFiles.add(tempFile);
-            }
+            // Reference the existing file directly from the subfolder
+            filePaths.add(sample.audioFile.getFullPathName());
         }
     }
 
     if (!filePaths.isEmpty())
     {
-        // Start the drag operation
-        performExternalDragDropOfFiles(filePaths, true);
-
-        // Clean up temporary files after a delay (they should be copied by now)
-        Timer::callAfterDelay(5000, [tempDir]() mutable {
-            tempDir.deleteRecursively();
-        });
+        // Start the drag operation with existing files
+        performExternalDragDropOfFiles(filePaths, false); // false = don't allow moving
     }
 
     isDragging = false;
@@ -563,7 +565,7 @@ void SampleDragArea::setSampleGridComponent(SampleGridComponent* gridComponent)
 DirectoryOpenButton::DirectoryOpenButton()
     : processor(nullptr)
 {
-    setButtonText("Open\nFolder");
+    setButtonText("View\nFiles");
     setSize(60, 40);
 
     // Set up the click callback using lambda
