@@ -23,7 +23,7 @@ public:
     void resized() override;
     void mouseDown(const MouseEvent& event) override;
 
-    void setSample(const File& audioFile, const String& sampleName, const String& author);
+    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String());
     void setPlayheadPosition(float position); // 0.0 to 1.0
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
@@ -44,6 +44,7 @@ private:
     String sampleName;
     String authorName;
     File audioFile;
+    String freesoundId;
 
     float playheadPosition;
     bool isPlaying;

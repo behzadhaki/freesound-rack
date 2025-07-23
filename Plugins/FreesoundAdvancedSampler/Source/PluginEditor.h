@@ -39,6 +39,9 @@ private:
     FreesoundSearchComponent freesoundSearchComponent;
     SampleGridComponent sampleGridComponent; // NEW: Replace results table with grid
 
+    // Store sounds for grid update
+    Array<FSSound> currentSounds;
+
     // Progress bar components
     ProgressBar progressBar;
     Label statusLabel;

@@ -220,6 +220,7 @@ void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady (Array<FSSound> soun
 {
 	query = textQuery;
 	soundsArray = soundInfo;
+    currentSoundsArray = sounds; // NEW: Store the sounds array
 	startDownloads(sounds);
 }
 
@@ -321,6 +322,11 @@ String FreesoundAdvancedSamplerAudioProcessor::getQuery()
 std::vector<juce::StringArray> FreesoundAdvancedSamplerAudioProcessor::getData()
 {
 	return soundsArray;
+}
+
+Array<FSSound> FreesoundAdvancedSamplerAudioProcessor::getCurrentSounds()
+{
+    return currentSoundsArray;
 }
 
 // NEW: Playback listener methods

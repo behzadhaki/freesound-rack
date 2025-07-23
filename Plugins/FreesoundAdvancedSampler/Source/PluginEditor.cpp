@@ -119,7 +119,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
         if (success)
         {
             // Update the sample grid with downloaded samples
-            sampleGridComponent.updateSamples(Array<FSSound>(), processor.getData());
+            sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
         }
 
         // Hide progress components after a delay

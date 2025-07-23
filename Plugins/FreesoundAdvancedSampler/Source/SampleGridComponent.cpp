@@ -19,6 +19,7 @@ SamplePad::SamplePad(int index)
     , processor(nullptr)
     , audioThumbnailCache(5)
     , audioThumbnail(512, formatManager, audioThumbnailCache)
+    , freesoundId(String())
     , playheadPosition(0.0f)
     , isPlaying(false)
     , hasValidSample(false)
@@ -99,19 +100,29 @@ void SamplePad::resized()
 
 void SamplePad::mouseDown(const MouseEvent& event)
 {
-    if (processor && hasValidSample)
+    if (!hasValidSample)
+        return;
+
+    if (event.mods.isShiftDown() && freesoundId.isNotEmpty())
     {
-        // Calculate MIDI note number (starting from note 0, each pad gets 8 notes)
+        // Open Freesound page in browser
+        String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+        URL(freesoundUrl).launchInDefaultBrowser();
+    }
+    else if (processor)
+    {
+        // Play the sample
         int noteNumber = padIndex * 8;
         processor->addToMidiBuffer(noteNumber);
     }
 }
 
-void SamplePad::setSample(const File& file, const String& name, const String& author)
+void SamplePad::setSample(const File& file, const String& name, const String& author, String fsId)
 {
     audioFile = file;
     sampleName = name;
     authorName = author;
+    freesoundId = fsId;
 
     loadWaveform();
     hasValidSample = audioFile.existsAsFile();
@@ -215,7 +226,9 @@ void SampleGridComponent::resized()
     {
         for (int col = 0; col < GRID_SIZE; ++col)
         {
-            int padIndex = row * GRID_SIZE + col;
+            // Calculate pad index starting from bottom left
+            // Bottom row (row 3) = pads 0-3, next row up (row 2) = pads 4-7, etc.
+            int padIndex = (GRID_SIZE - 1 - row) * GRID_SIZE + col;
 
             int x = padding + col * (padWidth + padding);
             int y = padding + row * (padHeight + padding);
@@ -253,18 +266,25 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
     if (!processor)
         return;
 
-    // Wait for downloads to complete and get the downloaded files
     File downloadDir = processor->tmpDownloadLocation;
-    Array<File> audioFiles = downloadDir.findChildFiles(File::findFiles, false);
 
-    int numSamples = jmin(TOTAL_PADS, audioFiles.size());
+    int numSamples = jmin(TOTAL_PADS, sounds.size());
 
     for (int i = 0; i < numSamples; ++i)
     {
-        String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Sample " + String(i + 1);
-        String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
+        // Create the expected filename based on the sound ID (matching AudioDownloadManager)
+        String expectedFilename = "FS_ID_" + sounds[i].id + ".ogg";
+        File audioFile = downloadDir.getChildFile(expectedFilename);
 
-        samplePads[i]->setSample(audioFiles[i], sampleName, authorName);
+        // Only proceed if the file exists
+        if (audioFile.existsAsFile())
+        {
+            String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Sample " + String(i + 1);
+            String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
+            String freesoundId = sounds[i].id;
+
+            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId);
+        }
     }
 }
 
@@ -272,7 +292,7 @@ void SampleGridComponent::clearSamples()
 {
     for (auto& pad : samplePads)
     {
-        pad->setSample(File(), "", "");
+        pad->setSample(File(), "", "", String());
     }
 }
 

@@ -71,6 +71,7 @@ public:
 	bool isArrayNotEmpty();
 	String getQuery();
 	std::vector<juce::StringArray> getData();
+    Array<FSSound> getCurrentSounds(); // NEW: Get current sounds array
 
     // Download-related methods
     void startDownloads(const Array<FSSound>& sounds);
@@ -135,6 +136,7 @@ private:
 	double startTime;
 	String query;
 	std::vector<juce::StringArray> soundsArray;
+    Array<FSSound> currentSoundsArray; // NEW: Store current sounds
 
     // NEW: Methods for playback tracking
     void notifyNoteStarted(int noteNumber, float velocity);

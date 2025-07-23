@@ -33,7 +33,7 @@ public:
         addAndMakeVisible (searchButton);
 
         // Add instruction label
-        instructionLabel.setText("Search for sounds and they will appear in the 4x4 grid below. Click on grid pads to play samples.", dontSendNotification);
+        instructionLabel.setText("Search for sounds and they will appear in the 4x4 grid below. Click pads to play samples. Shift+Click to open sample page on Freesound.", dontSendNotification);
         instructionLabel.setJustificationType(Justification::centred);
         instructionLabel.setColour(Label::textColourId, Colours::grey);
         addAndMakeVisible(instructionLabel);
