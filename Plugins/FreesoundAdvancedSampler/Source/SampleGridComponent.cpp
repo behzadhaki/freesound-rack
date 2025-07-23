@@ -185,6 +185,18 @@ void SamplePad::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
     processor = p;
 }
 
+SamplePad::SampleInfo SamplePad::getSampleInfo() const
+{
+    SampleInfo info;
+    info.audioFile = audioFile;
+    info.sampleName = sampleName;
+    info.authorName = authorName;
+    info.freesoundId = freesoundId;
+    info.hasValidSample = hasValidSample;
+    info.padIndex = 0; // Will be set by SampleGridComponent
+    return info;
+}
+
 //==============================================================================
 // SampleGridComponent Implementation
 //==============================================================================
@@ -266,23 +278,25 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
     if (!processor)
         return;
 
-    File downloadDir = processor->tmpDownloadLocation;
+    File downloadDir = processor->getCurrentDownloadLocation();
 
     int numSamples = jmin(TOTAL_PADS, sounds.size());
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // Create the expected filename based on the sound ID (matching AudioDownloadManager)
-        String expectedFilename = "FS_ID_" + sounds[i].id + ".ogg";
+        String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Sample " + String(i + 1);
+        String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
+        String freesoundId = sounds[i].id;
+
+        // Create the expected filename based on the simple pad index naming pattern
+        int padIndex = i + 1; // 1-based index
+        String padIndexStr = String(padIndex).paddedLeft('0', 2);
+        String expectedFilename = padIndexStr + "_FS_ID_" + freesoundId + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
         // Only proceed if the file exists
         if (audioFile.existsAsFile())
         {
-            String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Sample " + String(i + 1);
-            String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
-            String freesoundId = sounds[i].id;
-
             samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId);
         }
     }
@@ -325,4 +339,204 @@ void SampleGridComponent::playheadPositionChanged(int noteNumber, float position
         // This method now handles message thread dispatching internally
         samplePads[padIndex]->setPlayheadPosition(position);
     }
+}
+
+Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
+{
+    Array<SamplePad::SampleInfo> allSamples;
+
+    for (int i = 0; i < samplePads.size(); ++i)
+    {
+        SamplePad::SampleInfo info = samplePads[i]->getSampleInfo();
+        if (info.hasValidSample)
+        {
+            // Add pad index to the info
+            info.padIndex = i + 1; // 1-based index for user-friendly numbering
+            allSamples.add(info);
+        }
+    }
+
+    return allSamples;
+}
+
+//==============================================================================
+// SampleDragArea Implementation
+//==============================================================================
+
+SampleDragArea::SampleDragArea()
+    : sampleGrid(nullptr)
+    , isDragging(false)
+{
+    setSize(80, 40);
+}
+
+SampleDragArea::~SampleDragArea()
+{
+}
+
+void SampleDragArea::paint(Graphics& g)
+{
+    auto bounds = getLocalBounds();
+
+    // Background
+    if (isDragging)
+    {
+        g.setColour(Colours::blue.withAlpha(0.3f));
+    }
+    else
+    {
+        g.setColour(Colours::grey.withAlpha(0.2f));
+    }
+    g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
+
+    // Border
+    g.setColour(Colours::white.withAlpha(0.5f));
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
+
+    // Icon and text
+    g.setColour(Colours::white.withAlpha(0.8f));
+    g.setFont(10.0f);
+
+    // Draw a simple drag icon (three horizontal lines)
+    auto iconBounds = bounds.removeFromLeft(20);
+    int lineY = iconBounds.getCentreY() - 6;
+    for (int i = 0; i < 3; ++i)
+    {
+        g.fillRect(iconBounds.getX() + 4, lineY + i * 4, 12, 2);
+    }
+
+    // Draw text
+    g.drawText("Drag\nSamples", bounds, Justification::centred);
+}
+
+void SampleDragArea::resized()
+{
+}
+
+void SampleDragArea::mouseDown(const MouseEvent& event)
+{
+    if (!sampleGrid)
+        return;
+
+    // Check if we have any samples to drag
+    auto samples = sampleGrid->getAllSampleInfo();
+    if (samples.isEmpty())
+        return;
+
+    isDragging = true;
+    repaint();
+}
+
+void SampleDragArea::mouseDrag(const MouseEvent& event)
+{
+    if (!sampleGrid || !isDragging)
+        return;
+
+    auto samples = sampleGrid->getAllSampleInfo();
+    if (samples.isEmpty())
+        return;
+
+    // Create StringArray of file paths for drag operation
+    StringArray filePaths;
+    Array<File> tempFiles;
+
+    // Create temporary directory for renamed files
+    File tempDir = File::getSpecialLocation(File::tempDirectory).getChildFile("FreesoundDragExport_" + String(Time::getCurrentTime().toMilliseconds()));
+    tempDir.createDirectory();
+
+    for (const auto& sample : samples)
+    {
+        if (sample.hasValidSample && sample.audioFile.existsAsFile())
+        {
+            // Create new filename: {padIndex}_{author}_{filename}_{id}.ogg
+            String originalName = sample.audioFile.getFileNameWithoutExtension();
+            String extension = sample.audioFile.getFileExtension();
+
+            // Clean up names for filename (remove invalid characters)
+            String cleanAuthor = sample.authorName.replaceCharacters("\\/:*?\"<>|", "_");
+            String cleanName = sample.sampleName.replaceCharacters("\\/:*?\"<>|", "_");
+            String cleanId = sample.freesoundId;
+
+            // Format pad index with two digits (01, 02, etc.)
+            String padIndexStr = String(sample.padIndex).paddedLeft('0', 2);
+
+            String newFileName = padIndexStr + "_" + cleanAuthor + "_" + cleanName + "_" + cleanId + extension;
+
+            File tempFile = tempDir.getChildFile(newFileName);
+
+            // Copy the original file to the new location with the new name
+            if (sample.audioFile.copyFileTo(tempFile))
+            {
+                filePaths.add(tempFile.getFullPathName());
+                tempFiles.add(tempFile);
+            }
+        }
+    }
+
+    if (!filePaths.isEmpty())
+    {
+        // Start the drag operation
+        performExternalDragDropOfFiles(filePaths, true);
+
+        // Clean up temporary files after a delay (they should be copied by now)
+        Timer::callAfterDelay(5000, [tempDir]() mutable {
+            tempDir.deleteRecursively();
+        });
+    }
+
+    isDragging = false;
+    repaint();
+}
+
+void SampleDragArea::setSampleGridComponent(SampleGridComponent* gridComponent)
+{
+    sampleGrid = gridComponent;
+}
+
+//==============================================================================
+// DirectoryOpenButton Implementation
+//==============================================================================
+
+DirectoryOpenButton::DirectoryOpenButton()
+    : processor(nullptr)
+{
+    setButtonText("Open\nFolder");
+    setSize(60, 40);
+
+    // Set up the click callback using lambda
+    onClick = [this]() {
+        if (!processor)
+            return;
+
+        File currentFolder = processor->getCurrentDownloadLocation();
+
+        if (currentFolder.exists())
+        {
+            currentFolder.revealToUser();
+        }
+        else
+        {
+            // If current session folder doesn't exist, open the main download directory
+            File mainFolder = processor->tmpDownloadLocation;
+            if (mainFolder.exists())
+            {
+                mainFolder.revealToUser();
+            }
+            else
+            {
+                // Create and open the main directory if it doesn't exist
+                mainFolder.createDirectory();
+                mainFolder.revealToUser();
+            }
+        }
+    };
+}
+
+DirectoryOpenButton::~DirectoryOpenButton()
+{
+}
+
+void DirectoryOpenButton::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
+{
+    processor = p;
 }

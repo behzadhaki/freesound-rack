@@ -62,6 +62,7 @@ public:
 
     //==============================================================================
     File tmpDownloadLocation;
+    File currentSessionDownloadLocation; // NEW: Current session's download folder
 	void newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo);
 
 	void setSources();
@@ -72,6 +73,7 @@ public:
 	String getQuery();
 	std::vector<juce::StringArray> getData();
     Array<FSSound> getCurrentSounds(); // NEW: Get current sounds array
+    File getCurrentDownloadLocation(); // NEW: Get current session's download location
 
     // Download-related methods
     void startDownloads(const Array<FSSound>& sounds);

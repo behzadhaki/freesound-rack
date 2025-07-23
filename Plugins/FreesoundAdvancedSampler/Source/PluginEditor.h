@@ -38,6 +38,8 @@ private:
 
     FreesoundSearchComponent freesoundSearchComponent;
     SampleGridComponent sampleGridComponent; // NEW: Replace results table with grid
+    SampleDragArea sampleDragArea; // NEW: Drag area for exporting samples
+    DirectoryOpenButton directoryOpenButton; // NEW: Button to open download directory
 
     // Store sounds for grid update
     Array<FSSound> currentSounds;

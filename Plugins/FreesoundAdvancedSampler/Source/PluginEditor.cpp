@@ -26,6 +26,14 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     sampleGridComponent.setProcessor(&processor);
     addAndMakeVisible(sampleGridComponent);
 
+    // Set up sample drag area
+    sampleDragArea.setSampleGridComponent(&sampleGridComponent);
+    addAndMakeVisible(sampleDragArea);
+
+    // Set up directory open button
+    directoryOpenButton.setProcessor(&processor);
+    addAndMakeVisible(directoryOpenButton);
+
     // Set up progress components
     addAndMakeVisible(progressBar);
     addAndMakeVisible(statusLabel);
@@ -68,6 +76,10 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     int margin = 10;
     int searchHeight = 100;
     int progressHeight = 60;
+    int dragAreaWidth = 80;
+    int dragAreaHeight = 40;
+    int buttonWidth = 60;
+    int spacing = 5;
 
     // Search component at top
     freesoundSearchComponent.setBounds(bounds.removeFromTop(searchHeight).reduced(margin));
@@ -78,8 +90,23 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     progressBar.setBounds(progressBounds.removeFromTop(20));
     cancelButton.setBounds(progressBounds.removeFromTop(20));
 
+    // Main content area
+    auto contentBounds = bounds.reduced(margin);
+
+    // Bottom controls area
+    auto bottomControlsBounds = contentBounds.removeFromBottom(dragAreaHeight);
+
+    // Drag area at bottom left
+    sampleDragArea.setBounds(bottomControlsBounds.removeFromLeft(dragAreaWidth));
+
+    // Small spacing
+    bottomControlsBounds.removeFromLeft(spacing);
+
+    // Directory open button next to drag area
+    directoryOpenButton.setBounds(bottomControlsBounds.removeFromLeft(buttonWidth));
+
     // Sample grid takes remaining space
-    sampleGridComponent.setBounds(bounds.reduced(margin));
+    sampleGridComponent.setBounds(contentBounds);
 }
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress)
@@ -118,8 +145,12 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
 
         if (success)
         {
-            // Update the sample grid with downloaded samples
-            sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+            // Add a small delay to ensure all files are written to disk
+            Timer::callAfterDelay(500, [this]()
+            {
+                // Update the sample grid with downloaded samples
+                sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+            });
         }
 
         // Hide progress components after a delay

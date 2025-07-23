@@ -28,6 +28,17 @@ public:
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
 
+    // NEW: Method to get sample info for drag operations
+    struct SampleInfo {
+        File audioFile;
+        String sampleName;
+        String authorName;
+        String freesoundId;
+        bool hasValidSample;
+        int padIndex; // Index of the pad (1-based)
+    };
+    SampleInfo getSampleInfo() const;
+
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
@@ -69,6 +80,9 @@ public:
     void updateSamples(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo);
     void clearSamples();
 
+    // NEW: Method to get all sample info for drag operations
+    Array<SamplePad::SampleInfo> getAllSampleInfo() const;
+
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
     void noteStopped(int noteNumber) override;
@@ -82,4 +96,47 @@ private:
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
+};
+
+//==============================================================================
+// Drag Export Component
+//==============================================================================
+
+class SampleDragArea : public Component,
+                      public DragAndDropContainer
+{
+public:
+    SampleDragArea();
+    ~SampleDragArea() override;
+
+    void paint(Graphics& g) override;
+    void resized() override;
+    void mouseDown(const MouseEvent& event) override;
+    void mouseDrag(const MouseEvent& event) override;
+
+    void setSampleGridComponent(SampleGridComponent* gridComponent);
+
+private:
+    SampleGridComponent* sampleGrid;
+    bool isDragging;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleDragArea)
+};
+
+//==============================================================================
+// Directory Open Button
+//==============================================================================
+
+class DirectoryOpenButton : public TextButton
+{
+public:
+    DirectoryOpenButton();
+    ~DirectoryOpenButton() override;
+
+    void setProcessor(FreesoundAdvancedSamplerAudioProcessor* processor);
+
+private:
+    FreesoundAdvancedSamplerAudioProcessor* processor;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DirectoryOpenButton)
 };

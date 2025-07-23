@@ -77,8 +77,8 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
 #endif
 {
 	tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundSimpleSampler");
-	tmpDownloadLocation.deleteRecursively();
 	tmpDownloadLocation.createDirectory();
+	currentSessionDownloadLocation = tmpDownloadLocation; // Initialize to main directory
 	midicounter = 1;
 	startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
@@ -91,8 +91,7 @@ FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor(
 	// Remove download manager listener
 	downloadManager.removeListener(this);
 
-	// Deletes the tmp directory so downloaded files do not stay there
-	tmpDownloadLocation.deleteRecursively();
+	// Note: We no longer delete the tmp directory to preserve downloaded files
 }
 
 //==============================================================================
@@ -226,9 +225,20 @@ void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady (Array<FSSound> soun
 
 void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>& sounds)
 {
-	tmpDownloadLocation.deleteRecursively();
-	tmpDownloadLocation.createDirectory();
-	downloadManager.startDownloads(sounds, tmpDownloadLocation);
+    // Create timestamped subfolder: {date}_{time}_{searchQuery}
+    Time currentTime = Time::getCurrentTime();
+    String dateStr = currentTime.formatted("%Y%m%d");
+    String timeStr = currentTime.formatted("%H%M%S");
+    String searchQuery = query.replaceCharacters("\\/:*?\"<>| ", "_"); // Clean search query for folder name
+
+    String folderName = dateStr + "_" + timeStr + "_" + searchQuery;
+    File currentDownloadLocation = tmpDownloadLocation.getChildFile(folderName);
+    currentDownloadLocation.createDirectory();
+
+    // Store the current download location for this session
+    currentSessionDownloadLocation = currentDownloadLocation;
+
+    downloadManager.startDownloads(sounds, currentDownloadLocation);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::cancelDownloads()
@@ -282,7 +292,7 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
 		audioFormatManager.registerBasicFormats();
 	}
 
-	Array<File> files = tmpDownloadLocation.findChildFiles(2, false);
+	Array<File> files = currentSessionDownloadLocation.findChildFiles(2, false);
 	for (int i = 0; i < files.size(); i++) {
 		std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(files[i]));
 
@@ -327,6 +337,11 @@ std::vector<juce::StringArray> FreesoundAdvancedSamplerAudioProcessor::getData()
 Array<FSSound> FreesoundAdvancedSamplerAudioProcessor::getCurrentSounds()
 {
     return currentSoundsArray;
+}
+
+File FreesoundAdvancedSamplerAudioProcessor::getCurrentDownloadLocation()
+{
+    return currentSessionDownloadLocation;
 }
 
 // NEW: Playback listener methods
