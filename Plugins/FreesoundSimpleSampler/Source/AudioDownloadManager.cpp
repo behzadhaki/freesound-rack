@@ -46,7 +46,7 @@ void AudioDownloadManager::run()
             continue;
 
         // Create filename from URL or use index
-        juce::String fileName = "sound_" + juce::String(i) + ".ogg";
+        juce::String fileName = "FS_ID_" + juce::String(soundsToDownload[i].id) + ".ogg";
         currentOutputFile = targetDirectory.getChildFile(fileName);
 
         {
