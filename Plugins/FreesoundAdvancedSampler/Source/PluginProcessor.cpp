@@ -458,9 +458,7 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
 
         // Footer section
         readmeContent += "\n## License Information\n\n";
-        readmeContent += "All samples are licensed under their respective Creative Commons licenses as shown in the table above. ";
-        readmeContent += "Please respect the license terms when using these samples. ";
-        readmeContent += "More information about each sample and its license can be found by clicking the Freesound URL links.\n\n";
+        readmeContent += "Read more about licenses used in Freesound, refer to [https://freesound.org/help/faq/#licenses](https://freesound.org/help/faq/#licenses).\n\n";
 
         readmeContent += "## Usage\n\n";
         readmeContent += "- **Pad Index:** Corresponds to the grid position (01 = bottom-left, 16 = top-right)\n";

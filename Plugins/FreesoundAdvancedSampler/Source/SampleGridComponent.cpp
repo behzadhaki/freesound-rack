@@ -84,10 +84,22 @@ void SamplePad::paint(Graphics& g)
         // Draw license type in bottom right corner
         if (licenseType.isNotEmpty())
         {
-            g.setFont(8.0f);
-            g.setColour(Colours::yellow.withAlpha(0.8f));
+            g.setFont(9.0f);
             String shortLicense = getLicenseShortName(licenseType);
-            g.drawText(shortLicense, bounds.reduced(2), Justification::bottomRight);
+
+            // Create license badge in bottom-right corner
+            auto licenseBounds = bounds.reduced(3);
+            int badgeWidth = 35;
+            int badgeHeight = 12;
+            licenseBounds = licenseBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+
+            // Draw orange background
+            g.setColour(Colours::orange.withAlpha(0.9f));
+            g.fillRoundedRectangle(licenseBounds.toFloat(), 2.0f);
+
+            // Draw black text
+            g.setColour(Colours::black);
+            g.drawText(shortLicense, licenseBounds, Justification::centred);
         }
     }
     else
@@ -112,6 +124,23 @@ void SamplePad::mouseDown(const MouseEvent& event)
 {
     if (!hasValidSample)
         return;
+
+    // Check if clicked on license badge
+    if (licenseType.isNotEmpty())
+    {
+        auto bounds = getLocalBounds();
+        auto licenseBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
+        licenseBounds = licenseBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+
+        if (licenseBounds.contains(event.getPosition()))
+        {
+            // Open the actual Creative Commons license URL
+            URL(licenseType).launchInDefaultBrowser();
+            return;
+        }
+    }
 
     if (event.mods.isShiftDown() && freesoundId.isNotEmpty())
     {
@@ -211,17 +240,23 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
 
 String SamplePad::getLicenseShortName(const String& license) const
 {
-    // Convert full license names to short abbreviations for display
-    if (license.contains("Creative Commons 0"))
-        return "CC0";
-    else if (license.contains("Attribution Noncommercial"))
-        return "CC BY-NC";
-    else if (license.contains("Attribution"))
-        return "CC BY";
-    else if (license.contains("Sampling+"))
-        return "S+";
+    // Parse the actual Creative Commons URLs to determine license type
+    String lowerLicense = license.toLowerCase();
+
+    if (lowerLicense.contains("creativecommons.org/publicdomain/zero") ||
+        lowerLicense.contains("cc0") ||
+        lowerLicense.contains("publicdomain/zero"))
+        return "cc0";
+    else if (lowerLicense.contains("creativecommons.org/licenses/by-nc") ||
+             lowerLicense.contains("by-nc"))
+        return "by-nc";
+    else if (lowerLicense.contains("creativecommons.org/licenses/by/") ||
+             (lowerLicense.contains("creativecommons.org/licenses/by") && !lowerLicense.contains("-nc")))
+        return "by";
+    else if (lowerLicense.contains("sampling+"))
+        return "by-nc"; // Sampling+ is treated as by-nc according to Freesound
     else
-        return "?"; // Unknown license
+        return "???"; // Default to most restrictive for unknown licenses
 }
 
 //==============================================================================
