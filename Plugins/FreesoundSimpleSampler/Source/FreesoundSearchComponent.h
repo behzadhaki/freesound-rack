@@ -143,7 +143,7 @@ public:
             Array<FSSound> sounds = searchSounds();
 
             if (sounds.size() == 0) {
-                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon, "No results", "No sounds found for the query: " + searchInput.getText(true));
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon, "No results", "No sounds found for the query: " + searchInput.getText(true) + ". Possibly no network connection.");
                 return;
             }
 
