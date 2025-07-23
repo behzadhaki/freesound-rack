@@ -183,7 +183,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
     // Normal click - play the sample
     if (processor)
     {
-        int noteNumber = padIndex * 8;
+        int noteNumber = padIndex + 36;
         processor->addToMidiBuffer(noteNumber);
     }
 }
@@ -407,7 +407,8 @@ void SampleGridComponent::clearSamples()
 
 void SampleGridComponent::noteStarted(int noteNumber, float velocity)
 {
-    int padIndex = noteNumber / 8; // Each pad gets 8 MIDI notes
+    // Convert MIDI note back to pad index
+    int padIndex = noteNumber - 36; // Note 36 = pad 0, Note 37 = pad 1, etc.
     if (padIndex >= 0 && padIndex < TOTAL_PADS)
     {
         // These methods now handle message thread dispatching internally
@@ -418,7 +419,8 @@ void SampleGridComponent::noteStarted(int noteNumber, float velocity)
 
 void SampleGridComponent::noteStopped(int noteNumber)
 {
-    int padIndex = noteNumber / 8;
+    // Convert MIDI note back to pad index
+    int padIndex = noteNumber - 36;
     if (padIndex >= 0 && padIndex < TOTAL_PADS)
     {
         // This method now handles message thread dispatching internally
@@ -428,7 +430,8 @@ void SampleGridComponent::noteStopped(int noteNumber)
 
 void SampleGridComponent::playheadPositionChanged(int noteNumber, float position)
 {
-    int padIndex = noteNumber / 8;
+    // Convert MIDI note back to pad index
+    int padIndex = noteNumber - 36;
     if (padIndex >= 0 && padIndex < TOTAL_PADS)
     {
         // This method now handles message thread dispatching internally

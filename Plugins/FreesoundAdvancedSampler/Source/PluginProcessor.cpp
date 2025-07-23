@@ -295,15 +295,25 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
 		audioFormatManager.registerBasicFormats();
 	}
 
-	Array<File> files = currentSessionDownloadLocation.findChildFiles(2, false);
-	for (int i = 0; i < files.size(); i++) {
-		std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(files[i]));
+	// Load files in the same order as the visual grid (by pad index)
+	for (int i = 0; i < currentSoundsArray.size() && i < 16; i++) {
+		// Create the expected filename based on pad index and sound ID
+		int padIndex = i + 1; // 1-based index
+		String padIndexStr = String(padIndex).paddedLeft('0', 2);
+		String expectedFilename = padIndexStr + "_FS_ID_" + currentSoundsArray[i].id + ".ogg";
+		File audioFile = currentSessionDownloadLocation.getChildFile(expectedFilename);
 
-		if (reader != nullptr)
-		{
-			BigInteger notes;
-			notes.setRange(i * 8, i * 8 + 7, true);
-			sampler.addSound(new SamplerSound(String(i), *reader, notes, i*8, 0, maxLength, maxLength));
+		if (audioFile.existsAsFile()) {
+			std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+
+			if (reader != nullptr)
+			{
+				BigInteger notes;
+				// Each pad gets a single MIDI note starting at 36
+				int midiNote = 36 + i; // Pad 0 = note 36, Pad 1 = note 37, etc.
+				notes.setBit(midiNote, true);
+				sampler.addSound(new SamplerSound(String(i), *reader, notes, midiNote, 0, maxLength, maxLength));
+			}
 		}
 	}
 }
@@ -462,7 +472,10 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
 
         readmeContent += "## Usage\n\n";
         readmeContent += "- **Pad Index:** Corresponds to the grid position (01 = bottom-left, 16 = top-right)\n";
-        readmeContent += "- **MIDI Mapping:** Each pad responds to 8 MIDI notes starting from `(pad_index - 1) * 8`\n";
+        readmeContent += "- **MIDI Mapping:** Each pad responds to a single MIDI note starting from 36 (C2)\n";
+        readmeContent += "  - Pad 01 (bottom-left): MIDI note 36 (C2)\n";
+        readmeContent += "  - Pad 02: MIDI note 37 (C#2)\n";
+        readmeContent += "  - Pad 16 (top-right): MIDI note 51 (D#3)\n";
         readmeContent += "- **File Format:** All samples are in OGG format (Freesound previews)\n\n";
 
         readmeContent += "---\n";
