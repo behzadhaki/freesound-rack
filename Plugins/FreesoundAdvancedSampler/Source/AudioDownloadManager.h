@@ -17,6 +17,20 @@ public:
         juce::String currentFileName;
     };
 
+    struct DownloadedFileInfo
+    {
+        juce::String fileName;
+        juce::String originalName;
+        juce::String freesoundId;
+        juce::String searchQuery;
+        juce::String author;
+        juce::String license;
+        double duration;
+        int fileSize;
+        juce::String downloadedAt;
+        int padIndex;
+    };
+
     class Listener
     {
     public:
@@ -28,7 +42,7 @@ public:
     AudioDownloadManager();
     ~AudioDownloadManager() override;
 
-    void startDownloads(const juce::Array<FSSound>& sounds, const juce::File& downloadDirectory);
+    void startDownloads(const juce::Array<FSSound>& sounds, const juce::File& downloadDirectory, const juce::String& searchQuery);
     void addListener(Listener* listener);
     void removeListener(Listener* listener);
 
@@ -36,9 +50,11 @@ private:
     void run() override;
     void timerCallback() override;
     void updateProgress();
+    void saveMetadataJson(const juce::Array<DownloadedFileInfo>& downloadedFiles);
 
     juce::Array<FSSound> soundsToDownload;
     juce::File targetDirectory;
+    juce::String currentSearchQuery;
     juce::ListenerList<Listener> listeners;
     
     DownloadProgress currentProgress;

@@ -112,6 +112,25 @@ public:
     void addPlaybackListener(PlaybackListener* listener);
     void removePlaybackListener(PlaybackListener* listener);
 
+	static String cleanFilename(const String& input)
+	{
+		String cleaned = input;
+
+		// Remove invalid filename characters
+		cleaned = cleaned.replace("\\", "_");
+		cleaned = cleaned.replace("/", "_");
+		cleaned = cleaned.replace(":", "_");
+		cleaned = cleaned.replace("*", "_");
+		cleaned = cleaned.replace("?", "_");
+		cleaned = cleaned.replace("\"", "_");
+		cleaned = cleaned.replace("<", "_");
+		cleaned = cleaned.replace(">", "_");
+		cleaned = cleaned.replace("|", "_");
+		cleaned = cleaned.replace(" ", "_");
+
+		return cleaned;
+	}
+
 private:
     // Enhanced sampler voice class for playback tracking
     class TrackingSamplerVoice : public SamplerVoice

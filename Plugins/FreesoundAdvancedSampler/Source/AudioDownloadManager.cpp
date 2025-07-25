@@ -9,13 +9,14 @@ AudioDownloadManager::~AudioDownloadManager()
     stopThread(2000);
 }
 
-void AudioDownloadManager::startDownloads(const juce::Array<FSSound>& sounds, const juce::File& downloadDirectory)
+void AudioDownloadManager::startDownloads(const juce::Array<FSSound>& sounds, const juce::File& downloadDirectory, const juce::String& searchQuery)
 {
     if (isThreadRunning())
         stopThread(2000);
 
     soundsToDownload = sounds;
     targetDirectory = downloadDirectory;
+    currentSearchQuery = searchQuery;
     currentDownloadIndex = 0;
 
     {
@@ -36,6 +37,7 @@ void AudioDownloadManager::startDownloads(const juce::Array<FSSound>& sounds, co
 void AudioDownloadManager::run()
 {
     bool allSuccessful = true;
+    juce::Array<DownloadedFileInfo> downloadedFiles;
 
     for (int i = 0; i < soundsToDownload.size() && !threadShouldExit(); ++i)
     {
@@ -45,10 +47,8 @@ void AudioDownloadManager::run()
         if (url.isEmpty())
             continue;
 
-        // Create filename with pad index: {padIndex}_FS_ID_{id}.ogg
-        int padIndex = i + 1; // 1-based index
-        juce::String padIndexStr = juce::String(padIndex).paddedLeft('0', 2);
-        juce::String fileName = padIndexStr + "_FS_ID_" + juce::String(soundsToDownload[i].id) + ".ogg";
+        // Create filename using just Freesound ID: FS_ID_XXXX.ogg
+        juce::String fileName = "FS_ID_" + juce::String(soundsToDownload[i].id) + ".ogg";
         currentOutputFile = targetDirectory.getChildFile(fileName);
 
         {
@@ -107,6 +107,23 @@ void AudioDownloadManager::run()
                 }
 
                 output->flush();
+
+                // Record successful download info
+                if (currentOutputFile.existsAsFile())
+                {
+                    DownloadedFileInfo fileInfo;
+                    fileInfo.fileName = fileName;
+                    fileInfo.originalName = soundsToDownload[i].name; // Get original name from the sound object
+                    fileInfo.freesoundId = soundsToDownload[i].id;
+                    fileInfo.searchQuery = currentSearchQuery;
+                    fileInfo.author = soundsToDownload[i].user;
+                    fileInfo.license = soundsToDownload[i].license;
+                    fileInfo.duration = soundsToDownload[i].duration;
+                    fileInfo.fileSize = soundsToDownload[i].filesize;
+                    fileInfo.downloadedAt = juce::Time::getCurrentTime().toString(true, true);
+                    fileInfo.padIndex = i; // Store original download order
+                    downloadedFiles.add(fileInfo);
+                }
             }
             else
             {
@@ -128,6 +145,12 @@ void AudioDownloadManager::run()
 
     stopTimer();
 
+    // Save JSON metadata file
+    if (!downloadedFiles.isEmpty())
+    {
+        saveMetadataJson(downloadedFiles);
+    }
+
     // Final progress update
     {
         juce::ScopedLock lock(progressLock);
@@ -137,6 +160,49 @@ void AudioDownloadManager::run()
     updateProgress();
 
     listeners.call([allSuccessful](Listener& l) { l.downloadCompleted(allSuccessful); });
+}
+
+void AudioDownloadManager::saveMetadataJson(const juce::Array<DownloadedFileInfo>& downloadedFiles)
+{
+    juce::File jsonFile = targetDirectory.getChildFile("metadata.json");
+
+    juce::DynamicObject::Ptr root = new juce::DynamicObject();
+
+    // Session metadata
+    root->setProperty("session_info", new juce::DynamicObject());
+    juce::DynamicObject::Ptr sessionInfo = root->getProperty("session_info").getDynamicObject();
+    sessionInfo->setProperty("download_date", juce::Time::getCurrentTime().toString(true, true));
+    sessionInfo->setProperty("search_query", currentSearchQuery);
+    sessionInfo->setProperty("total_samples", downloadedFiles.size());
+
+    // Samples array
+    juce::Array<juce::var> samplesArray;
+
+    for (const auto& fileInfo : downloadedFiles)
+    {
+        juce::DynamicObject::Ptr sample = new juce::DynamicObject();
+        sample->setProperty("file_name", fileInfo.fileName);
+        sample->setProperty("original_name", fileInfo.originalName);
+        sample->setProperty("freesound_id", fileInfo.freesoundId);
+        sample->setProperty("search_query", fileInfo.searchQuery);
+        sample->setProperty("author", fileInfo.author);
+        sample->setProperty("license", fileInfo.license);
+        sample->setProperty("duration", fileInfo.duration);
+        sample->setProperty("file_size", fileInfo.fileSize);
+        sample->setProperty("downloaded_at", fileInfo.downloadedAt);
+        sample->setProperty("original_pad_index", fileInfo.padIndex + 1); // 1-based for user display
+        sample->setProperty("freesound_url", "https://freesound.org/s/" + fileInfo.freesoundId + "/");
+
+        samplesArray.add(juce::var(sample.get()));
+    }
+
+    root->setProperty("samples", samplesArray);
+
+    // Convert to JSON string
+    juce::String jsonString = juce::JSON::toString(juce::var(root.get()), true); // true for pretty print
+
+    // Write to file
+    jsonFile.replaceWithText(jsonString);
 }
 
 void AudioDownloadManager::timerCallback()

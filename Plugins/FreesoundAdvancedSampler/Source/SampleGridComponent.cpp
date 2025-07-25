@@ -82,16 +82,16 @@ void SamplePad::paint(Graphics& g)
 
         // Format filename to max 10 characters with ellipsis if needed
         String displayName = sampleName;
-        if (displayName.length() > 20)
+        if (displayName.length() > 10)
         {
-            displayName = displayName.substring(0, 17) + "...";
+            displayName = displayName.substring(0, 7) + "...";
         }
 
         // Format author name
         String displayAuthor = authorName;
-        if (displayAuthor.length() > 15)
+        if (displayAuthor.length() > 10)
         {
-            displayAuthor = displayAuthor.substring(0, 12) + "...";
+            displayAuthor = displayAuthor.substring(0, 7) + "...";
         }
 
         // Create the full text string
@@ -436,6 +436,63 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
 
     File downloadDir = processor->getCurrentDownloadLocation();
 
+    // Try to load from JSON metadata first
+    File metadataFile = downloadDir.getChildFile("metadata.json");
+    if (metadataFile.existsAsFile())
+    {
+        loadSamplesFromJson(metadataFile);
+    }
+    else
+    {
+        // Fallback to the old method using the provided arrays
+        loadSamplesFromArrays(sounds, soundInfo, downloadDir);
+    }
+}
+
+void SampleGridComponent::loadSamplesFromJson(const File& metadataFile)
+{
+    FileInputStream inputStream(metadataFile);
+    if (!inputStream.openedOk())
+        return;
+
+    String jsonText = inputStream.readEntireStreamAsString();
+    var parsedJson = juce::JSON::parse(jsonText);
+
+    if (!parsedJson.isObject())
+        return;
+
+    var samplesArray = parsedJson.getProperty("samples", var());
+    if (!samplesArray.isArray())
+        return;
+
+    File downloadDir = metadataFile.getParentDirectory();
+    int numSamples = jmin(TOTAL_PADS, (int)samplesArray.size());
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        var sample = samplesArray[i];
+        if (!sample.isObject())
+            continue;
+
+        String fileName = sample.getProperty("file_name", "");
+        String sampleName = sample.getProperty("original_name", "Sample " + String(i + 1));
+        String authorName = sample.getProperty("author", "Unknown");
+        String license = sample.getProperty("license", "Unknown");
+        String freesoundId = sample.getProperty("freesound_id", "");
+
+        if (fileName.isNotEmpty())
+        {
+            File audioFile = downloadDir.getChildFile(fileName);
+            if (audioFile.existsAsFile())
+            {
+                samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
+            }
+        }
+    }
+}
+
+void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir)
+{
     int numSamples = jmin(TOTAL_PADS, sounds.size());
 
     for (int i = 0; i < numSamples; ++i)
@@ -445,10 +502,8 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
         String license = (i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : "Unknown";
         String freesoundId = sounds[i].id;
 
-        // Create the expected filename based on the simple pad index naming pattern
-        int padIndex = i + 1; // 1-based index
-        String padIndexStr = String(padIndex).paddedLeft('0', 2);
-        String expectedFilename = padIndexStr + "_FS_ID_" + freesoundId + ".ogg";
+        // Create filename using simple ID-based naming scheme: FS_ID_XXXX.ogg
+        String expectedFilename = "FS_ID_" + freesoundId + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
         // Only proceed if the file exists

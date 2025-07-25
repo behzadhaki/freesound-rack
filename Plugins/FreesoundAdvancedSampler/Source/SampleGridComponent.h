@@ -99,6 +99,10 @@ private:
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
+    // Helper methods for loading samples
+    void loadSamplesFromJson(const File& metadataFile);
+    void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };
 

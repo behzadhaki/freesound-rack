@@ -225,13 +225,12 @@ void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady (Array<FSSound> soun
 
 void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>& sounds)
 {
-    // Create timestamped subfolder: {date}_{time}_{searchQuery}
+    // Create timestamped subfolder without search query: {date}_{time}
     Time currentTime = Time::getCurrentTime();
     String dateStr = currentTime.formatted("%Y%m%d");
     String timeStr = currentTime.formatted("%H%M%S");
-    String searchQuery = query.replaceCharacters("\\/:*?\"<>| ", "_"); // Clean search query for folder name
 
-    String folderName = dateStr + "_" + timeStr + "_" + searchQuery;
+    String folderName = dateStr + "_" + timeStr;
     File currentDownloadLocation = tmpDownloadLocation.getChildFile(folderName);
     currentDownloadLocation.createDirectory();
 
@@ -241,7 +240,8 @@ void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>
     // Generate README file with search information
     generateReadmeFile(sounds, soundsArray, query);
 
-    downloadManager.startDownloads(sounds, currentDownloadLocation);
+    // Pass search query to download manager
+    downloadManager.startDownloads(sounds, currentDownloadLocation, query);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::cancelDownloads()
@@ -280,42 +280,85 @@ void FreesoundAdvancedSamplerAudioProcessor::removeDownloadListener(DownloadList
 
 void FreesoundAdvancedSamplerAudioProcessor::setSources()
 {
-	sampler.clearSounds();
-	sampler.clearVoices();
+    sampler.clearSounds();
+    sampler.clearVoices();
 
-	int poliphony = 16;
-	int maxLength = 10;
+    int poliphony = 16;
+    int maxLength = 10;
 
-	// Add tracking voices instead of regular sampler voices
-	for (int i = 0; i < poliphony; i++) {
-		sampler.addVoice(new TrackingSamplerVoice(*this));
-	}
+    // Add tracking voices instead of regular sampler voices
+    for (int i = 0; i < poliphony; i++) {
+        sampler.addVoice(new TrackingSamplerVoice(*this));
+    }
 
-	if(audioFormatManager.getNumKnownFormats() == 0){
-		audioFormatManager.registerBasicFormats();
-	}
+    if(audioFormatManager.getNumKnownFormats() == 0){
+        audioFormatManager.registerBasicFormats();
+    }
 
-	// Load files in the same order as the visual grid (by pad index)
-	for (int i = 0; i < currentSoundsArray.size() && i < 16; i++) {
-		// Create the expected filename based on pad index and sound ID
-		int padIndex = i + 1; // 1-based index
-		String padIndexStr = String(padIndex).paddedLeft('0', 2);
-		String expectedFilename = padIndexStr + "_FS_ID_" + currentSoundsArray[i].id + ".ogg";
-		File audioFile = currentSessionDownloadLocation.getChildFile(expectedFilename);
+    // Load JSON metadata to get file mappings
+    File metadataFile = currentSessionDownloadLocation.getChildFile("metadata.json");
+    Array<File> audioFiles;
 
-		if (audioFile.existsAsFile()) {
-			std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+    if (metadataFile.existsAsFile())
+    {
+        // Load files based on JSON metadata order
+        FileInputStream inputStream(metadataFile);
+        if (inputStream.openedOk())
+        {
+            String jsonText = inputStream.readEntireStreamAsString();
+            var parsedJson = juce::JSON::parse(jsonText);
 
-			if (reader != nullptr)
-			{
-				BigInteger notes;
-				// Each pad gets a single MIDI note starting at 36
-				int midiNote = 36 + i; // Pad 0 = note 36, Pad 1 = note 37, etc.
-				notes.setBit(midiNote, true);
-				sampler.addSound(new SamplerSound(String(i), *reader, notes, midiNote, 0, maxLength, maxLength));
-			}
-		}
-	}
+            if (parsedJson.isObject())
+            {
+                var samplesArray = parsedJson.getProperty("samples", var());
+                if (samplesArray.isArray())
+                {
+                    for (int i = 0; i < samplesArray.size() && i < 16; ++i)
+                    {
+                        var sample = samplesArray[i];
+                        if (sample.isObject())
+                        {
+                            String fileName = sample.getProperty("file_name", "");
+                            if (fileName.isNotEmpty())
+                            {
+                                File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
+                                if (audioFile.existsAsFile())
+                                {
+                                    audioFiles.add(audioFile);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        // Fallback: scan directory for .ogg files (legacy support)
+        DirectoryIterator iter(currentSessionDownloadLocation, false, "*.ogg");
+        while (iter.next())
+        {
+            audioFiles.add(iter.getFile());
+            if (audioFiles.size() >= 16) break; // Limit to 16 samples
+        }
+    }
+
+    // Load the audio files in order
+    for (int i = 0; i < audioFiles.size() && i < 16; ++i)
+    {
+        File audioFile = audioFiles[i];
+        std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+
+        if (reader != nullptr)
+        {
+            BigInteger notes;
+            // Each pad gets a single MIDI note starting at 36
+            int midiNote = 36 + i; // Pad 0 = note 36, Pad 1 = note 37, etc.
+            notes.setBit(midiNote, true);
+            sampler.addSound(new SamplerSound(String(i), *reader, notes, midiNote, 0, maxLength, maxLength));
+        }
+    }
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addToMidiBuffer(int notenumber)
@@ -411,23 +454,21 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
         readmeContent += "## Description\n\n";
         readmeContent += "This collection contains audio samples downloaded from [Freesound.org](https://freesound.org) ";
         readmeContent += "using the search query \"" + searchQuery + "\". ";
-        readmeContent += "Each sample is organized by pad index (01-16) for use in the grid sampler.\n\n";
+        readmeContent += "Files are named using their original Freesound names plus the Freesound ID for uniqueness.\n\n";
 
         // Table header
         readmeContent += "## Sample Details\n\n";
-        readmeContent += "| Pad | File Name | Sample Name | Author | License | Duration | File Size | Freesound ID | URL |\n";
-        readmeContent += "|-----|-----------|-------------|--------|---------|----------|-----------|--------------|-----|\n";
+        readmeContent += "| # | File Name | Original Name | Author | License | Search Query | Duration | File Size | Freesound ID | URL |\n";
+        readmeContent += "|---|-----------|---------------|--------|---------|--------------|----------|-----------|--------------|-----|\n";
 
         // Table rows
         for (int i = 0; i < sounds.size(); ++i)
         {
             const FSSound& sound = sounds[i];
 
-            // Pad index (1-based)
-            String padIndex = String(i + 1).paddedLeft('0', 2);
-
-            // File name
-            String fileName = padIndex + "_FS_ID_" + sound.id + ".ogg";
+            // File name using new naming scheme
+            String originalName = sound.name;
+            String fileName = "_FS_" + sound.id + ".ogg";
 
             // Sample info
             String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Unknown";
@@ -455,11 +496,12 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
             String freesoundUrl = "https://freesound.org/s/" + sound.id + "/";
 
             // Add table row
-            readmeContent += "| " + padIndex + " | ";
+            readmeContent += "| " + String(i + 1) + " | ";
             readmeContent += "`" + fileName + "` | ";
             readmeContent += sampleName + " | ";
             readmeContent += authorName + " | ";
             readmeContent += license + " | ";
+            readmeContent += "`" + searchQuery + "` | ";
             readmeContent += durationStr + " | ";
             readmeContent += fileSizeStr + " | ";
             readmeContent += sound.id + " | ";
@@ -471,12 +513,11 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
         readmeContent += "Read more about licenses used in Freesound, refer to [https://freesound.org/help/faq/#licenses](https://freesound.org/help/faq/#licenses).\n\n";
 
         readmeContent += "## Usage\n\n";
-        readmeContent += "- **Pad Index:** Corresponds to the grid position (01 = bottom-left, 16 = top-right)\n";
-        readmeContent += "- **MIDI Mapping:** Each pad responds to a single MIDI note starting from 36 (C2)\n";
-        readmeContent += "  - Pad 01 (bottom-left): MIDI note 36 (C2)\n";
-        readmeContent += "  - Pad 02: MIDI note 37 (C#2)\n";
-        readmeContent += "  - Pad 16 (top-right): MIDI note 51 (D#3)\n";
-        readmeContent += "- **File Format:** All samples are in OGG format (Freesound previews)\n\n";
+        readmeContent += "- **File Naming:** Files are named using their original Freesound names plus Freesound ID\n";
+        readmeContent += "- **MIDI Mapping:** Each sample responds to MIDI notes starting from 36 (C2) in the order they appear in this list\n";
+        readmeContent += "- **Reordering:** You can easily reorder samples by moving the files around\n";
+        readmeContent += "- **File Format:** All samples are in OGG format (Freesound previews)\n";
+        readmeContent += "- **Metadata:** Complete metadata is stored in `metadata.json` for programmatic access\n\n";
 
         readmeContent += "---\n";
         readmeContent += "*Generated by Freesound Advanced Sampler*\n";
