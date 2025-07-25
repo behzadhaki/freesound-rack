@@ -73,25 +73,65 @@ void SamplePad::paint(Graphics& g)
             drawPlayhead(g, waveformBounds);
         }
 
-        // Draw text labels
-        g.setColour(Colours::white);
-        g.setFont(10.0f);
+        // Draw filename and author in black text at bottom left of waveform area
+        g.setColour(Colours::black);
+        g.setFont(9.0f);
 
-        auto textBounds = bounds.reduced(4);
-        g.drawText(sampleName, textBounds.removeFromTop(12), Justification::centredTop, true);
-        g.drawText(authorName, textBounds.removeFromBottom(12), Justification::centredBottom, true);
+        // Get the waveform bounds (same as used for drawing waveform)
+        auto textBounds = bounds.reduced(8, 20);
 
-        // Draw license type in bottom right corner
+        // Format filename to max 10 characters with ellipsis if needed
+        String displayName = sampleName;
+        if (displayName.length() > 20)
+        {
+            displayName = displayName.substring(0, 17) + "...";
+        }
+
+        // Format author name
+        String displayAuthor = authorName;
+        if (displayAuthor.length() > 15)
+        {
+            displayAuthor = displayAuthor.substring(0, 12) + "...";
+        }
+
+        // Create the full text string
+        String displayText = displayName + " by " + displayAuthor;
+
+        // Position at bottom left of waveform area
+        auto filenameBounds = textBounds.removeFromBottom(12);
+        g.drawText(displayText, filenameBounds, Justification::bottomLeft, true);
+
+        // Draw "Web" badge in TOP LEFT corner
+        if (freesoundId.isNotEmpty())
+        {
+            g.setFont(9.0f);
+
+            // Create web badge in top-left corner
+            auto webBounds = bounds.reduced(3);
+            int badgeWidth = 30;
+            int badgeHeight = 12;
+            webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
+
+            // Draw blue background
+            g.setColour(Colours::blue.withAlpha(0.8f));
+            g.fillRoundedRectangle(webBounds.toFloat(), 2.0f);
+
+            // Draw white text
+            g.setColour(Colours::white);
+            g.drawText("Web", webBounds, Justification::centred);
+        }
+
+        // Draw license badge in TOP RIGHT corner
         if (licenseType.isNotEmpty())
         {
             g.setFont(9.0f);
             String shortLicense = getLicenseShortName(licenseType);
 
-            // Create license badge in bottom-right corner
+            // Create license badge in top-right corner
             auto licenseBounds = bounds.reduced(3);
             int badgeWidth = 35;
             int badgeHeight = 12;
-            licenseBounds = licenseBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+            licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
 
             // Draw orange background
             g.setColour(Colours::orange.withAlpha(0.9f));
@@ -102,24 +142,23 @@ void SamplePad::paint(Graphics& g)
             g.drawText(shortLicense, licenseBounds, Justification::centred);
         }
 
-        // Draw "Web" badge in bottom left corner
-        if (freesoundId.isNotEmpty())
+        // Draw "Drag" badge in BOTTOM LEFT corner
         {
             g.setFont(9.0f);
 
-            // Create web badge in bottom-left corner
-            auto webBounds = bounds.reduced(3);
+            // Create drag badge in bottom-left corner
+            auto dragBounds = bounds.reduced(3);
             int badgeWidth = 30;
             int badgeHeight = 12;
-            webBounds = webBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+            dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
-            // Draw blue background
-            g.setColour(Colours::blue.withAlpha(0.8f));
-            g.fillRoundedRectangle(webBounds.toFloat(), 2.0f);
+            // Draw green background
+            g.setColour(Colours::green.withAlpha(0.8f));
+            g.fillRoundedRectangle(dragBounds.toFloat(), 2.0f);
 
             // Draw white text
             g.setColour(Colours::white);
-            g.drawText("Web", webBounds, Justification::centred);
+            g.drawText("Drag", dragBounds, Justification::centred);
         }
     }
     else
@@ -130,10 +169,12 @@ void SamplePad::paint(Graphics& g)
         g.drawText("Empty", bounds, Justification::centred);
     }
 
-    // Pad number
-    g.setColour(Colours::white.withAlpha(0.7f));
+    // Pad number in top-left corner (over the web badge if present)
+    g.setColour(Colours::white.withAlpha(0.9f));
     g.setFont(8.0f);
-    g.drawText(String(padIndex + 1), bounds.reduced(2), Justification::topLeft);
+    auto numberBounds = bounds.reduced(2);
+    auto numberRect = numberBounds.removeFromTop(10).removeFromLeft(15);
+    g.drawText(String(padIndex + 1), numberRect, Justification::centred);
 }
 
 void SamplePad::resized()
@@ -145,14 +186,32 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    // Check if clicked on license badge (bottom-right)
+    // Check if clicked on web badge (top-left)
+    if (freesoundId.isNotEmpty())
+    {
+        auto bounds = getLocalBounds();
+        auto webBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
+        webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (webBounds.contains(event.getPosition()))
+        {
+            // Open Freesound page in browser
+            String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+            URL(freesoundUrl).launchInDefaultBrowser();
+            return;
+        }
+    }
+
+    // Check if clicked on license badge (top-right)
     if (licenseType.isNotEmpty())
     {
         auto bounds = getLocalBounds();
         auto licenseBounds = bounds.reduced(3);
         int badgeWidth = 35;
         int badgeHeight = 12;
-        licenseBounds = licenseBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+        licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
 
         if (licenseBounds.contains(event.getPosition()))
         {
@@ -162,20 +221,23 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
-    // Check if clicked on web badge (bottom-left)
-    if (freesoundId.isNotEmpty())
+    // Check if clicked on drag badge (bottom-left)
     {
         auto bounds = getLocalBounds();
-        auto webBounds = bounds.reduced(3);
+        auto dragBounds = bounds.reduced(3);
         int badgeWidth = 30;
         int badgeHeight = 12;
-        webBounds = webBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
-        if (webBounds.contains(event.getPosition()))
+        if (dragBounds.contains(event.getPosition()))
         {
-            // Open Freesound page in browser
-            String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
-            URL(freesoundUrl).launchInDefaultBrowser();
+            // Start drag operation for this single file
+            if (audioFile.existsAsFile())
+            {
+                StringArray filePaths;
+                filePaths.add(audioFile.getFullPathName());
+                performExternalDragDropOfFiles(filePaths, false); // false = don't allow moving
+            }
             return;
         }
     }

@@ -76,7 +76,7 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
 					   )
 #endif
 {
-	tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundSimpleSampler");
+	tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
 	tmpDownloadLocation.createDirectory();
 	currentSessionDownloadLocation = tmpDownloadLocation; // Initialize to main directory
 	midicounter = 1;

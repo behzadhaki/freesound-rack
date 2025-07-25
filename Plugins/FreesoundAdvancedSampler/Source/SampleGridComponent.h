@@ -13,7 +13,8 @@
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "PluginProcessor.h"
 
-class SamplePad : public Component
+class SamplePad : public Component,
+                  public DragAndDropContainer
 {
 public:
     SamplePad(int padIndex);
