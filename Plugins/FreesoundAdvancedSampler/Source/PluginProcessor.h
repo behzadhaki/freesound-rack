@@ -134,8 +134,9 @@ public:
 	}
 
 	PresetManager& getPresetManager() { return presetManager; }
-	bool saveCurrentAsPreset(const String& name, const String& description = "");
-	bool loadPreset(const File& presetFile);
+	bool saveCurrentAsPreset(const String& name, const String& description = "", int slotIndex = 0);
+	bool loadPreset(const File& presetFile, int slotIndex = 0);
+	bool saveToSlot(const File& presetFile, int slotIndex, const String& description = "");
 	Array<PadInfo> getCurrentPadInfos() const;
 
 private:

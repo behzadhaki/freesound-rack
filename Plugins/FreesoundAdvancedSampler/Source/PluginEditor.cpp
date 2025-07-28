@@ -34,10 +34,10 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     directoryOpenButton.setProcessor(&processor);
     addAndMakeVisible(directoryOpenButton);
 
-    // Set up preset browser
+    // Set up preset browser with multi-slot support
     presetBrowserComponent.setProcessor(&processor);
-    presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo) {
-        handlePresetLoadRequested(presetInfo);
+    presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo, int slotIndex) {
+        handlePresetLoadRequested(presetInfo, slotIndex);
     };
     addAndMakeVisible(presetBrowserComponent);
 
@@ -178,12 +178,15 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
     });
 }
 
-void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(const PresetInfo& presetInfo)
+void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex)
 {
-    if (processor.loadPreset(presetInfo.presetFile))
+    if (processor.loadPreset(presetInfo.presetFile, slotIndex))
     {
         // Update the sample grid with the loaded preset
         sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+
+        // Refresh preset browser to update active slot display
+        presetBrowserComponent.refreshPresetList();
     }
     else
     {
@@ -191,6 +194,6 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(con
         AlertWindow::showMessageBoxAsync(
             AlertWindow::WarningIcon,
             "Load Failed",
-            "Failed to load preset \"" + presetInfo.name + "\". Some samples may be missing.");
+            "Failed to load preset \"" + presetInfo.name + "\" slot " + String(slotIndex + 1) + ". Some samples may be missing.");
     }
 }

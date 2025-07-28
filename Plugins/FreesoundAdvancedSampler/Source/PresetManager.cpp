@@ -2,7 +2,7 @@
   ==============================================================================
 
     PresetManager.cpp
-    Created: New preset management system
+    Created: New preset management system with multi-slot support
     Author: Generated
 
   ==============================================================================
@@ -14,6 +14,7 @@ PresetManager::PresetManager(const File& baseDirectory)
     : baseDirectory(baseDirectory)
     , samplesFolder(baseDirectory.getChildFile("samples"))
     , presetsFolder(baseDirectory.getChildFile("presets"))
+    , activeSlotIndex(-1)
 {
     ensureDirectoriesExist();
 }
@@ -29,27 +30,53 @@ void PresetManager::ensureDirectoriesExist()
 }
 
 bool PresetManager::saveCurrentPreset(const String& name, const String& description,
-                                     const Array<PadInfo>& padInfos, const String& searchQuery)
+                                     const Array<PadInfo>& padInfos, const String& searchQuery,
+                                     int slotIndex)
 {
-    if (name.isEmpty())
+    if (name.isEmpty() || slotIndex < 0 || slotIndex >= 8)
         return false;
 
     // Generate filename
     String fileName = sanitizeFileName(name) + ".json";
     File presetFile = presetsFolder.getChildFile(fileName);
 
-    // Create JSON structure
-    juce::DynamicObject::Ptr root = new juce::DynamicObject();
+    // If file exists, load existing data, otherwise create new
+    juce::DynamicObject::Ptr root;
 
-    // Preset info
-    juce::DynamicObject::Ptr presetInfo = new juce::DynamicObject();
-    presetInfo->setProperty("name", name);
-    presetInfo->setProperty("created_date", juce::Time::getCurrentTime().toString(true, true));
-    presetInfo->setProperty("search_query", searchQuery);
-    presetInfo->setProperty("description", description);
-    presetInfo->setProperty("sample_count", padInfos.size());
+    if (presetFile.existsAsFile())
+    {
+        String existingJson = presetFile.loadFileAsString();
+        var parsedJson = juce::JSON::parse(existingJson);
+        if (parsedJson.isObject())
+        {
+            root = parsedJson.getDynamicObject();
+        }
+    }
 
-    root->setProperty("preset_info", juce::var(presetInfo.get()));
+    if (!root)
+    {
+        root = new juce::DynamicObject();
+
+        // Create preset info (only for new presets)
+        juce::DynamicObject::Ptr presetInfo = new juce::DynamicObject();
+        presetInfo->setProperty("name", name);
+        presetInfo->setProperty("created_date", juce::Time::getCurrentTime().toString(true, true));
+        presetInfo->setProperty("description", description);
+        root->setProperty("preset_info", juce::var(presetInfo.get()));
+    }
+
+    // Create slot data
+    juce::DynamicObject::Ptr slotData = new juce::DynamicObject();
+
+    // Slot info
+    juce::DynamicObject::Ptr slotInfo = new juce::DynamicObject();
+    slotInfo->setProperty("name", "Slot " + String(slotIndex + 1));
+    slotInfo->setProperty("created_date", juce::Time::getCurrentTime().toString(true, true));
+    slotInfo->setProperty("search_query", searchQuery);
+    slotInfo->setProperty("description", description);
+    slotInfo->setProperty("sample_count", padInfos.size());
+
+    slotData->setProperty("slot_info", juce::var(slotInfo.get()));
 
     // Pad mapping
     juce::Array<juce::var> padMapping;
@@ -71,18 +98,94 @@ bool PresetManager::saveCurrentPreset(const String& name, const String& descript
         padMapping.add(juce::var(pad.get()));
     }
 
-    root->setProperty("pad_mapping", padMapping);
+    slotData->setProperty("pad_mapping", padMapping);
+
+    // Save slot data under slot key
+    root->setProperty(getSlotKey(slotIndex), juce::var(slotData.get()));
 
     // Write to file
     String jsonString = juce::JSON::toString(juce::var(root.get()), true);
-    return presetFile.replaceWithText(jsonString);
+    bool success = presetFile.replaceWithText(jsonString);
+
+    if (success)
+    {
+        setActivePreset(presetFile, slotIndex);
+    }
+
+    return success;
 }
 
-bool PresetManager::loadPreset(const File& presetFile, Array<PadInfo>& outPadInfos)
+bool PresetManager::saveToSlot(const File& presetFile, int slotIndex, const String& description,
+                              const Array<PadInfo>& padInfos, const String& searchQuery)
+{
+    if (!presetFile.existsAsFile() || slotIndex < 0 || slotIndex >= 8)
+        return false;
+
+    // Load existing preset data
+    String existingJson = presetFile.loadFileAsString();
+    var parsedJson = juce::JSON::parse(existingJson);
+
+    if (!parsedJson.isObject())
+        return false;
+
+    auto* rootObject = parsedJson.getDynamicObject();
+    if (!rootObject)
+        return false;
+
+    // Create slot data
+    juce::DynamicObject::Ptr slotData = new juce::DynamicObject();
+
+    // Slot info
+    juce::DynamicObject::Ptr slotInfo = new juce::DynamicObject();
+    slotInfo->setProperty("name", "Slot " + String(slotIndex + 1));
+    slotInfo->setProperty("created_date", juce::Time::getCurrentTime().toString(true, true));
+    slotInfo->setProperty("search_query", searchQuery);
+    slotInfo->setProperty("description", description);
+    slotInfo->setProperty("sample_count", padInfos.size());
+
+    slotData->setProperty("slot_info", juce::var(slotInfo.get()));
+
+    // Pad mapping
+    juce::Array<juce::var> padMapping;
+    for (const auto& padInfo : padInfos)
+    {
+        juce::DynamicObject::Ptr pad = new juce::DynamicObject();
+        pad->setProperty("pad_index", padInfo.padIndex);
+        pad->setProperty("freesound_id", padInfo.freesoundId);
+        pad->setProperty("file_name", padInfo.fileName);
+        pad->setProperty("original_name", padInfo.originalName);
+        pad->setProperty("author", padInfo.author);
+        pad->setProperty("license", padInfo.license);
+        pad->setProperty("duration", padInfo.duration);
+        pad->setProperty("file_size", padInfo.fileSize);
+        pad->setProperty("downloaded_at", padInfo.downloadedAt);
+        pad->setProperty("freesound_url", "https://freesound.org/s/" + padInfo.freesoundId + "/");
+
+        padMapping.add(juce::var(pad.get()));
+    }
+
+    slotData->setProperty("pad_mapping", padMapping);
+
+    // Update slot data
+    rootObject->setProperty(getSlotKey(slotIndex), juce::var(slotData.get()));
+
+    // Write back to file
+    String jsonString = juce::JSON::toString(parsedJson, true);
+    bool success = presetFile.replaceWithText(jsonString);
+
+    if (success)
+    {
+        setActivePreset(presetFile, slotIndex);
+    }
+
+    return success;
+}
+
+bool PresetManager::loadPreset(const File& presetFile, int slotIndex, Array<PadInfo>& outPadInfos)
 {
     outPadInfos.clear();
 
-    if (!presetFile.existsAsFile())
+    if (!presetFile.existsAsFile() || slotIndex < 0 || slotIndex >= 8)
         return false;
 
     String jsonText = presetFile.loadFileAsString();
@@ -91,7 +194,11 @@ bool PresetManager::loadPreset(const File& presetFile, Array<PadInfo>& outPadInf
     if (!parsedJson.isObject())
         return false;
 
-    var padMapping = parsedJson.getProperty("pad_mapping", var());
+    var slotData = parsedJson.getProperty(getSlotKey(slotIndex), var());
+    if (!slotData.isObject())
+        return false;
+
+    var padMapping = slotData.getProperty("pad_mapping", var());
     if (!padMapping.isArray())
         return false;
 
@@ -115,13 +222,84 @@ bool PresetManager::loadPreset(const File& presetFile, Array<PadInfo>& outPadInf
         outPadInfos.add(padInfo);
     }
 
+    setActivePreset(presetFile, slotIndex);
     return true;
 }
 
 bool PresetManager::deletePreset(const File& presetFile)
 {
     DBG("Trying to delete preset: " + presetFile.getFullPathName());
-    return presetFile.deleteFile();
+    bool success = presetFile.deleteFile();
+
+    if (success && presetFile == activePresetFile)
+    {
+        activePresetFile = File();
+        activeSlotIndex = -1;
+    }
+
+    return success;
+}
+
+bool PresetManager::deleteSlot(const File& presetFile, int slotIndex)
+{
+    if (!presetFile.existsAsFile() || slotIndex < 0 || slotIndex >= 8)
+        return false;
+
+    String jsonText = presetFile.loadFileAsString();
+    var parsedJson = juce::JSON::parse(jsonText);
+
+    if (!parsedJson.isObject())
+        return false;
+
+    auto* rootObject = parsedJson.getDynamicObject();
+    if (!rootObject)
+        return false;
+
+    // Remove the slot
+    rootObject->removeProperty(getSlotKey(slotIndex));
+
+    // Check if any slots remain
+    bool hasAnySlots = false;
+    for (int i = 0; i < 8; ++i)
+    {
+        if (rootObject->hasProperty(getSlotKey(i)))
+        {
+            hasAnySlots = true;
+            break;
+        }
+    }
+
+    // If no slots remain, delete the entire preset file
+    if (!hasAnySlots)
+    {
+        return deletePreset(presetFile);
+    }
+
+    // Write back to file
+    String jsonString = juce::JSON::toString(parsedJson, true);
+    bool success = presetFile.replaceWithText(jsonString);
+
+    if (success && presetFile == activePresetFile && slotIndex == activeSlotIndex)
+    {
+        activePresetFile = File();
+        activeSlotIndex = -1;
+    }
+
+    return success;
+}
+
+bool PresetManager::hasSlotData(const File& presetFile, int slotIndex)
+{
+    if (!presetFile.existsAsFile() || slotIndex < 0 || slotIndex >= 8)
+        return false;
+
+    String jsonText = presetFile.loadFileAsString();
+    var parsedJson = juce::JSON::parse(jsonText);
+
+    if (!parsedJson.isObject())
+        return false;
+
+    return parsedJson.hasProperty(getSlotKey(slotIndex));
 }
 
 Array<PresetInfo> PresetManager::getAvailablePresets()
@@ -169,12 +347,54 @@ PresetInfo PresetManager::getPresetInfo(const File& presetFile)
     {
         info.name = presetInfoVar.getProperty("name", "");
         info.createdDate = presetInfoVar.getProperty("created_date", "");
-        info.searchQuery = presetInfoVar.getProperty("search_query", "");
         info.description = presetInfoVar.getProperty("description", "");
-        info.sampleCount = presetInfoVar.getProperty("sample_count", 0);
+    }
+
+    // Check if this is the active preset
+    if (presetFile == activePresetFile)
+    {
+        info.activeSlot = activeSlotIndex;
+    }
+
+    // Load slot information
+    for (int i = 0; i < 8; ++i)
+    {
+        info.slots[i] = getSlotInfo(presetFile, i);
     }
 
     return info;
+}
+
+PresetSlotInfo PresetManager::getSlotInfo(const File& presetFile, int slotIndex)
+{
+    PresetSlotInfo slotInfo;
+
+    if (!presetFile.existsAsFile() || slotIndex < 0 || slotIndex >= 8)
+        return slotInfo;
+
+    String jsonText = presetFile.loadFileAsString();
+    var parsedJson = juce::JSON::parse(jsonText);
+
+    if (!parsedJson.isObject())
+        return slotInfo;
+
+    var slotData = parsedJson.getProperty(getSlotKey(slotIndex), var());
+    if (!slotData.isObject())
+        return slotInfo;
+
+    slotInfo.hasData = true;
+
+    var slotInfoVar = slotData.getProperty("slot_info", var());
+    if (slotInfoVar.isObject())
+    {
+        slotInfo.name = slotInfoVar.getProperty("name", "Slot " + String(slotIndex + 1));
+        slotInfo.createdDate = slotInfoVar.getProperty("created_date", "");
+        slotInfo.searchQuery = slotInfoVar.getProperty("search_query", "");
+        slotInfo.description = slotInfoVar.getProperty("description", "");
+        slotInfo.sampleCount = slotInfoVar.getProperty("sample_count", 0);
+    }
+
+    return slotInfo;
 }
 
 bool PresetManager::sampleExists(const String& freesoundId) const
@@ -208,14 +428,18 @@ void PresetManager::cleanupUnusedSamples()
     Array<PresetInfo> presets = getAvailablePresets();
     for (const auto& presetInfo : presets)
     {
-        Array<PadInfo> padInfos;
-        if (loadPreset(presetInfo.presetFile, padInfos))
+        // Check all slots
+        for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
         {
-            for (const auto& padInfo : padInfos)
+            Array<PadInfo> padInfos;
+            if (loadPreset(presetInfo.presetFile, slotIndex, padInfos))
             {
-                if (padInfo.freesoundId.isNotEmpty())
+                for (const auto& padInfo : padInfos)
                 {
-                    referencedIds.addIfNotAlreadyThere(padInfo.freesoundId);
+                    if (padInfo.freesoundId.isNotEmpty())
+                    {
+                        referencedIds.addIfNotAlreadyThere(padInfo.freesoundId);
+                    }
                 }
             }
         }
@@ -242,6 +466,12 @@ void PresetManager::cleanupUnusedSamples()
     }
 }
 
+void PresetManager::setActivePreset(const File& presetFile, int slotIndex)
+{
+    activePresetFile = presetFile;
+    activeSlotIndex = slotIndex;
+}
+
 String PresetManager::sanitizeFileName(const String& input) const
 {
     String cleaned = input;
@@ -265,4 +495,9 @@ String PresetManager::sanitizeFileName(const String& input) const
         cleaned = cleaned.substring(0, 50);
 
     return cleaned;
+}
+
+String PresetManager::getSlotKey(int slotIndex) const
+{
+    return "slot_" + String(slotIndex);
 }

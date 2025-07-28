@@ -1,9 +1,87 @@
 #include "PresetBrowserComponent.h"
 
+//==============================================================================
+// SlotButton Implementation
+//==============================================================================
+
+SlotButton::SlotButton(int index)
+    : Button(String(index + 1))
+    , slotIndex(index)
+    , hasDataFlag(false)
+    , isActiveFlag(false)
+{
+    setSize(20, 20);
+    setButtonText(String(index + 1));
+}
+
+SlotButton::~SlotButton() {}
+
+void SlotButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
+{
+    auto bounds = getLocalBounds().toFloat();
+
+    // Background color based on state
+    Colour bgColour;
+    if (hasDataFlag)
+    {
+        bgColour = Colours::darkgoldenrod; // Mustard gold for slots with data
+    }
+    else
+    {
+        bgColour = Colours::grey; // Grey for empty slots
+    }
+
+    if (shouldDrawButtonAsHighlighted)
+        bgColour = bgColour.brighter(0.2f);
+    if (shouldDrawButtonAsDown)
+        bgColour = bgColour.darker(0.2f);
+
+    g.setColour(bgColour);
+    g.fillRoundedRectangle(bounds, 3.0f);
+
+    // Border
+    g.setColour(Colours::white.withAlpha(0.6f));
+    g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f);
+
+    // Underline if active
+    if (isActiveFlag)
+    {
+        g.setColour(Colours::white);
+        g.fillRect(bounds.getX() + 2, bounds.getBottom() - 2, bounds.getWidth() - 4, 2.0f);
+    }
+
+    // Text
+    g.setColour(hasDataFlag ? Colours::white : Colours::darkgrey);
+    g.setFont(12.0f);
+    g.drawText(getButtonText(), bounds.toNearestInt(), Justification::centred);
+}
+
+void SlotButton::setHasData(bool hasData)
+{
+    if (hasDataFlag != hasData)
+    {
+        hasDataFlag = hasData;
+        repaint();
+    }
+}
+
+void SlotButton::setIsActive(bool isActive)
+{
+    if (isActiveFlag != isActive)
+    {
+        isActiveFlag = isActive;
+        repaint();
+    }
+}
+
+//==============================================================================
+// PresetListItem Implementation
+//==============================================================================
+
 PresetListItem::PresetListItem(const PresetInfo& info)
     : presetInfo(info)
 {
-    setSize(200, 80);
+    setSize(200, 120); // Increased height for slots
 
     // Delete Button
     deleteButton.setButtonText("DEL");
@@ -18,17 +96,40 @@ PresetListItem::PresetListItem(const PresetInfo& info)
     loadButton.setButtonText("LOAD");
     loadButton.setSize(40, 18);
     loadButton.onClick = [this]() {
-        if (onLoadClicked)
-            onLoadClicked(presetInfo);
+        // Load first available slot by default
+        for (int i = 0; i < 8; ++i)
+        {
+            if (presetInfo.slots[i].hasData)
+            {
+                if (onLoadSlotClicked)
+                    onLoadSlotClicked(presetInfo, i);
+                break;
+            }
+        }
     };
     addAndMakeVisible(loadButton);
 
-    // Rename Editor (always visible)
+    // Rename Editor
     renameEditor.setText(presetInfo.name, dontSendNotification);
     renameEditor.setSelectAllWhenFocused(true);
     renameEditor.setFont(Font(14.0f, Font::bold));
     renameEditor.onReturnKey = [this]() { confirmRename(); };
     addAndMakeVisible(renameEditor);
+
+    // Create slot buttons
+    for (int i = 0; i < 8; ++i)
+    {
+        slotButtons[i] = std::make_unique<SlotButton>(i);
+        slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
+        slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
+
+        slotButtons[i]->onClick = [this, i]() {
+            ModifierKeys modifiers = ModifierKeys::getCurrentModifiers();
+            handleSlotClicked(i, modifiers);
+        };
+
+        addAndMakeVisible(*slotButtons[i]);
+    }
 }
 
 PresetListItem::~PresetListItem() {}
@@ -46,19 +147,36 @@ void PresetListItem::paint(Graphics& g)
     g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 2.0f : 1.0f);
 
     auto textBounds = bounds.reduced(8);
-    textBounds.removeFromRight(90); // leave space for both buttons
+    textBounds.removeFromRight(90); // leave space for buttons
+    textBounds.removeFromBottom(30); // leave space for slots
 
     // Info text
     g.setFont(Font(11.0f));
     g.setColour(Colours::lightgrey);
-    String infoText = "Samples: " + String(presetInfo.sampleCount);
-    if (presetInfo.searchQuery.isNotEmpty())
-        infoText += " | Query: " + presetInfo.searchQuery;
+
+    // Count total samples across all slots
+    int totalSamples = 0;
+    for (const auto& slot : presetInfo.slots)
+    {
+        if (slot.hasData)
+            totalSamples += slot.sampleCount;
+    }
+
+    String infoText = "Total Samples: " + String(totalSamples);
     g.drawText(infoText, textBounds.removeFromTop(15), Justification::left, true);
 
     g.setFont(Font(10.0f));
     g.setColour(Colours::grey);
     g.drawText(presetInfo.createdDate, textBounds, Justification::left, true);
+
+    // Draw "Slots:" label
+    auto slotsBounds = bounds.reduced(8);
+    slotsBounds.removeFromTop(bounds.getHeight() - 35);
+    slotsBounds.removeFromBottom(5);
+
+    g.setFont(Font(10.0f));
+    g.setColour(Colours::lightgrey);
+    g.drawText("Slots:", slotsBounds.removeFromLeft(35), Justification::left, true);
 }
 
 void PresetListItem::resized()
@@ -84,6 +202,24 @@ void PresetListItem::resized()
     loadButton.setBounds(rightEdge - buttonWidth,
                          bounds.getY() + margin,
                          buttonWidth, buttonHeight);
+
+    // Position slot buttons
+    auto slotsBounds = bounds.reduced(8);
+    slotsBounds.removeFromTop(bounds.getHeight() - 35);
+    slotsBounds.removeFromBottom(5);
+    slotsBounds.removeFromLeft(40); // Space for "Slots:" label
+
+    int slotSpacing = 3;
+    int slotSize = 20;
+
+    for (size_t i = 0; i < slotButtons.size(); ++i)
+    {
+        if (slotButtons[i])
+        {
+            int x = slotsBounds.getX() + static_cast<int>(i) * (slotSize + slotSpacing);
+            slotButtons[i]->setBounds(x, slotsBounds.getY(), slotSize, slotSize);
+        }
+    }
 }
 
 void PresetListItem::mouseDown(const MouseEvent& event)
@@ -119,6 +255,62 @@ void PresetListItem::confirmRename()
     });
 }
 
+void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifiers)
+{
+    bool hasData = presetInfo.slots[slotIndex].hasData;
+
+    if (modifiers.isShiftDown() && !modifiers.isCommandDown())
+    {
+        // Shift+click: Save to slot
+        if (hasData)
+        {
+            // Ask if overwrite
+            AlertWindow::showOkCancelBox(
+                AlertWindow::QuestionIcon,
+                "Overwrite Slot",
+                "Slot " + String(slotIndex + 1) + " already has data. Overwrite?",
+                "Yes", "No",
+                nullptr,
+                ModalCallbackFunction::create([this, slotIndex](int result) {
+                    if (result == 1 && onSaveSlotClicked)
+                        onSaveSlotClicked(presetInfo, slotIndex);
+                })
+            );
+        }
+        else
+        {
+            // Save directly
+            if (onSaveSlotClicked)
+                onSaveSlotClicked(presetInfo, slotIndex);
+        }
+    }
+    else if (modifiers.isCommandDown() && modifiers.isShiftDown())
+    {
+        // Cmd+Shift+click: Delete slot
+        if (hasData)
+        {
+            AlertWindow::showOkCancelBox(
+                AlertWindow::QuestionIcon,
+                "Delete Slot",
+                "Are you sure you want to delete slot " + String(slotIndex + 1) + "?",
+                "Yes", "No",
+                nullptr,
+                ModalCallbackFunction::create([this, slotIndex](int result) {
+                    if (result == 1 && onDeleteSlotClicked)
+                        onDeleteSlotClicked(presetInfo, slotIndex);
+                })
+            );
+        }
+    }
+    else
+    {
+        // Regular click: Load slot
+        if (hasData && onLoadSlotClicked)
+        {
+            onLoadSlotClicked(presetInfo, slotIndex);
+        }
+    }
+}
 
 //==============================================================================
 // PresetBrowserComponent Implementation
@@ -198,7 +390,7 @@ void PresetBrowserComponent::refreshPresetList()
     Array<PresetInfo> presets = processor->getPresetManager().getAvailablePresets();
 
     int yPosition = 0;
-    const int itemHeight = 85;
+    const int itemHeight = 125; // Increased height for slots
     const int spacing = 5;
 
     for (const auto& presetInfo : presets)
@@ -221,14 +413,21 @@ void PresetBrowserComponent::refreshPresetList()
             performRename(originalInfo, newName);
         };
 
+        item->onLoadSlotClicked = [this](const PresetInfo& info, int slotIndex) {
+            handleLoadSlotClicked(info, slotIndex);
+        };
+
+        item->onSaveSlotClicked = [this](const PresetInfo& info, int slotIndex) {
+            handleSaveSlotClicked(info, slotIndex);
+        };
+
+        item->onDeleteSlotClicked = [this](const PresetInfo& info, int slotIndex) {
+            handleDeleteSlotClicked(info, slotIndex);
+        };
+
         item->setBounds(5, yPosition, getWidth() - 30, itemHeight);
         presetListContainer.addAndMakeVisible(*item);
         presetItems.add(item);
-
-        item->onLoadClicked = [this](const PresetInfo& info) {
-            if (onPresetLoadRequested)
-                onPresetLoadRequested(info);
-        };
 
         yPosition += itemHeight + spacing;
     }
@@ -267,8 +466,75 @@ void PresetBrowserComponent::handleItemClicked(PresetListItem* item)
 
 void PresetBrowserComponent::handleItemDoubleClicked(PresetListItem* item)
 {
+    // Load first available slot
+    const auto& presetInfo = item->getPresetInfo();
+    for (int i = 0; i < 8; ++i)
+    {
+        if (presetInfo.slots[i].hasData)
+        {
+            handleLoadSlotClicked(presetInfo, i);
+            break;
+        }
+    }
+}
+
+void PresetBrowserComponent::handleLoadSlotClicked(const PresetInfo& presetInfo, int slotIndex)
+{
     if (onPresetLoadRequested)
-        onPresetLoadRequested(item->getPresetInfo());
+        onPresetLoadRequested(presetInfo, slotIndex);
+}
+
+void PresetBrowserComponent::handleSaveSlotClicked(const PresetInfo& presetInfo, int slotIndex)
+{
+    if (!processor)
+        return;
+
+    Array<PadInfo> padInfos = processor->getCurrentPadInfos();
+    String description = "Saved to slot " + String(slotIndex + 1);
+
+    if (processor->getPresetManager().saveToSlot(presetInfo.presetFile, slotIndex, description, padInfos, processor->getQuery()))
+    {
+        refreshPresetList();
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "Slot Saved", "Saved to slot " + String(slotIndex + 1));
+    }
+    else
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Save Failed", "Failed to save to slot " + String(slotIndex + 1));
+    }
+}
+
+void PresetBrowserComponent::handleDeleteSlotClicked(const PresetInfo& presetInfo, int slotIndex)
+{
+    if (!processor)
+        return;
+
+    if (processor->getPresetManager().deleteSlot(presetInfo.presetFile, slotIndex))
+    {
+        refreshPresetList();
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "Slot Deleted", "Slot " + String(slotIndex + 1) + " deleted");
+    }
+    else
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Delete Failed", "Failed to delete slot " + String(slotIndex + 1));
+    }
+}
+
+void PresetBrowserComponent::handleDeleteClicked(PresetListItem* item)
+{
+    AlertWindow::showOkCancelBox(AlertWindow::QuestionIcon,
+        "Delete Preset", "Are you sure you want to delete \"" + item->getPresetInfo().name + "\"?",
+        "Yes", "No", this,
+        ModalCallbackFunction::create([this, item](int result) {
+            if (result == 1 && processor)
+            {
+                processor->getPresetManager().deletePreset(item->getPresetInfo().presetFile);
+                refreshPresetList();
+            }
+        }));
 }
 
 void PresetBrowserComponent::handleRenameClicked(PresetListItem* item)
@@ -323,58 +589,45 @@ void PresetBrowserComponent::performRename(const PresetInfo& presetInfo, const S
         }
     }
 
-    Array<PadInfo> padInfos;
-    if (processor->getPresetManager().loadPreset(presetInfo.presetFile, padInfos))
-    {
-        String description = "";
-        String searchQuery = "";
+    // Load the existing preset data completely
+    String jsonText = presetInfo.presetFile.loadFileAsString();
+    var parsedJson = JSON::parse(jsonText);
 
-        FileInputStream inputStream(presetInfo.presetFile);
-        if (inputStream.openedOk())
+    if (parsedJson.isObject())
+    {
+        auto* rootObject = parsedJson.getDynamicObject();
+        if (rootObject)
         {
-            String jsonText = inputStream.readEntireStreamAsString();
-            var parsedJson = JSON::parse(jsonText);
-            if (parsedJson.isObject())
+            // Update the preset info name
+            var presetInfoVar = parsedJson.getProperty("preset_info", var());
+            if (presetInfoVar.isObject())
             {
-                var info = parsedJson.getProperty("preset_info", var());
-                if (info.isObject())
+                auto* presetInfoObj = presetInfoVar.getDynamicObject();
+                if (presetInfoObj)
                 {
-                    description = info.getProperty("description", "");
-                    searchQuery = info.getProperty("search_query", "");
+                    presetInfoObj->setProperty("name", newName);
                 }
             }
-        }
 
-        if (processor->getPresetManager().saveCurrentPreset(newName, description, padInfos, searchQuery))
-        {
-            processor->getPresetManager().deletePreset(presetInfo.presetFile);
-            refreshPresetList();
-        }
-        else
-        {
-            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                "Rename Failed", "Failed to save preset with new name.");
-        }
-    }
-    else
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Rename Failed", "Failed to load preset data.");
-    }
-}
+            // Create new file with sanitized name
+            String newFileName = processor->getPresetManager().sanitizeFileName(newName) + ".json";
+            File newPresetFile = processor->getPresetManager().getPresetsFolder().getChildFile(newFileName);
 
-void PresetBrowserComponent::handleDeleteClicked(PresetListItem* item)
-{
-    AlertWindow::showOkCancelBox(AlertWindow::QuestionIcon,
-        "Delete Preset", "Are you sure you want to delete \"" + item->getPresetInfo().name + "\"?",
-        "Yes", "No", this,
-        ModalCallbackFunction::create([this, item](int result) {
-            if (result == 1 && processor)
+            // Save to new file
+            String newJsonString = JSON::toString(parsedJson, true);
+            if (newPresetFile.replaceWithText(newJsonString))
             {
-                processor->getPresetManager().deletePreset(item->getPresetInfo().presetFile);
+                // Delete old file
+                presetInfo.presetFile.deleteFile();
                 refreshPresetList();
             }
-        }));
+            else
+            {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Rename Failed", "Failed to save preset with new name.");
+            }
+        }
+    }
 }
 
 void PresetBrowserComponent::saveCurrentPreset()
@@ -388,7 +641,7 @@ void PresetBrowserComponent::saveCurrentPreset()
     {
         refreshPresetList();
         AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "Preset Saved", "Preset saved as \"" + suggestedName + "\"");
+            "Preset Saved", "Preset saved as \"" + suggestedName + "\" in slot 1");
     }
     else
     {

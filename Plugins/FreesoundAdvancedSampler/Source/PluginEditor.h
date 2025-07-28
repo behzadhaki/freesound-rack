@@ -35,6 +35,10 @@ public:
     void downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress) override;
     void downloadCompleted(bool success) override;
 
+    bool saveCurrentAsPreset(const String& name, const String& description = "", int slotIndex = 0);
+    bool loadPreset(const File& presetFile, int slotIndex = 0);
+    bool saveToSlot(const File& presetFile, int slotIndex, const String& description = "");
+
 private:
     FreesoundAdvancedSamplerAudioProcessor& processor;
 
@@ -53,8 +57,8 @@ private:
     TextButton cancelButton;
     double currentProgress = 0.0;
 
-    // Handle preset loading
-    void handlePresetLoadRequested(const PresetInfo& presetInfo);
+    // Handle preset loading with slot support
+    void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)
 };

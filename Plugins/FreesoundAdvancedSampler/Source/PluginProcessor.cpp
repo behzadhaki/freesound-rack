@@ -424,23 +424,16 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyNoteStopped(int noteNumber)
     });
 }
 
-void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int noteNumber, float position)
-{
-    playbackListeners.call([noteNumber, position](PlaybackListener& l) {
-        l.playheadPositionChanged(noteNumber, position);
-    });
-}
-
-bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description)
+bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description, int slotIndex)
 {
     Array<PadInfo> padInfos = getCurrentPadInfos();
-    return presetManager.saveCurrentPreset(name, description, padInfos, query);
+    return presetManager.saveCurrentPreset(name, description, padInfos, query, slotIndex);
 }
 
-bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile)
+bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, int slotIndex)
 {
     Array<PadInfo> padInfos;
-    if (!presetManager.loadPreset(presetFile, padInfos))
+    if (!presetManager.loadPreset(presetFile, slotIndex, padInfos))
         return false;
 
     // Clear ALL current state completely
@@ -451,7 +444,7 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile)
     sampler.clearSounds();
     sampler.clearVoices();
 
-    // Update query from preset info (read from JSON)
+    // Update query from slot info (read from JSON)
     FileInputStream inputStream(presetFile);
     if (inputStream.openedOk())
     {
@@ -459,10 +452,15 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile)
         var parsedJson = juce::JSON::parse(jsonText);
         if (parsedJson.isObject())
         {
-            var presetInfo = parsedJson.getProperty("preset_info", var());
-            if (presetInfo.isObject())
+            String slotKey = "slot_" + String(slotIndex);
+            var slotData = parsedJson.getProperty(slotKey, var());
+            if (slotData.isObject())
             {
-                query = presetInfo.getProperty("search_query", "");
+                var slotInfo = slotData.getProperty("slot_info", var());
+                if (slotInfo.isObject())
+                {
+                    query = slotInfo.getProperty("search_query", "");
+                }
             }
         }
     }
@@ -511,13 +509,19 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile)
     setSources();
 
     // Debug output
-    DBG("Loaded preset with " + String(currentSoundsArray.size()) + " samples");
+    DBG("Loaded preset slot " + String(slotIndex) + " with " + String(currentSoundsArray.size()) + " samples");
     for (int i = 0; i < currentSoundsArray.size(); ++i)
     {
         DBG("Sample " + String(i) + ": " + currentSoundsArray[i].name);
     }
 
     return true;
+}
+
+bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const File& presetFile, int slotIndex, const String& description)
+{
+    Array<PadInfo> padInfos = getCurrentPadInfos();
+    return presetManager.saveToSlot(presetFile, slotIndex, description, padInfos, query);
 }
 
 Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() const
@@ -775,4 +779,11 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new FreesoundAdvancedSamplerAudioProcessor();
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int noteNumber, float position)
+{
+    playbackListeners.call([noteNumber, position](PlaybackListener& l) {
+        l.playheadPositionChanged(noteNumber, position);
+    });
 }
