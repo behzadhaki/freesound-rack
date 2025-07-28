@@ -734,7 +734,7 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     auto sourceInfo = sourcePad->getSampleInfo();
     auto targetInfo = targetPad->getSampleInfo();
 
-    // Swap the samples
+    // Swap the samples in the visual grid
     if (targetInfo.hasValidSample)
     {
         sourcePad->setSample(targetInfo.audioFile, targetInfo.sampleName,
@@ -755,7 +755,10 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
         targetPad->clearSample();
     }
 
-    // Update JSON metadata and reload sampler
+    // Update the processor's internal arrays to match the new visual order
+    updateProcessorArraysFromGrid();
+
+    // Update JSON metadata
     updateJsonMetadata();
 
     // Reload the sampler with new pad order
@@ -765,6 +768,62 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
         // Also update the README file to reflect new order
         processor->updateReadmeFile();
     }
+}
+
+void SampleGridComponent::updateProcessorArraysFromGrid()
+{
+    if (!processor)
+        return;
+
+    // Clear the processor's current arrays
+    auto& currentSounds = processor->getCurrentSoundsArrayReference();
+    auto& soundsData = processor->getDataReference();
+
+    currentSounds.clear();
+    soundsData.clear();
+
+    // Rebuild arrays based on current grid order
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        auto padInfo = samplePads[i]->getSampleInfo();
+
+        if (padInfo.hasValidSample)
+        {
+            // Create FSSound object from pad info
+            FSSound sound;
+            sound.id = padInfo.freesoundId;
+            sound.name = padInfo.sampleName;
+            sound.user = padInfo.authorName;
+            sound.license = padInfo.licenseType;
+
+            // Try to get duration and file size from existing data or set defaults
+            sound.duration = 0.5; // Default duration
+            sound.filesize = 50000; // Default file size
+
+            // If we can find this sound in the existing arrays, preserve its metadata
+            Array<FSSound> existingSounds = processor->getCurrentSounds();
+            for (const auto& existingSound : existingSounds)
+            {
+                if (existingSound.id == sound.id)
+                {
+                    sound.duration = existingSound.duration;
+                    sound.filesize = existingSound.filesize;
+                    break;
+                }
+            }
+
+            currentSounds.add(sound);
+
+            // Create sound info for legacy compatibility
+            StringArray soundData;
+            soundData.add(padInfo.sampleName);
+            soundData.add(padInfo.authorName);
+            soundData.add(padInfo.licenseType);
+            soundsData.push_back(soundData);
+        }
+    }
+
+    DBG("Updated processor arrays from grid - now has " + String(currentSounds.size()) + " sounds");
 }
 
 void SampleGridComponent::updateJsonMetadata()

@@ -75,6 +75,8 @@ public:
 	std::vector<juce::StringArray> getData();
     Array<FSSound> getCurrentSounds(); // NEW: Get current sounds array
     File getCurrentDownloadLocation(); // NEW: Get current session's download location
+	Array<FSSound>& getCurrentSoundsArrayReference() { return currentSoundsArray; }
+	std::vector<juce::StringArray>& getDataReference() { return soundsArray; }
 
     // Download-related methods
     void startDownloads(const Array<FSSound>& sounds);

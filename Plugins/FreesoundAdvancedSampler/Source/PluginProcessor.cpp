@@ -389,16 +389,6 @@ std::vector<juce::StringArray> FreesoundAdvancedSamplerAudioProcessor::getData()
 	return soundsArray;
 }
 
-Array<FSSound> FreesoundAdvancedSamplerAudioProcessor::getCurrentSounds()
-{
-    return currentSoundsArray;
-}
-
-File FreesoundAdvancedSamplerAudioProcessor::getCurrentDownloadLocation()
-{
-    return currentSessionDownloadLocation;
-}
-
 // NEW: Playback listener methods
 void FreesoundAdvancedSamplerAudioProcessor::addPlaybackListener(PlaybackListener* listener)
 {
@@ -786,4 +776,16 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int n
     playbackListeners.call([noteNumber, position](PlaybackListener& l) {
         l.playheadPositionChanged(noteNumber, position);
     });
+}
+
+// Add these method implementations to your PluginProcessor.cpp file:
+
+Array<FSSound> FreesoundAdvancedSamplerAudioProcessor::getCurrentSounds()
+{
+    return currentSoundsArray;
+}
+
+File FreesoundAdvancedSamplerAudioProcessor::getCurrentDownloadLocation()
+{
+    return currentSessionDownloadLocation;
 }

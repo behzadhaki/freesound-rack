@@ -123,8 +123,11 @@ private:
     void loadSamplesFromJson(const File& metadataFile);
     void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
 
-    // NEW: Update JSON metadata after swap
+    // Update JSON metadata after swap
     void updateJsonMetadata();
+
+    // NEW: Update processor arrays from current grid state
+    void updateProcessorArraysFromGrid();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };
