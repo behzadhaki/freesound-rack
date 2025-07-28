@@ -4,6 +4,7 @@
     SampleGridComponent.cpp
     Created: New grid component for displaying samples in 4x4 grid
     Author: Generated
+    Modified: Added drag-and-drop swap functionality
 
   ==============================================================================
 */
@@ -24,6 +25,7 @@ SamplePad::SamplePad(int index)
     , playheadPosition(0.0f)
     , isPlaying(false)
     , hasValidSample(false)
+    , isDragHover(false)
 {
     formatManager.registerBasicFormats();
 
@@ -41,7 +43,11 @@ void SamplePad::paint(Graphics& g)
     auto bounds = getLocalBounds();
 
     // Background
-    if (isPlaying)
+    if (isDragHover)
+    {
+        g.setColour(Colours::yellow.withAlpha(0.5f));
+    }
+    else if (isPlaying)
     {
         g.setColour(padColour.brighter(0.3f));
     }
@@ -57,8 +63,16 @@ void SamplePad::paint(Graphics& g)
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
     // Border
-    g.setColour(Colours::white.withAlpha(0.3f));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
+    if (isDragHover)
+    {
+        g.setColour(Colours::yellow);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 2.0f);
+    }
+    else
+    {
+        g.setColour(Colours::white.withAlpha(0.3f));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
+    }
 
     if (hasValidSample)
     {
@@ -142,13 +156,13 @@ void SamplePad::paint(Graphics& g)
             g.drawText(shortLicense, licenseBounds, Justification::centred);
         }
 
-        // Draw "Drag" badge in BOTTOM LEFT corner
+        // Draw "Drag" badge in BOTTOM LEFT corner with updated text
         {
-            g.setFont(9.0f);
+            g.setFont(8.0f); // Slightly smaller font to fit more text
 
             // Create drag badge in bottom-left corner
             auto dragBounds = bounds.reduced(3);
-            int badgeWidth = 30;
+            int badgeWidth = 35; // Made wider to fit new text
             int badgeHeight = 12;
             dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
@@ -158,7 +172,7 @@ void SamplePad::paint(Graphics& g)
 
             // Draw white text
             g.setColour(Colours::white);
-            g.drawText("Drag", dragBounds, Justification::centred);
+            g.drawText("Swap", dragBounds, Justification::centred);
         }
     }
     else
@@ -221,7 +235,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
-    // Check if clicked on drag badge (bottom-left)
+    // Check if clicked on drag badge (bottom-left) - now handles both drag types
     {
         auto bounds = getLocalBounds();
         auto dragBounds = bounds.reduced(3);
@@ -231,13 +245,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
 
         if (dragBounds.contains(event.getPosition()))
         {
-            // Start drag operation for this single file
-            if (audioFile.existsAsFile())
-            {
-                StringArray filePaths;
-                filePaths.add(audioFile.getFullPathName());
-                performExternalDragDropOfFiles(filePaths, false); // false = don't allow moving
-            }
+            // Store that we clicked on drag badge for mouseDrag to handle
             return;
         }
     }
@@ -247,6 +255,100 @@ void SamplePad::mouseDown(const MouseEvent& event)
     {
         int noteNumber = padIndex + 36;
         processor->addToMidiBuffer(noteNumber);
+    }
+}
+
+void SamplePad::mouseDrag(const MouseEvent& event)
+{
+    if (!hasValidSample)
+        return;
+
+    // Check if drag started on the drag badge (bottom-left)
+    auto bounds = getLocalBounds();
+    auto dragBounds = bounds.reduced(3);
+    int badgeWidth = 30;
+    int badgeHeight = 12;
+    dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+    if (dragBounds.contains(event.getMouseDownPosition()))
+    {
+        // Drag badge clicked - determine drag type based on drag distance and modifiers
+        if (event.getDistanceFromDragStart() > 10) // Slightly higher threshold for drag badge
+        {
+            // Check if Control/Cmd key is held for external drag
+            if (event.mods.isCommandDown() || event.mods.isCtrlDown())
+            {
+                // Start external drag operation for file export
+                if (audioFile.existsAsFile())
+                {
+                    StringArray filePaths;
+                    filePaths.add(audioFile.getFullPathName());
+                    performExternalDragDropOfFiles(filePaths, false);
+                }
+            }
+            else
+            {
+                // Start internal drag for swapping (default behavior)
+                juce::DynamicObject::Ptr dragObject = new juce::DynamicObject();
+                dragObject->setProperty("type", "samplePad");
+                dragObject->setProperty("sourcePadIndex", padIndex);
+
+                var dragData(dragObject.get());
+
+                // Use the parent grid's drag container instead of self
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    gridComponent->startDragging(dragData, this);
+                }
+            }
+        }
+        return;
+    }
+
+    // If drag didn't start on drag badge, ignore
+}
+
+// DragAndDropTarget implementation
+bool SamplePad::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
+{
+    // Only accept drags from other sample pads
+    if (dragSourceDetails.description.hasProperty("type") &&
+        dragSourceDetails.description.getProperty("type", "") == "samplePad")
+    {
+        // Don't allow dropping on self
+        int sourcePadIndex = dragSourceDetails.description.getProperty("sourcePadIndex", -1);
+        return sourcePadIndex != padIndex;
+    }
+    return false;
+}
+
+void SamplePad::itemDragEnter(const SourceDetails& dragSourceDetails)
+{
+    isDragHover = true;
+    repaint();
+}
+
+void SamplePad::itemDragExit(const SourceDetails& dragSourceDetails)
+{
+    isDragHover = false;
+    repaint();
+}
+
+void SamplePad::itemDropped(const SourceDetails& dragSourceDetails)
+{
+    isDragHover = false;
+    repaint();
+
+    if (dragSourceDetails.description.hasProperty("type") &&
+        dragSourceDetails.description.getProperty("type", "") == "samplePad")
+    {
+        int sourcePadIndex = dragSourceDetails.description.getProperty("sourcePadIndex", -1);
+
+        // Notify parent grid component to perform the swap
+        if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+        {
+            gridComponent->swapSamples(sourcePadIndex, padIndex);
+        }
     }
 }
 
@@ -260,6 +362,18 @@ void SamplePad::setSample(const File& file, const String& name, const String& au
 
     loadWaveform();
     hasValidSample = audioFile.existsAsFile();
+    repaint();
+}
+
+void SamplePad::clearSample()
+{
+    audioFile = File();
+    sampleName = "";
+    authorName = "";
+    freesoundId = String();
+    licenseType = String();
+    hasValidSample = false;
+    audioThumbnail.clear();
     repaint();
 }
 
@@ -518,8 +632,153 @@ void SampleGridComponent::clearSamples()
 {
     for (auto& pad : samplePads)
     {
-        pad->setSample(File(), "", "", String(), String());
+        pad->clearSample();
     }
+}
+
+void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
+{
+    if (sourcePadIndex < 0 || sourcePadIndex >= TOTAL_PADS ||
+        targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS ||
+        sourcePadIndex == targetPadIndex)
+    {
+        return;
+    }
+
+    // Get sample info from both pads
+    auto sourcePad = samplePads[sourcePadIndex].get();
+    auto targetPad = samplePads[targetPadIndex].get();
+
+    auto sourceInfo = sourcePad->getSampleInfo();
+    auto targetInfo = targetPad->getSampleInfo();
+
+    // Swap the samples
+    if (targetInfo.hasValidSample)
+    {
+        sourcePad->setSample(targetInfo.audioFile, targetInfo.sampleName,
+                           targetInfo.authorName, targetInfo.freesoundId, targetInfo.licenseType);
+    }
+    else
+    {
+        sourcePad->clearSample();
+    }
+
+    if (sourceInfo.hasValidSample)
+    {
+        targetPad->setSample(sourceInfo.audioFile, sourceInfo.sampleName,
+                           sourceInfo.authorName, sourceInfo.freesoundId, sourceInfo.licenseType);
+    }
+    else
+    {
+        targetPad->clearSample();
+    }
+
+    // Update JSON metadata and reload sampler
+    updateJsonMetadata();
+
+    // Reload the sampler with new pad order
+    if (processor)
+    {
+        processor->setSources();
+        // Also update the README file to reflect new order
+        processor->updateReadmeFile();
+    }
+}
+
+void SampleGridComponent::updateJsonMetadata()
+{
+    if (!processor)
+        return;
+
+    File downloadDir = processor->getCurrentDownloadLocation();
+    File metadataFile = downloadDir.getChildFile("metadata.json");
+
+    if (!metadataFile.existsAsFile())
+        return;
+
+    // Read existing JSON
+    FileInputStream inputStream(metadataFile);
+    if (!inputStream.openedOk())
+        return;
+
+    String jsonText = inputStream.readEntireStreamAsString();
+    var parsedJson = juce::JSON::parse(jsonText);
+
+    if (!parsedJson.isObject())
+        return;
+
+    // Get the root object
+    auto* rootObject = parsedJson.getDynamicObject();
+    if (!rootObject)
+        return;
+
+    // Create new samples array based on current pad order
+    juce::Array<juce::var> newSamplesArray;
+
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        auto padInfo = samplePads[i]->getSampleInfo();
+
+        if (padInfo.hasValidSample)
+        {
+            juce::DynamicObject::Ptr sample = new juce::DynamicObject();
+
+            // Extract filename from full path
+            String fileName = padInfo.audioFile.getFileName();
+
+            sample->setProperty("file_name", fileName);
+            sample->setProperty("original_name", padInfo.sampleName);
+            sample->setProperty("freesound_id", padInfo.freesoundId);
+            sample->setProperty("search_query", processor->getQuery());
+            sample->setProperty("author", padInfo.authorName);
+            sample->setProperty("license", padInfo.licenseType);
+
+            // We need to get duration and file size from the original JSON
+            // Find the original entry by freesound_id
+            var originalSamplesArray = parsedJson.getProperty("samples", var());
+            if (originalSamplesArray.isArray())
+            {
+                for (int j = 0; j < originalSamplesArray.size(); ++j)
+                {
+                    var originalSample = originalSamplesArray[j];
+                    if (originalSample.isObject())
+                    {
+                        String originalId = originalSample.getProperty("freesound_id", "");
+                        if (originalId == padInfo.freesoundId)
+                        {
+                            // Copy over the missing properties
+                            sample->setProperty("duration", originalSample.getProperty("duration", 0.0));
+                            sample->setProperty("file_size", originalSample.getProperty("file_size", 0));
+                            sample->setProperty("downloaded_at", originalSample.getProperty("downloaded_at", ""));
+                            sample->setProperty("freesound_url", "https://freesound.org/s/" + padInfo.freesoundId + "/");
+                            break;
+                        }
+                    }
+                }
+            }
+
+            sample->setProperty("original_pad_index", i + 1); // 1-based for user display
+
+            newSamplesArray.add(juce::var(sample.get()));
+        }
+    }
+
+    // Update the JSON with new samples array
+    rootObject->setProperty("samples", newSamplesArray);
+
+    // Update session info
+    var sessionInfo = parsedJson.getProperty("session_info", var());
+    if (sessionInfo.isObject())
+    {
+        if (auto* sessionObj = sessionInfo.getDynamicObject())
+        {
+            sessionObj->setProperty("total_samples", newSamplesArray.size());
+        }
+    }
+
+    // Write back to file
+    String newJsonString = juce::JSON::toString(parsedJson, true);
+    metadataFile.replaceWithText(newJsonString);
 }
 
 void SampleGridComponent::noteStarted(int noteNumber, float velocity)

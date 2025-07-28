@@ -80,8 +80,9 @@ public:
     void cancelDownloads();
     AudioDownloadManager& getDownloadManager() { return downloadManager; }
 
-    // NEW: README generation
+    // README generation
     void generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery);
+	void updateReadmeFile();
 
     // AudioDownloadManager::Listener implementation
     void downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress) override;

@@ -527,6 +527,129 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
     }
 }
 
+// Add this method implementation to PluginProcessor.cpp
+
+void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
+{
+    if (!currentSessionDownloadLocation.exists())
+        return;
+
+    File metadataFile = currentSessionDownloadLocation.getChildFile("metadata.json");
+
+    if (!metadataFile.existsAsFile())
+        return;
+
+    // Read current JSON metadata
+    FileInputStream inputStream(metadataFile);
+    if (!inputStream.openedOk())
+        return;
+
+    String jsonText = inputStream.readEntireStreamAsString();
+    var parsedJson = juce::JSON::parse(jsonText);
+
+    if (!parsedJson.isObject())
+        return;
+
+    var sessionInfo = parsedJson.getProperty("session_info", var());
+    var samplesArray = parsedJson.getProperty("samples", var());
+
+    if (!sessionInfo.isObject() || !samplesArray.isArray())
+        return;
+
+    // Extract session info
+    String searchQuery = sessionInfo.getProperty("search_query", query);
+    String downloadDate = sessionInfo.getProperty("download_date", "Unknown");
+    int totalSamples = (int)samplesArray.size();
+
+    // Regenerate README with current order
+    File readmeFile = currentSessionDownloadLocation.getChildFile("README.md");
+
+    String readmeContent;
+
+    // Header section
+    readmeContent += "# Freesound Sample Collection\n\n";
+    readmeContent += "**Search Query:** `" + searchQuery + "`\n";
+    readmeContent += "**Date Downloaded:** " + downloadDate + "\n";
+    readmeContent += "**Total Samples:** " + String(totalSamples) + "\n\n";
+
+    // Description
+    readmeContent += "## Description\n\n";
+    readmeContent += "This collection contains audio samples downloaded from [Freesound.org](https://freesound.org) ";
+    readmeContent += "using the search query \"" + searchQuery + "\". ";
+    readmeContent += "Files are named using their original Freesound names plus the Freesound ID for uniqueness.\n\n";
+
+    // Note about reordering
+    readmeContent += "**Note:** This collection has been reordered by dragging and dropping samples in the grid interface.\n\n";
+
+    // Table header
+    readmeContent += "## Sample Details\n\n";
+    readmeContent += "| # | File Name | Original Name | Author | License | Search Query | Duration | File Size | Freesound ID | URL |\n";
+    readmeContent += "|---|-----------|---------------|--------|---------|--------------|----------|-----------|--------------|-----|\n";
+
+    // Table rows based on current JSON order
+    for (int i = 0; i < samplesArray.size(); ++i)
+    {
+        var sample = samplesArray[i];
+        if (!sample.isObject())
+            continue;
+
+        String fileName = sample.getProperty("file_name", "");
+        String originalName = sample.getProperty("original_name", "Unknown");
+        String authorName = sample.getProperty("author", "Unknown");
+        String license = sample.getProperty("license", "Unknown");
+        String freesoundId = sample.getProperty("freesound_id", "");
+        String freesoundUrl = sample.getProperty("freesound_url", "");
+        double duration = sample.getProperty("duration", 0.0);
+        int fileSize = sample.getProperty("file_size", 0);
+
+        // Clean up text for markdown table (escape pipes and newlines)
+        originalName = originalName.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+        authorName = authorName.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+        license = license.replace("|", "\\|").replace("\n", " ").replace("\r", "");
+
+        // Duration (convert to human readable)
+        String durationStr = String(duration) + "s";
+
+        // File size (convert to human readable)
+        String fileSizeStr;
+        if (fileSize > 1024 * 1024)
+            fileSizeStr = String(fileSize / (1024 * 1024)) + " MB";
+        else if (fileSize > 1024)
+            fileSizeStr = String(fileSize / 1024) + " KB";
+        else
+            fileSizeStr = String(fileSize) + " B";
+
+        // Add table row
+        readmeContent += "| " + String(i + 1) + " | ";
+        readmeContent += "`" + fileName + "` | ";
+        readmeContent += originalName + " | ";
+        readmeContent += authorName + " | ";
+        readmeContent += license + " | ";
+        readmeContent += "`" + searchQuery + "` | ";
+        readmeContent += durationStr + " | ";
+        readmeContent += fileSizeStr + " | ";
+        readmeContent += freesoundId + " | ";
+        readmeContent += "[Link](" + freesoundUrl + ") |\n";
+    }
+
+    // Footer section
+    readmeContent += "\n## License Information\n\n";
+    readmeContent += "Read more about licenses used in Freesound, refer to [https://freesound.org/help/faq/#licenses](https://freesound.org/help/faq/#licenses).\n\n";
+
+    readmeContent += "## Usage\n\n";
+    readmeContent += "- **File Naming:** Files are named using their original Freesound names plus Freesound ID\n";
+    readmeContent += "- **MIDI Mapping:** Each sample responds to MIDI notes starting from 36 (C2) in the order they appear in this list\n";
+    readmeContent += "- **Reordering:** You can easily reorder samples by dragging and dropping them in the grid interface\n";
+    readmeContent += "- **File Format:** All samples are in OGG format (Freesound previews)\n";
+    readmeContent += "- **Metadata:** Complete metadata is stored in `metadata.json` for programmatic access\n\n";
+
+    readmeContent += "---\n";
+    readmeContent += "*Generated by Freesound Advanced Sampler*\n";
+
+    // Write to file
+    readmeFile.replaceWithText(readmeContent);
+}
+
 //==============================================================================
 // This creates new instances of the plugin..
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()

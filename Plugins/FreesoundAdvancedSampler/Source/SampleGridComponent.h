@@ -4,6 +4,7 @@
     SampleGridComponent.h
     Created: New grid component for displaying samples in 4x4 grid
     Author: Generated
+    Modified: Added drag-and-drop swap functionality
 
   ==============================================================================
 */
@@ -14,7 +15,8 @@
 #include "PluginProcessor.h"
 
 class SamplePad : public Component,
-                  public DragAndDropContainer
+                  public DragAndDropContainer,
+                  public DragAndDropTarget
 {
 public:
     SamplePad(int padIndex);
@@ -23,6 +25,13 @@ public:
     void paint(Graphics& g) override;
     void resized() override;
     void mouseDown(const MouseEvent& event) override;
+    void mouseDrag(const MouseEvent& event) override;
+
+    // DragAndDropTarget implementation
+    bool isInterestedInDragSource(const SourceDetails& dragSourceDetails) override;
+    void itemDragEnter(const SourceDetails& dragSourceDetails) override;
+    void itemDragExit(const SourceDetails& dragSourceDetails) override;
+    void itemDropped(const SourceDetails& dragSourceDetails) override;
 
     void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String());
     void setPlayheadPosition(float position); // 0.0 to 1.0
@@ -40,6 +49,12 @@ public:
         int padIndex; // Index of the pad (1-based)
     };
     SampleInfo getSampleInfo() const;
+
+    // NEW: Get pad index
+    int getPadIndex() const { return padIndex; }
+
+    // NEW: Clear sample data
+    void clearSample();
 
 private:
     void loadWaveform();
@@ -64,6 +79,7 @@ private:
     float playheadPosition;
     bool isPlaying;
     bool hasValidSample;
+    bool isDragHover; // NEW: Track drag hover state
 
     Colour padColour;
 
@@ -71,7 +87,8 @@ private:
 };
 
 class SampleGridComponent : public Component,
-                           public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener
+                           public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
+                           public DragAndDropContainer
 {
 public:
     SampleGridComponent();
@@ -86,6 +103,9 @@ public:
 
     // NEW: Method to get all sample info for drag operations
     Array<SamplePad::SampleInfo> getAllSampleInfo() const;
+
+    // NEW: Swap samples between two pads
+    void swapSamples(int sourcePadIndex, int targetPadIndex);
 
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
@@ -102,6 +122,9 @@ private:
     // Helper methods for loading samples
     void loadSamplesFromJson(const File& metadataFile);
     void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
+
+    // NEW: Update JSON metadata after swap
+    void updateJsonMetadata();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };
