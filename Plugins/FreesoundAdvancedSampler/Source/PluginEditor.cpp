@@ -184,12 +184,6 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(con
     {
         // Update the sample grid with the loaded preset
         sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
-
-        // Show success message
-        AlertWindow::showMessageBoxAsync(
-            AlertWindow::InfoIcon,
-            "Preset Loaded",
-            "Preset \"" + presetInfo.name + "\" has been loaded successfully!");
     }
     else
     {

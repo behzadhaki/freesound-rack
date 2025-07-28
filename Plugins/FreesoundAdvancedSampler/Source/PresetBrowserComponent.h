@@ -1,13 +1,3 @@
-/*
-  ==============================================================================
-
-    PresetBrowserComponent.h
-    Created: Preset browser and management UI
-    Author: Generated
-
-  ==============================================================================
-*/
-
 #pragma once
 
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
@@ -29,30 +19,34 @@ public:
     void mouseDoubleClick(const MouseEvent& event) override;
 
     const PresetInfo& getPresetInfo() const { return presetInfo; }
-
     void setSelected(bool selected);
     bool isSelected() const { return isSelectedState; }
 
-    // Callback for when this item is clicked
     std::function<void(PresetListItem*)> onItemClicked;
     std::function<void(PresetListItem*)> onItemDoubleClicked;
     std::function<void(PresetListItem*)> onDeleteClicked;
-    std::function<void(PresetListItem*)> onRenameClicked;
+    std::function<void(const PresetInfo&, const String&)> onRenameConfirmed;
+    std::function<void(const PresetInfo&)> onLoadClicked;
 
 private:
     PresetInfo presetInfo;
     bool isSelectedState = false;
+
     TextButton deleteButton;
-    TextButton renameButton;
+    TextButton loadButton;
+    TextEditor renameEditor;
+
+    void confirmRename();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetListItem)
 };
+
 
 //==============================================================================
 // Main Preset Browser Component
 //==============================================================================
 class PresetBrowserComponent : public Component,
-                              public ScrollBar::Listener
+                               public ScrollBar::Listener
 {
 public:
     PresetBrowserComponent();
@@ -64,34 +58,34 @@ public:
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
     void refreshPresetList();
 
-    // Callback for when a preset is selected for loading
     std::function<void(const PresetInfo&)> onPresetLoadRequested;
 
-    // ScrollBar::Listener
     void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
 
 private:
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
-    // UI Components
     Label titleLabel;
     TextButton savePresetButton;
     TextButton refreshButton;
 
-    // Preset list
     Viewport presetViewport;
     Component presetListContainer;
     OwnedArray<PresetListItem> presetItems;
 
-    // Currently selected item
     PresetListItem* selectedItem = nullptr;
+
+    TextEditor renameEditor;
+    PresetListItem* renamingItem = nullptr;
 
     void handleItemClicked(PresetListItem* item);
     void handleItemDoubleClicked(PresetListItem* item);
     void handleDeleteClicked(PresetListItem* item);
     void handleRenameClicked(PresetListItem* item);
-    void showRenameDialog(const PresetInfo& presetInfo);
-    void promptForNewName(const PresetInfo& presetInfo);
+
+    void showInlineRenameEditor(PresetListItem* item);
+    void hideInlineRenameEditor(bool applyRename);
+
     void performRename(const PresetInfo& presetInfo, const String& newName);
     void saveCurrentPreset();
     void updatePresetList();
