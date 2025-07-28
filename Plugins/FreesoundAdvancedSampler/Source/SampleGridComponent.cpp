@@ -156,13 +156,13 @@ void SamplePad::paint(Graphics& g)
             g.drawText(shortLicense, licenseBounds, Justification::centred);
         }
 
-        // Draw "Drag" badge in BOTTOM LEFT corner with updated text
+        // Draw "Drag" badge in BOTTOM LEFT corner
         {
-            g.setFont(8.0f); // Slightly smaller font to fit more text
+            g.setFont(8.0f);
 
             // Create drag badge in bottom-left corner
             auto dragBounds = bounds.reduced(3);
-            int badgeWidth = 35; // Made wider to fit new text
+            int badgeWidth = 30;
             int badgeHeight = 12;
             dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
@@ -172,7 +172,7 @@ void SamplePad::paint(Graphics& g)
 
             // Draw white text
             g.setColour(Colours::white);
-            g.drawText("Swap", dragBounds, Justification::centred);
+            g.drawText("Drag", dragBounds, Justification::centred);
         }
     }
     else
@@ -235,7 +235,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
-    // Check if clicked on drag badge (bottom-left) - now handles both drag types
+    // Check if clicked on drag badge (bottom-left) - for file export
     {
         auto bounds = getLocalBounds();
         auto dragBounds = bounds.reduced(3);
@@ -245,17 +245,28 @@ void SamplePad::mouseDown(const MouseEvent& event)
 
         if (dragBounds.contains(event.getPosition()))
         {
-            // Store that we clicked on drag badge for mouseDrag to handle
+            // Store that we clicked on drag badge for mouseDrag to handle file export
             return;
         }
     }
 
-    // Normal click - play the sample
-    if (processor)
+    // Check if clicked in waveform area - for manual triggering
+    auto bounds = getLocalBounds();
+    auto waveformBounds = bounds.reduced(8, 20);
+
+    if (waveformBounds.contains(event.getPosition()))
     {
-        int noteNumber = padIndex + 36;
-        processor->addToMidiBuffer(noteNumber);
+        // Play the sample
+        if (processor)
+        {
+            int noteNumber = padIndex + 36;
+            processor->addToMidiBuffer(noteNumber);
+        }
+        return;
     }
+
+    // If clicked on edge areas (outside waveform but not on badges), do nothing here
+    // mouseDrag will handle edge dragging for swapping
 }
 
 void SamplePad::mouseDrag(const MouseEvent& event)
@@ -263,49 +274,74 @@ void SamplePad::mouseDrag(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    // Check if drag started on the drag badge (bottom-left)
     auto bounds = getLocalBounds();
-    auto dragBounds = bounds.reduced(3);
-    int badgeWidth = 30;
-    int badgeHeight = 12;
-    dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
-    if (dragBounds.contains(event.getMouseDownPosition()))
+    // Check if drag started on the drag badge (bottom-left) - for file export
     {
-        // Drag badge clicked - determine drag type based on drag distance and modifiers
-        if (event.getDistanceFromDragStart() > 10) // Slightly higher threshold for drag badge
+        auto dragBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
+        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (dragBounds.contains(event.getMouseDownPosition()))
         {
-            // Check if Control/Cmd key is held for external drag
-            if (event.mods.isCommandDown() || event.mods.isCtrlDown())
+            // Start external drag operation for file export
+            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
             {
-                // Start external drag operation for file export
-                if (audioFile.existsAsFile())
-                {
-                    StringArray filePaths;
-                    filePaths.add(audioFile.getFullPathName());
-                    performExternalDragDropOfFiles(filePaths, false);
-                }
+                StringArray filePaths;
+                filePaths.add(audioFile.getFullPathName());
+                performExternalDragDropOfFiles(filePaths, false);
             }
-            else
-            {
-                // Start internal drag for swapping (default behavior)
-                juce::DynamicObject::Ptr dragObject = new juce::DynamicObject();
-                dragObject->setProperty("type", "samplePad");
-                dragObject->setProperty("sourcePadIndex", padIndex);
-
-                var dragData(dragObject.get());
-
-                // Use the parent grid's drag container instead of self
-                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-                {
-                    gridComponent->startDragging(dragData, this);
-                }
-            }
+            return;
         }
+    }
+
+    // Check if drag started in waveform area - no dragging allowed here
+    auto waveformBounds = bounds.reduced(8, 20);
+    if (waveformBounds.contains(event.getMouseDownPosition()))
+    {
+        // No dragging from waveform area - only triggering
         return;
     }
 
-    // If drag didn't start on drag badge, ignore
+    // Check if drag started on web or license badges - no dragging
+    if (freesoundId.isNotEmpty())
+    {
+        auto webBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
+        webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (webBounds.contains(event.getMouseDownPosition()))
+            return;
+    }
+
+    if (licenseType.isNotEmpty())
+    {
+        auto licenseBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
+        licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
+
+        if (licenseBounds.contains(event.getMouseDownPosition()))
+            return;
+    }
+
+    // If we get here, drag started in edge area - start swapping drag
+    if (event.getDistanceFromDragStart() > 10)
+    {
+        juce::DynamicObject::Ptr dragObject = new juce::DynamicObject();
+        dragObject->setProperty("type", "samplePad");
+        dragObject->setProperty("sourcePadIndex", padIndex);
+
+        var dragData(dragObject.get());
+
+        // Use the parent grid's drag container
+        if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+        {
+            gridComponent->startDragging(dragData, this);
+        }
+    }
 }
 
 // DragAndDropTarget implementation
