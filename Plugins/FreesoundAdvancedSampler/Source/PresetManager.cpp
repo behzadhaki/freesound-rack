@@ -120,6 +120,7 @@ bool PresetManager::loadPreset(const File& presetFile, Array<PadInfo>& outPadInf
 
 bool PresetManager::deletePreset(const File& presetFile)
 {
+    DBG("Trying to delete preset: " + presetFile.getFullPathName());
     return presetFile.deleteFile();
 }
 

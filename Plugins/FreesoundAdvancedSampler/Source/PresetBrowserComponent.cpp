@@ -22,7 +22,6 @@ PresetListItem::PresetListItem(const PresetInfo& info)
     deleteButton.setButtonText("DEL");
     deleteButton.setSize(30, 18);
     deleteButton.onClick = [this]() {
-        DBG("Delete button clicked for: " + presetInfo.name);
         if (onDeleteClicked)
             onDeleteClicked(this);
     };
@@ -484,11 +483,12 @@ void PresetBrowserComponent::performRename(const PresetInfo& presetInfo, const S
 
 void PresetBrowserComponent::handleDeleteClicked(PresetListItem* item)
 {
-    AlertWindow::showMessageBoxAsync(
+    AlertWindow::showOkCancelBox(
         AlertWindow::QuestionIcon,
         "Delete Preset",
         "Are you sure you want to delete the preset \"" + item->getPresetInfo().name + "\"?",
-        "Delete",
+        "Yes",
+        "No",
         this,
         ModalCallbackFunction::create([this, item](int result) {
             if (result == 1 && processor)
