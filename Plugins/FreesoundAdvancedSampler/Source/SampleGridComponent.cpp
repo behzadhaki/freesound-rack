@@ -4,7 +4,7 @@
     SampleGridComponent.cpp
     Created: New grid component for displaying samples in 4x4 grid
     Author: Generated
-    Modified: Added drag-and-drop swap functionality
+    Modified: Added drag-and-drop swap functionality and shuffle button
 
   ==============================================================================
 */
@@ -538,6 +538,13 @@ SampleGridComponent::SampleGridComponent()
         samplePads[i] = std::make_unique<SamplePad>(i);
         addAndMakeVisible(*samplePads[i]);
     }
+
+    // Set up shuffle button
+    shuffleButton.setButtonText("Shuffle");
+    shuffleButton.onClick = [this]() {
+        shuffleSamples();
+    };
+    addAndMakeVisible(shuffleButton);
 }
 
 SampleGridComponent::~SampleGridComponent()
@@ -557,8 +564,19 @@ void SampleGridComponent::resized()
 {
     auto bounds = getLocalBounds();
     int padding = 4;
-    int totalPadding = padding * (GRID_SIZE + 1);
+    int bottomControlsHeight = 30;
+    int buttonWidth = 60;
+    int spacing = 5;
 
+    // Reserve space for bottom controls
+    auto bottomArea = bounds.removeFromBottom(bottomControlsHeight + padding);
+
+    // Position shuffle button in bottom left
+    auto shuffleBounds = bottomArea.reduced(padding);
+    shuffleButton.setBounds(shuffleBounds.removeFromLeft(buttonWidth));
+
+    // Calculate grid layout in remaining space
+    int totalPadding = padding * (GRID_SIZE + 1);
     int padWidth = (bounds.getWidth() - totalPadding) / GRID_SIZE;
     int padHeight = (bounds.getHeight() - totalPadding) / GRID_SIZE;
 
@@ -796,6 +814,62 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
         // Also update the README file to reflect new order
         processor->updateReadmeFile();
     }
+}
+
+void SampleGridComponent::shuffleSamples()
+{
+    if (!processor)
+        return;
+
+    // Collect all current sample info
+    Array<SamplePad::SampleInfo> allSamples;
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        auto sampleInfo = samplePads[i]->getSampleInfo();
+        if (sampleInfo.hasValidSample)
+        {
+            allSamples.add(sampleInfo);
+        }
+    }
+
+    // If we have no samples or only one sample, nothing to shuffle
+    if (allSamples.size() <= 1)
+        return;
+
+    // Clear all pads first
+    for (auto& pad : samplePads)
+    {
+        pad->clearSample();
+    }
+
+    // Shuffle the samples array using JUCE's Random class
+    Random random;
+    for (int i = allSamples.size() - 1; i > 0; --i)
+    {
+        int j = random.nextInt(i + 1);
+        allSamples.swap(i, j);
+    }
+
+    // Redistribute shuffled samples to pads
+    for (int i = 0; i < allSamples.size() && i < TOTAL_PADS; ++i)
+    {
+        const auto& sample = allSamples[i];
+        samplePads[i]->setSample(sample.audioFile, sample.sampleName,
+                                sample.authorName, sample.freesoundId, sample.licenseType);
+    }
+
+    // Update processor arrays and metadata to match new order
+    updateProcessorArraysFromGrid();
+    updateJsonMetadata();
+
+    // Reload the sampler with new pad order
+    if (processor)
+    {
+        processor->setSources();
+        processor->updateReadmeFile();
+    }
+
+    DBG("Samples shuffled successfully");
 }
 
 void SampleGridComponent::updateProcessorArraysFromGrid()

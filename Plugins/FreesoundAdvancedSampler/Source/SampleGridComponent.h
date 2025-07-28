@@ -4,7 +4,7 @@
     SampleGridComponent.h
     Created: New grid component for displaying samples in 4x4 grid
     Author: Generated
-    Modified: Added drag-and-drop swap functionality
+    Modified: Added drag-and-drop swap functionality and shuffle button
 
   ==============================================================================
 */
@@ -38,7 +38,7 @@ public:
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
 
-    // NEW: Method to get sample info for drag operations
+    // Method to get sample info for drag operations
     struct SampleInfo {
         File audioFile;
         String sampleName;
@@ -50,10 +50,10 @@ public:
     };
     SampleInfo getSampleInfo() const;
 
-    // NEW: Get pad index
+    // Get pad index
     int getPadIndex() const { return padIndex; }
 
-    // NEW: Clear sample data
+    // Clear sample data
     void clearSample();
 
 private:
@@ -79,7 +79,7 @@ private:
     float playheadPosition;
     bool isPlaying;
     bool hasValidSample;
-    bool isDragHover; // NEW: Track drag hover state
+    bool isDragHover; // Track drag hover state
 
     Colour padColour;
 
@@ -101,11 +101,14 @@ public:
     void updateSamples(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo);
     void clearSamples();
 
-    // NEW: Method to get all sample info for drag operations
+    // Method to get all sample info for drag operations
     Array<SamplePad::SampleInfo> getAllSampleInfo() const;
 
-    // NEW: Swap samples between two pads
+    // Swap samples between two pads
     void swapSamples(int sourcePadIndex, int targetPadIndex);
+
+    // Shuffle samples randomly
+    void shuffleSamples();
 
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
@@ -119,6 +122,9 @@ private:
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
+    // Shuffle button
+    TextButton shuffleButton;
+
     // Helper methods for loading samples
     void loadSamplesFromJson(const File& metadataFile);
     void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
@@ -126,7 +132,7 @@ private:
     // Update JSON metadata after swap
     void updateJsonMetadata();
 
-    // NEW: Update processor arrays from current grid state
+    // Update processor arrays from current grid state
     void updateProcessorArraysFromGrid();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)

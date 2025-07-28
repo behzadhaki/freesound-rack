@@ -84,14 +84,14 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::paint (Graphics& g)
     g.fillAll (getLookAndFeel().findColour (ResizableWindow::backgroundColourId));
 }
 
+// Update this method in PluginEditor.cpp
 void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
     int margin = 10;
     int searchHeight = 100;
     int progressHeight = 60;
-    int dragAreaWidth = 80;
-    int dragAreaHeight = 40;
+    int bottomControlsHeight = 40;
     int buttonWidth = 60;
     int presetBrowserWidth = 300;
     int spacing = 5;
@@ -112,19 +112,15 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     presetBrowserComponent.setBounds(contentBounds.removeFromRight(presetBrowserWidth));
     contentBounds.removeFromRight(margin); // Spacing between grid and preset browser
 
-    // Bottom controls area
-    auto bottomControlsBounds = contentBounds.removeFromBottom(dragAreaHeight);
+    // Bottom controls area for external controls only (View Files and Drag)
+    auto bottomControlsBounds = contentBounds.removeFromBottom(bottomControlsHeight);
 
-    // Drag area at bottom left
-    sampleDragArea.setBounds(bottomControlsBounds.removeFromLeft(dragAreaWidth));
+    // View Files and Drag area at bottom right
+    directoryOpenButton.setBounds(bottomControlsBounds.removeFromRight(buttonWidth));
+    bottomControlsBounds.removeFromRight(spacing);
+    sampleDragArea.setBounds(bottomControlsBounds.removeFromRight(80)); // Drag area width
 
-    // Small spacing
-    bottomControlsBounds.removeFromLeft(spacing);
-
-    // Directory open button next to drag area
-    directoryOpenButton.setBounds(bottomControlsBounds.removeFromLeft(buttonWidth));
-
-    // Sample grid takes remaining space
+    // Sample grid takes remaining space (it will handle its own shuffle button internally)
     sampleGridComponent.setBounds(contentBounds);
 }
 
