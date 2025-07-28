@@ -409,6 +409,8 @@ void SamplePad::clearSample()
     freesoundId = String();
     licenseType = String();
     hasValidSample = false;
+    isPlaying = false;
+    playheadPosition = 0.0f;
     audioThumbnail.clear();
     repaint();
 }
@@ -579,6 +581,7 @@ void SampleGridComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p
 
 void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo)
 {
+    // Always clear samples first
     clearSamples();
 
     if (!processor)
@@ -586,17 +589,37 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
 
     File downloadDir = processor->getCurrentDownloadLocation();
 
-    // Try to load from JSON metadata first
-    File metadataFile = downloadDir.getChildFile("metadata.json");
-    if (metadataFile.existsAsFile())
+    DBG("SampleGridComponent::updateSamples called with " + String(sounds.size()) + " sounds");
+
+    // For preset loading, always use the provided arrays directly
+    // This ensures the visual grid matches exactly what the sampler loaded
+    if (!sounds.isEmpty())
     {
-        loadSamplesFromJson(metadataFile);
+        DBG("Using provided arrays for grid update");
+        loadSamplesFromArrays(sounds, soundInfo, downloadDir);
     }
     else
     {
-        // Fallback to the old method using the provided arrays
-        loadSamplesFromArrays(sounds, soundInfo, downloadDir);
+        // Only try JSON if no sounds were provided (fallback for edge cases)
+        File metadataFile = downloadDir.getChildFile("metadata.json");
+        if (metadataFile.existsAsFile())
+        {
+            DBG("No sounds provided, trying JSON metadata");
+            loadSamplesFromJson(metadataFile);
+        }
+        else
+        {
+            DBG("No sounds or metadata available");
+        }
     }
+
+    // Force repaint all pads
+    for (auto& pad : samplePads)
+    {
+        pad->repaint();
+    }
+
+    DBG("Grid visual update complete");
 }
 
 void SampleGridComponent::loadSamplesFromJson(const File& metadataFile)
@@ -645,23 +668,46 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
 {
     int numSamples = jmin(TOTAL_PADS, sounds.size());
 
+    DBG("Loading " + String(numSamples) + " samples to grid from arrays");
+
     for (int i = 0; i < numSamples; ++i)
     {
-        String sampleName = (i < soundInfo.size()) ? soundInfo[i][0] : "Sample " + String(i + 1);
-        String authorName = (i < soundInfo.size()) ? soundInfo[i][1] : "Unknown";
-        String license = (i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : "Unknown";
-        String freesoundId = sounds[i].id;
+        const FSSound& sound = sounds[i];
 
-        // Create filename using simple ID-based naming scheme: FS_ID_XXXX.ogg
+        String sampleName = (i < soundInfo.size() && soundInfo[i].size() > 0) ? soundInfo[i][0] : sound.name;
+        String authorName = (i < soundInfo.size() && soundInfo[i].size() > 1) ? soundInfo[i][1] : sound.user;
+        String license = (i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : sound.license;
+        String freesoundId = sound.id;
+
+        // Create filename using ID-based naming scheme: FS_ID_XXXX.ogg
         String expectedFilename = "FS_ID_" + freesoundId + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
-        // Only proceed if the file exists
+        DBG("Pad " + String(i) + ": " + sampleName + " (ID: " + freesoundId + ")");
+        DBG("  Looking for file: " + audioFile.getFullPathName());
+        DBG("  File exists: " + String(audioFile.existsAsFile() ? "YES" : "NO"));
+
+        // Load the sample whether file exists or not (for consistent pad mapping)
         if (audioFile.existsAsFile())
         {
             samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
+            DBG("  Successfully set sample on pad " + String(i));
+        }
+        else
+        {
+            // Clear the pad if file doesn't exist
+            samplePads[i]->clearSample();
+            DBG("  Cleared pad " + String(i) + " - file not found");
         }
     }
+
+    // Clear any remaining pads
+    for (int i = numSamples; i < TOTAL_PADS; ++i)
+    {
+        samplePads[i]->clearSample();
+    }
+
+    DBG("Grid update complete");
 }
 
 void SampleGridComponent::clearSamples()

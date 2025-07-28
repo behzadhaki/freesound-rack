@@ -66,26 +66,25 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::renderNextBlo
 
 FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-	 : 		 AudioProcessor (BusesProperties()
-					 #if ! JucePlugin_IsMidiEffect
-					  #if ! JucePlugin_IsSynth
-					   .withInput  ("Input",  AudioChannelSet::stereo(), true)
-					  #endif
-					   .withOutput ("Output", AudioChannelSet::stereo(), true)
-					 #endif
-					   )
+     :         AudioProcessor (BusesProperties()
+                     #if ! JucePlugin_IsMidiEffect
+                      #if ! JucePlugin_IsSynth
+                       .withInput  ("Input",  AudioChannelSet::stereo(), true)
+                      #endif
+                       .withOutput ("Output", AudioChannelSet::stereo(), true)
+                     #endif
+                       ), presetManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler"))
 #endif
 {
-	tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
-	tmpDownloadLocation.createDirectory();
-	currentSessionDownloadLocation = tmpDownloadLocation; // Initialize to main directory
-	midicounter = 1;
-	startTime = Time::getMillisecondCounterHiRes() * 0.001;
+    tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
+    tmpDownloadLocation.createDirectory();
+    currentSessionDownloadLocation = presetManager.getSamplesFolder(); // Use samples folder as default
+    midicounter = 1;
+    startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
-	// Add download manager listener
-	downloadManager.addListener(this);
+    // Add download manager listener
+    downloadManager.addListener(this);
 }
-
 FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor()
 {
 	// Remove download manager listener
@@ -225,23 +224,41 @@ void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady (Array<FSSound> soun
 
 void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>& sounds)
 {
-    // Create timestamped subfolder without search query: {date}_{time}
-    Time currentTime = Time::getCurrentTime();
-    String dateStr = currentTime.formatted("%Y%m%d");
-    String timeStr = currentTime.formatted("%H%M%S");
+    // Create main samples folder (no more subfolders)
+    File samplesFolder = presetManager.getSamplesFolder();
+    samplesFolder.createDirectory();
 
-    String folderName = dateStr + "_" + timeStr;
-    File currentDownloadLocation = tmpDownloadLocation.getChildFile(folderName);
-    currentDownloadLocation.createDirectory();
+    // Filter out sounds that already exist to avoid re-downloading
+    Array<FSSound> soundsToDownload;
+    for (const auto& sound : sounds)
+    {
+        String fileName = "FS_ID_" + sound.id + ".ogg";
+        File audioFile = samplesFolder.getChildFile(fileName);
 
-    // Store the current download location for this session
-    currentSessionDownloadLocation = currentDownloadLocation;
+        if (!audioFile.existsAsFile())
+        {
+            soundsToDownload.add(sound);
+        }
+    }
 
-    // Generate README file with search information
-    generateReadmeFile(sounds, soundsArray, query);
+    // Store the current download location for this session (now points to samples folder)
+    currentSessionDownloadLocation = samplesFolder;
 
-    // Pass search query to download manager
-    downloadManager.startDownloads(sounds, currentDownloadLocation, query);
+    // If no new downloads needed, just load existing samples
+    if (soundsToDownload.isEmpty())
+    {
+        // All samples already exist, just set up the sampler
+        setSources();
+
+        // Notify listeners that "download" is complete
+        downloadListeners.call([](DownloadListener& l) {
+            l.downloadCompleted(true);
+        });
+        return;
+    }
+
+    // Start downloading only the new samples
+    downloadManager.startDownloads(soundsToDownload, samplesFolder, query);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::cancelDownloads()
@@ -295,52 +312,26 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         audioFormatManager.registerBasicFormats();
     }
 
-    // Load JSON metadata to get file mappings
-    File metadataFile = currentSessionDownloadLocation.getChildFile("metadata.json");
+    // Instead of relying on JSON metadata, use the currentSoundsArray directly
+    // This ensures we load exactly what's in memory, not what might be in a stale JSON file
+
     Array<File> audioFiles;
 
-    if (metadataFile.existsAsFile())
+    // Build file array from currentSoundsArray (which was just updated by loadPreset)
+    for (int i = 0; i < currentSoundsArray.size() && i < 16; ++i)
     {
-        // Load files based on JSON metadata order
-        FileInputStream inputStream(metadataFile);
-        if (inputStream.openedOk())
-        {
-            String jsonText = inputStream.readEntireStreamAsString();
-            var parsedJson = juce::JSON::parse(jsonText);
+        const FSSound& sound = currentSoundsArray[i];
+        String fileName = "FS_ID_" + sound.id + ".ogg";
+        File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
 
-            if (parsedJson.isObject())
-            {
-                var samplesArray = parsedJson.getProperty("samples", var());
-                if (samplesArray.isArray())
-                {
-                    for (int i = 0; i < samplesArray.size() && i < 16; ++i)
-                    {
-                        var sample = samplesArray[i];
-                        if (sample.isObject())
-                        {
-                            String fileName = sample.getProperty("file_name", "");
-                            if (fileName.isNotEmpty())
-                            {
-                                File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
-                                if (audioFile.existsAsFile())
-                                {
-                                    audioFiles.add(audioFile);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        // Fallback: scan directory for .ogg files (legacy support)
-        DirectoryIterator iter(currentSessionDownloadLocation, false, "*.ogg");
-        while (iter.next())
+        if (audioFile.existsAsFile())
         {
-            audioFiles.add(iter.getFile());
-            if (audioFiles.size() >= 16) break; // Limit to 16 samples
+            audioFiles.add(audioFile);
+            DBG("Loading audio file: " + audioFile.getFullPathName());
+        }
+        else
+        {
+            DBG("Audio file not found: " + audioFile.getFullPathName());
         }
     }
 
@@ -357,8 +348,16 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
             int midiNote = 36 + i; // Pad 0 = note 36, Pad 1 = note 37, etc.
             notes.setBit(midiNote, true);
             sampler.addSound(new SamplerSound(String(i), *reader, notes, midiNote, 0, maxLength, maxLength));
+
+            DBG("Successfully loaded sample " + String(i) + " to MIDI note " + String(midiNote) + ": " + audioFile.getFileName());
+        }
+        else
+        {
+            DBG("Failed to create reader for: " + audioFile.getFullPathName());
         }
     }
+
+    DBG("Sampler now has " + String(sampler.getNumSounds()) + " sounds loaded");
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addToMidiBuffer(int notenumber)
@@ -431,6 +430,126 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int n
         l.playheadPositionChanged(noteNumber, position);
     });
 }
+
+bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description)
+{
+    Array<PadInfo> padInfos = getCurrentPadInfos();
+    return presetManager.saveCurrentPreset(name, description, padInfos, query);
+}
+
+bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile)
+{
+    Array<PadInfo> padInfos;
+    if (!presetManager.loadPreset(presetFile, padInfos))
+        return false;
+
+    // Clear ALL current state completely
+    soundsArray.clear();
+    currentSoundsArray.clear();
+
+    // Also clear the sampler before rebuilding
+    sampler.clearSounds();
+    sampler.clearVoices();
+
+    // Update query from preset info (read from JSON)
+    FileInputStream inputStream(presetFile);
+    if (inputStream.openedOk())
+    {
+        String jsonText = inputStream.readEntireStreamAsString();
+        var parsedJson = juce::JSON::parse(jsonText);
+        if (parsedJson.isObject())
+        {
+            var presetInfo = parsedJson.getProperty("preset_info", var());
+            if (presetInfo.isObject())
+            {
+                query = presetInfo.getProperty("search_query", "");
+            }
+        }
+    }
+
+    // Build FSSound array from preset data in the correct order
+    // Sort padInfos by padIndex to ensure correct order
+    std::sort(padInfos.begin(), padInfos.end(), [](const PadInfo& a, const PadInfo& b) {
+        return a.padIndex < b.padIndex;
+    });
+
+    for (const auto& padInfo : padInfos)
+    {
+        // Check if sample file exists
+        File sampleFile = presetManager.getSampleFile(padInfo.freesoundId);
+        if (!sampleFile.existsAsFile())
+        {
+            // Sample missing - skip this pad but continue
+            DBG("Missing sample file for ID: " + padInfo.freesoundId);
+            continue;
+        }
+
+        // Create FSSound object
+        FSSound sound;
+        sound.id = padInfo.freesoundId;
+        sound.name = padInfo.originalName;
+        sound.user = padInfo.author;
+        sound.license = padInfo.license;
+        sound.duration = padInfo.duration;
+        sound.filesize = padInfo.fileSize;
+
+        // Add to arrays
+        currentSoundsArray.add(sound);
+
+        // Create sound info for legacy compatibility
+        StringArray soundData;
+        soundData.add(padInfo.originalName);
+        soundData.add(padInfo.author);
+        soundData.add(padInfo.license);
+        soundsArray.push_back(soundData);
+    }
+
+    // Update current session location to samples folder
+    currentSessionDownloadLocation = presetManager.getSamplesFolder();
+
+    // Force reload sampler with new data
+    setSources();
+
+    // Debug output
+    DBG("Loaded preset with " + String(currentSoundsArray.size()) + " samples");
+    for (int i = 0; i < currentSoundsArray.size(); ++i)
+    {
+        DBG("Sample " + String(i) + ": " + currentSoundsArray[i].name);
+    }
+
+    return true;
+}
+
+Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() const
+{
+    Array<PadInfo> padInfos;
+
+    // This method needs to be implemented based on how you want to extract
+    // current pad information. For now, using the existing arrays:
+
+    int maxSize = jmin(currentSoundsArray.size(), (int)soundsArray.size());
+
+    for (int i = 0; i < maxSize; ++i)
+    {
+        const FSSound& sound = currentSoundsArray[i];
+
+        PadInfo padInfo;
+        padInfo.padIndex = i;
+        padInfo.freesoundId = sound.id;
+        padInfo.fileName = "FS_ID_" + sound.id + ".ogg";
+        padInfo.originalName = sound.name;
+        padInfo.author = sound.user;
+        padInfo.license = sound.license;
+        padInfo.duration = sound.duration;
+        padInfo.fileSize = sound.filesize;
+        padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+
+        padInfos.add(padInfo);
+    }
+
+    return padInfos;
+}
+
 
 void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery)
 {
@@ -649,6 +768,7 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
     // Write to file
     readmeFile.replaceWithText(readmeContent);
 }
+
 
 //==============================================================================
 // This creates new instances of the plugin..

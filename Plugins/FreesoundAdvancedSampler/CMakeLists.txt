@@ -26,6 +26,8 @@ target_sources(${BaseTargetName} PRIVATE
         Source/PluginEditor.cpp
         Source/AudioDownloadManager.cpp
         Source/SampleGridComponent.cpp
+        Source/PresetBrowserComponent.cpp
+        Source/PresetManager.cpp
 )
 
 target_compile_definitions(${BaseTargetName}

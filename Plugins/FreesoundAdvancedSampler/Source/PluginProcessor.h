@@ -13,6 +13,7 @@
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "FreesoundAPI/FreesoundAPI.h"
 #include "AudioDownloadManager.h"
+#include "PresetManager.h"
 
 using namespace juce;
 
@@ -132,6 +133,11 @@ public:
 		return cleaned;
 	}
 
+	PresetManager& getPresetManager() { return presetManager; }
+	bool saveCurrentAsPreset(const String& name, const String& description = "");
+	bool loadPreset(const File& presetFile);
+	Array<PadInfo> getCurrentPadInfos() const;
+
 private:
     // Enhanced sampler voice class for playback tracking
     class TrackingSamplerVoice : public SamplerVoice
@@ -167,6 +173,8 @@ private:
     void notifyNoteStarted(int noteNumber, float velocity);
     void notifyNoteStopped(int noteNumber);
     void notifyPlayheadPositionChanged(int noteNumber, float position);
+
+	PresetManager presetManager;
 
     friend class TrackingSamplerVoice;
 

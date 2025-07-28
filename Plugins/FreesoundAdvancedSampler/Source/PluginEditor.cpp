@@ -34,6 +34,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     directoryOpenButton.setProcessor(&processor);
     addAndMakeVisible(directoryOpenButton);
 
+    // Set up preset browser
+    presetBrowserComponent.setProcessor(&processor);
+    presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo) {
+        handlePresetLoadRequested(presetInfo);
+    };
+    addAndMakeVisible(presetBrowserComponent);
+
     // Set up progress components
     addAndMakeVisible(progressBar);
     addAndMakeVisible(statusLabel);
@@ -55,7 +62,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     statusLabel.setVisible(false);
     cancelButton.setVisible(false);
 
-    setSize (800, 700);  // Increased size for grid layout
+    setSize (1200, 700);  // Increased width for preset browser
     setResizable(false, false);
 }
 
@@ -79,6 +86,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     int dragAreaWidth = 80;
     int dragAreaHeight = 40;
     int buttonWidth = 60;
+    int presetBrowserWidth = 300;
     int spacing = 5;
 
     // Search component at top
@@ -92,6 +100,10 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 
     // Main content area
     auto contentBounds = bounds.reduced(margin);
+
+    // Preset browser on the right side
+    presetBrowserComponent.setBounds(contentBounds.removeFromRight(presetBrowserWidth));
+    contentBounds.removeFromRight(margin); // Spacing between grid and preset browser
 
     // Bottom controls area
     auto bottomControlsBounds = contentBounds.removeFromBottom(dragAreaHeight);
@@ -150,6 +162,9 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
             {
                 // Update the sample grid with downloaded samples
                 sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+
+                // Refresh preset browser to show if this creates a new preset opportunity
+                presetBrowserComponent.refreshPresetList();
             });
         }
 
@@ -161,4 +176,27 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
             cancelButton.setVisible(false);
         });
     });
+}
+
+void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(const PresetInfo& presetInfo)
+{
+    if (processor.loadPreset(presetInfo.presetFile))
+    {
+        // Update the sample grid with the loaded preset
+        sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+
+        // Show success message
+        AlertWindow::showMessageBoxAsync(
+            AlertWindow::InfoIcon,
+            "Preset Loaded",
+            "Preset \"" + presetInfo.name + "\" has been loaded successfully!");
+    }
+    else
+    {
+        // Show error message
+        AlertWindow::showMessageBoxAsync(
+            AlertWindow::WarningIcon,
+            "Load Failed",
+            "Failed to load preset \"" + presetInfo.name + "\". Some samples may be missing.");
+    }
 }

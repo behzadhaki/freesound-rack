@@ -14,6 +14,8 @@
 #include "PluginProcessor.h"
 #include "FreesoundSearchComponent.h"
 #include "SampleGridComponent.h"
+#include "PresetBrowserComponent.h"
+#include "PresetManager.h"
 
 //==============================================================================
 /**
@@ -37,9 +39,10 @@ private:
     FreesoundAdvancedSamplerAudioProcessor& processor;
 
     FreesoundSearchComponent freesoundSearchComponent;
-    SampleGridComponent sampleGridComponent; // NEW: Replace results table with grid
-    SampleDragArea sampleDragArea; // NEW: Drag area for exporting samples
-    DirectoryOpenButton directoryOpenButton; // NEW: Button to open download directory
+    SampleGridComponent sampleGridComponent;
+    SampleDragArea sampleDragArea;
+    DirectoryOpenButton directoryOpenButton;
+    PresetBrowserComponent presetBrowserComponent;
 
     // Store sounds for grid update
     Array<FSSound> currentSounds;
@@ -49,6 +52,9 @@ private:
     Label statusLabel;
     TextButton cancelButton;
     double currentProgress = 0.0;
+
+    // Handle preset loading
+    void handlePresetLoadRequested(const PresetInfo& presetInfo);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)
 };
