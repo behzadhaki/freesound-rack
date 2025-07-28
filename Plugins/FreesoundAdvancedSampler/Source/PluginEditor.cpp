@@ -62,6 +62,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     statusLabel.setVisible(false);
     cancelButton.setVisible(false);
 
+    // Restore samples if processor already has them loaded
+    if (processor.isArrayNotEmpty())
+    {
+        // Update grid with current processor state
+        sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+    }
+
     setSize (1200, 700);  // Increased width for preset browser
     setResizable(false, false);
 }

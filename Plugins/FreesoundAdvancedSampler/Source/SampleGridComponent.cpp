@@ -396,8 +396,18 @@ void SamplePad::setSample(const File& file, const String& name, const String& au
     freesoundId = fsId;
     licenseType = license;
 
-    loadWaveform();
     hasValidSample = audioFile.existsAsFile();
+
+    // Always load waveform when setting a sample
+    if (hasValidSample)
+    {
+        loadWaveform();
+    }
+    else
+    {
+        audioThumbnail.clear();
+    }
+
     repaint();
 }
 
@@ -419,7 +429,17 @@ void SamplePad::loadWaveform()
 {
     if (audioFile.existsAsFile())
     {
-        audioThumbnail.setSource(new FileInputSource(audioFile));
+        // Clear existing thumbnail first
+        audioThumbnail.clear();
+
+        // Create new file input source and set it
+        auto* fileSource = new FileInputSource(audioFile);
+        audioThumbnail.setSource(fileSource);
+
+        // Force a repaint after a brief delay to ensure thumbnail is loaded
+        Timer::callAfterDelay(100, [this]() {
+            repaint();
+        });
     }
 }
 
@@ -706,6 +726,14 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
     {
         samplePads[i]->clearSample();
     }
+
+    // Force a repaint of all pads after a brief delay to ensure waveforms are loaded
+    Timer::callAfterDelay(200, [this]() {
+        for (auto& pad : samplePads)
+        {
+            pad->repaint();
+        }
+    });
 
     DBG("Grid update complete");
 }
