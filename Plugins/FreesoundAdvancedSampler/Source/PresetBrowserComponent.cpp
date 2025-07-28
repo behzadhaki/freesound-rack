@@ -17,15 +17,28 @@
 PresetListItem::PresetListItem(const PresetInfo& info)
     : presetInfo(info)
 {
-    setSize(200, 60);
+    setSize(200, 80); // Made taller to accommodate buttons better
 
-    deleteButton.setButtonText("X");  // Changed from "×" to "X"
-    deleteButton.setSize(20, 20);
+    deleteButton.setButtonText("DEL");
+    deleteButton.setSize(30, 18);
     deleteButton.onClick = [this]() {
+        DBG("Delete button clicked for: " + presetInfo.name);
         if (onDeleteClicked)
             onDeleteClicked(this);
     };
     addAndMakeVisible(deleteButton);
+
+    // Create and add the rename button
+    renameButton.setButtonText("REN");
+    renameButton.setSize(30, 18);
+    renameButton.onClick = [this]() {
+        DBG("Rename button clicked for: " + presetInfo.name);
+        if (onRenameClicked)
+            onRenameClicked(this);
+    };
+    addAndMakeVisible(renameButton);
+
+    DBG("Created PresetListItem with both DEL and REN buttons for: " + presetInfo.name);
 }
 
 PresetListItem::~PresetListItem()
@@ -61,7 +74,7 @@ void PresetListItem::paint(Graphics& g)
 
     // Text content
     auto textBounds = bounds.reduced(8);
-    textBounds.removeFromRight(25); // Space for delete button
+    textBounds.removeFromRight(70); // Space for both buttons
 
     g.setColour(Colours::white);
     g.setFont(Font(14.0f, Font::bold));
@@ -87,7 +100,20 @@ void PresetListItem::paint(Graphics& g)
 void PresetListItem::resized()
 {
     auto bounds = getLocalBounds();
-    deleteButton.setBounds(bounds.getRight() - 25, bounds.getY() + 5, 20, 20);
+
+    // Position buttons in top-right corner with better spacing
+    int buttonSpacing = 5;
+    int buttonWidth = 30;
+    int buttonHeight = 18;
+    int margin = 5;
+
+    deleteButton.setBounds(bounds.getRight() - margin - buttonWidth,
+                          bounds.getY() + margin,
+                          buttonWidth, buttonHeight);
+
+    renameButton.setBounds(bounds.getRight() - margin - buttonWidth - buttonSpacing - buttonWidth,
+                          bounds.getY() + margin,
+                          buttonWidth, buttonHeight);
 }
 
 void PresetListItem::mouseDown(const MouseEvent& event)
@@ -186,21 +212,24 @@ void PresetBrowserComponent::refreshPresetList()
     if (!processor)
         return;
 
+    DBG("Refreshing preset list...");
+
     // Clear existing items
-    presetItems.clear(); // OwnedArray automatically deletes the objects
+    presetItems.clear();
     selectedItem = nullptr;
 
     // Get available presets
     Array<PresetInfo> presets = processor->getPresetManager().getAvailablePresets();
+    DBG("Found " + String(presets.size()) + " presets");
 
     // Create new items
     int yPosition = 0;
-    const int itemHeight = 65;
+    const int itemHeight = 85;
     const int spacing = 5;
 
     for (const auto& presetInfo : presets)
     {
-        auto* item = new PresetListItem(presetInfo); // Create raw pointer
+        auto* item = new PresetListItem(presetInfo);
 
         item->onItemClicked = [this](PresetListItem* clickedItem) {
             handleItemClicked(clickedItem);
@@ -214,9 +243,14 @@ void PresetBrowserComponent::refreshPresetList()
             handleDeleteClicked(clickedItem);
         };
 
+        item->onRenameClicked = [this](PresetListItem* clickedItem) {
+            DBG("Setting up rename callback for: " + clickedItem->getPresetInfo().name);
+            handleRenameClicked(clickedItem);
+        };
+
         item->setBounds(5, yPosition, getWidth() - 30, itemHeight);
         presetListContainer.addAndMakeVisible(*item);
-        presetItems.add(item); // OwnedArray takes ownership
+        presetItems.add(item);
 
         yPosition += itemHeight + spacing;
     }
@@ -224,6 +258,8 @@ void PresetBrowserComponent::refreshPresetList()
     // Update container size
     presetListContainer.setSize(getWidth(), yPosition);
     presetViewport.getViewedComponent()->repaint();
+
+    DBG("Preset list refresh complete");
 }
 
 void PresetBrowserComponent::updatePresetList()
@@ -267,9 +303,187 @@ void PresetBrowserComponent::handleItemDoubleClicked(PresetListItem* item)
         onPresetLoadRequested(item->getPresetInfo());
 }
 
+void PresetBrowserComponent::handleRenameClicked(PresetListItem* item)
+{
+    if (!processor)
+        return;
+
+    const PresetInfo& presetInfo = item->getPresetInfo();
+
+    DBG("handleRenameClicked called for preset: " + presetInfo.name);
+
+    // Create a member variable to store the text, then use a simple dialog
+    // First, let's try a completely different approach - create our own simple input method
+
+    // For now, let's use a series of simple dialogs to get the name
+    showRenameDialog(presetInfo);
+}
+
+// Add this helper method to handle the rename dialog
+void PresetBrowserComponent::showRenameDialog(const PresetInfo& presetInfo)
+{
+    // Create a simple message box that asks for confirmation to proceed with rename
+    String message = "Current name: \"" + presetInfo.name + "\"\n\n";
+    message += "Click OK to proceed with renaming, Cancel to abort.";
+
+    AlertWindow::showMessageBoxAsync(
+        AlertWindow::QuestionIcon,
+        "Rename Preset",
+        message,
+        "OK",
+        this,
+        ModalCallbackFunction::create([this, presetInfo](int result) {
+            if (result == 1) // OK clicked
+            {
+                // Now show a second dialog asking for the new name
+                promptForNewName(presetInfo);
+            }
+        }));
+}
+
+// Add this method to prompt for the new name
+void PresetBrowserComponent::promptForNewName(const PresetInfo& presetInfo)
+{
+    // Use a simple approach: create a new AlertWindow on the heap
+    AlertWindow* dialog = new AlertWindow("Enter New Name", "Enter the new name for this preset:", AlertWindow::NoIcon);
+
+    dialog->addTextEditor("newName", presetInfo.name, "New Name:");
+    dialog->addButton("Rename", 1, KeyPress(KeyPress::returnKey));
+    dialog->addButton("Cancel", 0, KeyPress(KeyPress::escapeKey));
+
+    // Select all text in the editor
+    if (auto* editor = dialog->getTextEditor("newName"))
+    {
+        editor->selectAll();
+        editor->grabKeyboardFocus();
+    }
+
+    // Store the dialog pointer and launch it
+    dialog->enterModalState(true, ModalCallbackFunction::create([this, presetInfo, dialog](int result) {
+        String newName;
+
+        if (result == 1) // Rename button clicked
+        {
+            newName = dialog->getTextEditorContents("newName").trim();
+            DBG("User entered new name: '" + newName + "'");
+        }
+
+        // Clean up the dialog
+        delete dialog;
+
+        // Process the rename if we got a valid name
+        if (result == 1 && newName.isNotEmpty() && newName != presetInfo.name)
+        {
+            performRename(presetInfo, newName);
+        }
+        else if (result == 1 && newName.isEmpty())
+        {
+            AlertWindow::showMessageBoxAsync(
+                AlertWindow::WarningIcon,
+                "Invalid Name",
+                "Please enter a valid preset name.");
+        }
+        else
+        {
+            DBG("User cancelled rename or name unchanged");
+        }
+    }));
+}
+
+void PresetBrowserComponent::performRename(const PresetInfo& presetInfo, const String& newName)
+{
+    if (newName.isEmpty() || newName == presetInfo.name)
+        return;
+
+    DBG("performRename called: '" + presetInfo.name + "' -> '" + newName + "'");
+
+    // Check if new name already exists
+    Array<PresetInfo> existingPresets = processor->getPresetManager().getAvailablePresets();
+    for (const auto& preset : existingPresets)
+    {
+        if (preset.name == newName && preset.presetFile != presetInfo.presetFile)
+        {
+            AlertWindow::showMessageBoxAsync(
+                AlertWindow::WarningIcon,
+                "Name Exists",
+                "A preset with the name \"" + newName + "\" already exists.");
+            return;
+        }
+    }
+
+    // Perform the rename
+    Array<PadInfo> padInfos;
+    if (processor->getPresetManager().loadPreset(presetInfo.presetFile, padInfos))
+    {
+        DBG("Loaded preset data, " + String(padInfos.size()) + " pad infos");
+
+        // Get original description from JSON
+        String description = "";
+        String searchQuery = "";
+
+        FileInputStream inputStream(presetInfo.presetFile);
+        if (inputStream.openedOk())
+        {
+            String jsonText = inputStream.readEntireStreamAsString();
+            var parsedJson = JSON::parse(jsonText);
+            if (parsedJson.isObject())
+            {
+                var info = parsedJson.getProperty("preset_info", var());
+                if (info.isObject())
+                {
+                    description = info.getProperty("description", "");
+                    searchQuery = info.getProperty("search_query", "");
+                }
+            }
+        }
+
+        DBG("Extracted metadata - description: '" + description + "', searchQuery: '" + searchQuery + "'");
+
+        // Save with new name
+        if (processor->getPresetManager().saveCurrentPreset(newName, description, padInfos, searchQuery))
+        {
+            DBG("Successfully saved new preset, now deleting old one");
+
+            // Delete old preset
+            if (processor->getPresetManager().deletePreset(presetInfo.presetFile))
+            {
+                DBG("Successfully deleted old preset");
+                refreshPresetList();
+                AlertWindow::showMessageBoxAsync(
+                    AlertWindow::InfoIcon,
+                    "Preset Renamed",
+                    "Preset has been renamed to \"" + newName + "\" successfully!");
+            }
+            else
+            {
+                DBG("Failed to delete old preset file");
+                AlertWindow::showMessageBoxAsync(
+                    AlertWindow::WarningIcon,
+                    "Partial Success",
+                    "New preset created but failed to delete old one.");
+            }
+        }
+        else
+        {
+            DBG("Failed to save new preset");
+            AlertWindow::showMessageBoxAsync(
+                AlertWindow::WarningIcon,
+                "Rename Failed",
+                "Failed to save preset with new name.");
+        }
+    }
+    else
+    {
+        DBG("Failed to load preset data");
+        AlertWindow::showMessageBoxAsync(
+            AlertWindow::WarningIcon,
+            "Rename Failed",
+            "Failed to load preset data for renaming.");
+    }
+}
+
 void PresetBrowserComponent::handleDeleteClicked(PresetListItem* item)
 {
-    // Use async message box - most compatible approach
     AlertWindow::showMessageBoxAsync(
         AlertWindow::QuestionIcon,
         "Delete Preset",
@@ -277,7 +491,7 @@ void PresetBrowserComponent::handleDeleteClicked(PresetListItem* item)
         "Delete",
         this,
         ModalCallbackFunction::create([this, item](int result) {
-            if (result == 1 && processor) // Delete clicked
+            if (result == 1 && processor)
             {
                 processor->getPresetManager().deletePreset(item->getPresetInfo().presetFile);
                 refreshPresetList();
@@ -293,8 +507,6 @@ void PresetBrowserComponent::saveCurrentPreset()
     // Generate suggested name and just use it directly for now
     String suggestedName = processor->getPresetManager().generatePresetName(processor->getQuery());
 
-    // For now, just save with the suggested name (user can rename files later)
-    // This avoids all modal dialog compatibility issues
     if (processor->saveCurrentAsPreset(suggestedName, "Saved from grid interface"))
     {
         refreshPresetList();

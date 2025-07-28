@@ -15,37 +15,6 @@
 #include "PresetManager.h"
 
 //==============================================================================
-// Save Preset Dialog
-//==============================================================================
-class SavePresetDialog : public Component
-{
-public:
-    SavePresetDialog();
-    ~SavePresetDialog() override;
-
-    void paint(Graphics& g) override;
-    void resized() override;
-
-    // Show modal dialog and return true if user saved
-    bool showDialog(const String& suggestedName = "");
-
-    String getPresetName() const { return presetNameEditor.getText(); }
-    String getPresetDescription() const { return descriptionEditor.getText(); }
-
-private:
-    Label presetNameLabel;
-    TextEditor presetNameEditor;
-    Label descriptionLabel;
-    TextEditor descriptionEditor;
-    TextButton saveButton;
-    TextButton cancelButton;
-
-    bool userClickedSave = false;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SavePresetDialog)
-};
-
-//==============================================================================
 // Preset List Item
 //==============================================================================
 class PresetListItem : public Component
@@ -68,11 +37,13 @@ public:
     std::function<void(PresetListItem*)> onItemClicked;
     std::function<void(PresetListItem*)> onItemDoubleClicked;
     std::function<void(PresetListItem*)> onDeleteClicked;
+    std::function<void(PresetListItem*)> onRenameClicked;
 
 private:
     PresetInfo presetInfo;
     bool isSelectedState = false;
     TextButton deleteButton;
+    TextButton renameButton;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetListItem)
 };
@@ -110,7 +81,7 @@ private:
     // Preset list
     Viewport presetViewport;
     Component presetListContainer;
-    OwnedArray<PresetListItem> presetItems; // Changed from Array<std::unique_ptr<PresetListItem>>
+    OwnedArray<PresetListItem> presetItems;
 
     // Currently selected item
     PresetListItem* selectedItem = nullptr;
@@ -118,6 +89,10 @@ private:
     void handleItemClicked(PresetListItem* item);
     void handleItemDoubleClicked(PresetListItem* item);
     void handleDeleteClicked(PresetListItem* item);
+    void handleRenameClicked(PresetListItem* item);
+    void showRenameDialog(const PresetInfo& presetInfo);
+    void promptForNewName(const PresetInfo& presetInfo);
+    void performRename(const PresetInfo& presetInfo, const String& newName);
     void saveCurrentPreset();
     void updatePresetList();
 
