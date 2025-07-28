@@ -22,16 +22,43 @@ FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::TrackingSamplerVoi
 
 void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::startNote(int midiNoteNumber, float velocity, SynthesiserSound* sound, int currentPitchWheelPosition)
 {
-    SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
-
     currentNoteNumber = midiNoteNumber;
     samplePosition = 0.0;
+
+    // Get pad-specific parameters
+    int padIndex = midiNoteNumber - 36;
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        auto params = processor.getPadParameters(padIndex);
+
+        // Calculate pitch ratio from cents (2^(cents/1200))
+        pitchRatio = std::pow(2.0f, params.pitchCents / 1200.0f);
+        volumeMultiplier = params.volume;
+
+        // Convert cents to pitch wheel position for JUCE
+        // JUCE expects pitch wheel values from 0-16383, center at 8192
+        // ±2 semitones range = ±4096 from center
+        float semitonesFromCents = params.pitchCents / 100.0f;
+        int pitchWheelValue = 8192 + (int)(semitonesFromCents * 2048.0f); // 2048 = 4096/2 for ±2 semitone range
+        pitchWheelValue = jlimit(0, 16383, pitchWheelValue);
+
+        // Override the pitch wheel position
+        currentPitchWheelPosition = pitchWheelValue;
+    }
+    else
+    {
+        pitchRatio = 1.0f;
+        volumeMultiplier = 1.0f;
+    }
 
     // Get sample length from the sound
     if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound))
     {
         sampleLength = samplerSound->getAudioData()->getNumSamples();
     }
+
+    // Call parent with modified velocity and pitch wheel position
+    SamplerVoice::startNote(midiNoteNumber, velocity * volumeMultiplier, sound, currentPitchWheelPosition);
 
     processor.notifyNoteStarted(midiNoteNumber, velocity);
 }
@@ -49,12 +76,29 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::stopNote(floa
 
 void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
+    // Apply pitch bend by calling pitchWheelMoved before rendering
+    if (currentNoteNumber >= 0)
+    {
+        int padIndex = currentNoteNumber - 36;
+        if (padIndex >= 0 && padIndex < 16)
+        {
+            auto params = processor.getPadParameters(padIndex);
+            float semitonesFromCents = params.pitchCents / 100.0f;
+            int pitchWheelValue = 8192 + (int)(semitonesFromCents * 2048.0f);
+            pitchWheelValue = jlimit(0, 16383, pitchWheelValue);
+
+            // Apply pitch wheel directly to this voice
+            pitchWheelMoved(pitchWheelValue);
+        }
+    }
+
+    // Render the block
     SamplerVoice::renderNextBlock(outputBuffer, startSample, numSamples);
 
-    // Update playhead position
+    // Update playhead position accounting for pitch shift
     if (currentNoteNumber >= 0 && sampleLength > 0)
     {
-        samplePosition += numSamples;
+        samplePosition += numSamples * pitchRatio;
         float position = (float)samplePosition / (float)sampleLength;
         processor.notifyPlayheadPositionChanged(currentNoteNumber, jlimit(0.0f, 1.0f, position));
     }
@@ -82,9 +126,17 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
     midicounter = 1;
     startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
+    // Initialize pad parameters to defaults
+    for (int i = 0; i < 16; ++i)
+    {
+        padParameters[i].pitchCents = 0.0f;
+        padParameters[i].volume = 0.7f;
+    }
+
     // Add download manager listener
     downloadManager.addListener(this);
 }
+
 FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor()
 {
 	// Remove download manager listener
@@ -187,12 +239,14 @@ bool FreesoundAdvancedSamplerAudioProcessor::isBusesLayoutSupported (const Buses
 
 void FreesoundAdvancedSamplerAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
-	midiMessages.addEvents(midiFromEditor, 0, INT_MAX, 0);
-	midiFromEditor.clear();
-	sampler.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
-	midiMessages.clear();
-}
+    // Add events from editor
+    midiMessages.addEvents(midiFromEditor, 0, INT_MAX, 0);
+    midiFromEditor.clear();
 
+    // Render directly - pitch control is handled per-voice in renderNextBlock
+    sampler.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
+    midiMessages.clear();
+}
 //==============================================================================
 bool FreesoundAdvancedSamplerAudioProcessor::hasEditor() const
 {
@@ -218,7 +272,7 @@ void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady (Array<FSSound> soun
 {
 	query = textQuery;
 	soundsArray = soundInfo;
-    currentSoundsArray = sounds; // NEW: Store the sounds array
+    currentSoundsArray = sounds; // Store the sounds array
 	startDownloads(sounds);
 }
 
@@ -312,9 +366,6 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         audioFormatManager.registerBasicFormats();
     }
 
-    // Instead of relying on JSON metadata, use the currentSoundsArray directly
-    // This ensures we load exactly what's in memory, not what might be in a stale JSON file
-
     Array<File> audioFiles;
 
     // Build file array from currentSoundsArray (which was just updated by loadPreset)
@@ -335,7 +386,7 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         }
     }
 
-    // Load the audio files in order
+    // Load the audio files in order using standard SamplerSound
     for (int i = 0; i < audioFiles.size() && i < 16; ++i)
     {
         File audioFile = audioFiles[i];
@@ -344,9 +395,10 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         if (reader != nullptr)
         {
             BigInteger notes;
-            // Each pad gets a single MIDI note starting at 36
-            int midiNote = 36 + i; // Pad 0 = note 36, Pad 1 = note 37, etc.
+            int midiNote = 36 + i;
             notes.setBit(midiNote, true);
+
+            // Use standard SamplerSound (pitch wheel will handle pitch shifting)
             sampler.addSound(new SamplerSound(String(i), *reader, notes, midiNote, 0, maxLength, maxLength));
 
             DBG("Successfully loaded sample " + String(i) + " to MIDI note " + String(midiNote) + ": " + audioFile.getFileName());
@@ -389,7 +441,7 @@ std::vector<juce::StringArray> FreesoundAdvancedSamplerAudioProcessor::getData()
 	return soundsArray;
 }
 
-// NEW: Playback listener methods
+// Playback listener methods
 void FreesoundAdvancedSamplerAudioProcessor::addPlaybackListener(PlaybackListener* listener)
 {
     playbackListeners.add(listener);
@@ -414,6 +466,49 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyNoteStopped(int noteNumber)
     });
 }
 
+void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int noteNumber, float position)
+{
+    playbackListeners.call([noteNumber, position](PlaybackListener& l) {
+        l.playheadPositionChanged(noteNumber, position);
+    });
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::updatePadParameters(int padIndex, float pitchCents, float volume)
+{
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        padParameters[padIndex].pitchCents = jlimit(-2400.0f, 2400.0f, pitchCents);
+        padParameters[padIndex].volume = jlimit(0.0f, 1.0f, volume);
+
+        // Update any currently playing voices for this pad
+        for (int i = 0; i < sampler.getNumVoices(); ++i)
+        {
+            if (auto* voice = dynamic_cast<TrackingSamplerVoice*>(sampler.getVoice(i)))
+            {
+                if (voice->getCurrentlyPlayingNote() == (padIndex + 36))
+                {
+                    // Apply new pitch immediately to playing voice
+                    float semitonesFromCents = pitchCents / 100.0f;
+                    int pitchWheelValue = 8192 + (int)(semitonesFromCents * 2048.0f);
+                    pitchWheelValue = jlimit(0, 16383, pitchWheelValue);
+                    voice->pitchWheelMoved(pitchWheelValue);
+                }
+            }
+        }
+
+        DBG("Updated pad " + String(padIndex) + " - Pitch: " + String(pitchCents) + " cents, Volume: " + String(volume));
+    }
+}
+
+FreesoundAdvancedSamplerAudioProcessor::PadParameters FreesoundAdvancedSamplerAudioProcessor::getPadParameters(int padIndex) const
+{
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        return padParameters[padIndex];
+    }
+    return PadParameters(); // Return default values
+}
+
 bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description, int slotIndex)
 {
     Array<PadInfo> padInfos = getCurrentPadInfos();
@@ -433,6 +528,13 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
     // Also clear the sampler before rebuilding
     sampler.clearSounds();
     sampler.clearVoices();
+
+    // Reset pad parameters to defaults
+    for (int i = 0; i < 16; ++i)
+    {
+        padParameters[i].pitchCents = 0.0f;
+        padParameters[i].volume = 0.7f;
+    }
 
     // Update query from slot info (read from JSON)
     FileInputStream inputStream(presetFile);
@@ -490,6 +592,14 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
         soundData.add(padInfo.author);
         soundData.add(padInfo.license);
         soundsArray.push_back(soundData);
+
+        // Restore pitch and volume parameters
+        int arrayIndex = currentSoundsArray.size() - 1;
+        if (arrayIndex >= 0 && arrayIndex < 16)
+        {
+            padParameters[arrayIndex].pitchCents = padInfo.pitchCents;
+            padParameters[arrayIndex].volume = padInfo.volume;
+        }
     }
 
     // Update current session location to samples folder
@@ -502,7 +612,8 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
     DBG("Loaded preset slot " + String(slotIndex) + " with " + String(currentSoundsArray.size()) + " samples");
     for (int i = 0; i < currentSoundsArray.size(); ++i)
     {
-        DBG("Sample " + String(i) + ": " + currentSoundsArray[i].name);
+        DBG("Sample " + String(i) + ": " + currentSoundsArray[i].name +
+            " (Pitch: " + String(padParameters[i].pitchCents) + " cents, Volume: " + String(padParameters[i].volume) + ")");
     }
 
     return true;
@@ -517,9 +628,6 @@ bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const File& presetFile, 
 Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() const
 {
     Array<PadInfo> padInfos;
-
-    // This method needs to be implemented based on how you want to extract
-    // current pad information. For now, using the existing arrays:
 
     int maxSize = jmin(currentSoundsArray.size(), (int)soundsArray.size());
 
@@ -538,12 +646,15 @@ Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() cons
         padInfo.fileSize = sound.filesize;
         padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
 
+        // Get pitch and volume from current pad parameters
+        padInfo.pitchCents = padParameters[i].pitchCents;
+        padInfo.volume = padParameters[i].volume;
+
         padInfos.add(padInfo);
     }
 
     return padInfos;
 }
-
 
 void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery)
 {
@@ -640,8 +751,6 @@ void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSo
     }
 }
 
-// Add this method implementation to PluginProcessor.cpp
-
 void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
 {
     if (!currentSessionDownloadLocation.exists())
@@ -671,7 +780,6 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
 
     // Extract session info
     String searchQuery = sessionInfo.getProperty("search_query", query);
-    String downloadDate = sessionInfo.getProperty("download_date", "Unknown");
     int totalSamples = (int)samplesArray.size();
 
     // Regenerate README with current order
@@ -682,7 +790,6 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
     // Header section
     readmeContent += "# Freesound Sample Collection\n\n";
     readmeContent += "**Search Query:** `" + searchQuery + "`\n";
-    readmeContent += "**Date Downloaded:** " + downloadDate + "\n";
     readmeContent += "**Total Samples:** " + String(totalSamples) + "\n\n";
 
     // Description
@@ -763,23 +870,6 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
     readmeFile.replaceWithText(readmeContent);
 }
 
-
-//==============================================================================
-// This creates new instances of the plugin..
-AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new FreesoundAdvancedSamplerAudioProcessor();
-}
-
-void FreesoundAdvancedSamplerAudioProcessor::notifyPlayheadPositionChanged(int noteNumber, float position)
-{
-    playbackListeners.call([noteNumber, position](PlaybackListener& l) {
-        l.playheadPositionChanged(noteNumber, position);
-    });
-}
-
-// Add these method implementations to your PluginProcessor.cpp file:
-
 Array<FSSound> FreesoundAdvancedSamplerAudioProcessor::getCurrentSounds()
 {
     return currentSoundsArray;
@@ -788,4 +878,11 @@ Array<FSSound> FreesoundAdvancedSamplerAudioProcessor::getCurrentSounds()
 File FreesoundAdvancedSamplerAudioProcessor::getCurrentDownloadLocation()
 {
     return currentSessionDownloadLocation;
+}
+
+//==============================================================================
+// This creates new instances of the plugin..
+AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new FreesoundAdvancedSamplerAudioProcessor();
 }
