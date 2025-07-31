@@ -138,6 +138,9 @@ public:
     // Timer callback for download checking
     void timerCallback() override;
 
+    // used for keyboard focus (playing samples with keyboard)
+    void mouseDown(const MouseEvent& event) override;
+
 private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;

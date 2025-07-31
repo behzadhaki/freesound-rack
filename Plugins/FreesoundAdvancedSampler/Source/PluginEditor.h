@@ -40,6 +40,7 @@ public:
     bool saveToSlot(const File& presetFile, int slotIndex, const String& description = "");
 
     SampleGridComponent& getSampleGridComponent() { return sampleGridComponent; }
+    bool keyPressed(const KeyPress& key) override;
 
 private:
     FreesoundAdvancedSamplerAudioProcessor& processor;
@@ -62,5 +63,6 @@ private:
     // Handle preset loading with slot support
     void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
 
+    int getKeyboardPadIndex(const KeyPress& key) const;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)
 };

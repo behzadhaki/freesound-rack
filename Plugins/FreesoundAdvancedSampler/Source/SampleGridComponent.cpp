@@ -700,9 +700,10 @@ void SampleGridComponent::resized()
     // Reserve space for bottom controls
     auto bottomArea = bounds.removeFromBottom(bottomControlsHeight + padding);
 
-    // Position shuffle button in bottom left
-    auto shuffleBounds = bottomArea.reduced(padding);
-    shuffleButton.setBounds(shuffleBounds.removeFromLeft(buttonWidth));
+    // Position controls in bottom area
+    auto controlsBounds = bottomArea.reduced(padding);
+    shuffleButton.setBounds(controlsBounds.removeFromLeft(buttonWidth));
+    controlsBounds.removeFromLeft(spacing);
 
     // Calculate grid layout in remaining space
     int totalPadding = padding * (GRID_SIZE + 1);
@@ -1513,6 +1514,12 @@ SamplePad::SampleInfo SampleGridComponent::getPadInfo(int padIndex) const
     SamplePad::SampleInfo emptyInfo;
     emptyInfo.hasValidSample = false;
     return emptyInfo;
+}
+
+void SampleGridComponent::mouseDown(const MouseEvent& event)
+{
+    // Let normal mouse handling continue
+    Component::mouseDown(event);
 }
 
 //==============================================================================

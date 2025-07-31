@@ -69,8 +69,24 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
         sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
     }
 
+    // Set up sample grid component
+    sampleGridComponent.setProcessor(&processor);
+    addAndMakeVisible(sampleGridComponent);
+
+    // Make sure the grid can receive keyboard focus and starts with focus
+    sampleGridComponent.setWantsKeyboardFocus(true);
+
+    setWantsKeyboardFocus(true);
+
     setSize (1200, 700);  // Increased width for preset browser
     setResizable(false, false);
+
+    // Grab focus after a delay to ensure component is ready
+    Timer::callAfterDelay(200, [this]() {
+        if (isShowing()) {
+            grabKeyboardFocus();
+        }
+    });
 }
 
 FreesoundAdvancedSamplerAudioProcessorEditor::~FreesoundAdvancedSamplerAudioProcessorEditor()
@@ -204,5 +220,69 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(con
             AlertWindow::WarningIcon,
             "Load Failed",
             "Failed to load preset \"" + presetInfo.name + "\" slot " + String(slotIndex + 1) + ". Some samples may be missing.");
+    }
+}
+
+bool FreesoundAdvancedSamplerAudioProcessorEditor::keyPressed(const KeyPress& key)
+{
+    int padIndex = getKeyboardPadIndex(key);
+
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        // Check if this pad has a valid sample by getting info from the grid
+        auto padInfo = sampleGridComponent.getPadInfo(padIndex);
+        if (padInfo.hasValidSample)
+        {
+            int noteNumber = padIndex + 36;
+            processor.addToMidiBuffer(noteNumber);
+
+            // Optional: Add some visual feedback
+            repaint();
+
+            return true; // Key was handled
+        }
+    }
+
+    return Component::keyPressed(key); // Let parent handle unrecognized keys
+}
+
+int FreesoundAdvancedSamplerAudioProcessorEditor::getKeyboardPadIndex(const KeyPress& key) const
+{
+    int keyCode = key.getKeyCode();
+
+    // Map keyboard keys to pad indices
+    // Grid layout (bottom row to top row):
+    // Bottom row (pads 0-3): z x c v
+    // Second row (pads 4-7): a s d f
+    // Third row (pads 8-11): q w e r
+    // Top row (pads 12-15): 1 2 3 4
+
+    switch (keyCode)
+    {
+        // Bottom row (pads 0-3)
+        case 'z': case 'Z': return 0;
+        case 'x': case 'X': return 1;
+        case 'c': case 'C': return 2;
+        case 'v': case 'V': return 3;
+
+        // Second row (pads 4-7)
+        case 'a': case 'A': return 4;
+        case 's': case 'S': return 5;
+        case 'd': case 'D': return 6;
+        case 'f': case 'F': return 7;
+
+        // Third row (pads 8-11)
+        case 'q': case 'Q': return 8;
+        case 'w': case 'W': return 9;
+        case 'e': case 'E': return 10;
+        case 'r': case 'R': return 11;
+
+        // Top row (pads 12-15)
+        case '1': return 12;
+        case '2': return 13;
+        case '3': return 14;
+        case '4': return 15;
+
+        default: return -1; // Key not mapped
     }
 }
