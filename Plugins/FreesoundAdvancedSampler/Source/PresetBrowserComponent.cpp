@@ -79,57 +79,70 @@ void SlotButton::setIsActive(bool isActive)
 //==============================================================================
 
 PresetListItem::PresetListItem(const PresetInfo& info)
-    : presetInfo(info)
+   : presetInfo(info)
 {
-    setSize(200, 120); // Increased height for slots
+   setSize(200, 85); // Reduced height from 120 to 85
 
-    // Delete Button
-    deleteButton.setButtonText("DEL");
-    deleteButton.setSize(40, 18);
-    deleteButton.onClick = [this]() {
-        if (onDeleteClicked)
-            onDeleteClicked(this);
-    };
-    addAndMakeVisible(deleteButton);
+   // Delete Button - smaller size
+   deleteButton.setButtonText("DEL");
+   deleteButton.setSize(35, 16); // Reduced from 40x18 to 35x16
+   deleteButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
+   deleteButton.setColour(TextButton::buttonOnColourId, Colour(0xffFF6B6B));
+   deleteButton.setColour(TextButton::textColourOffId, Colours::white);
+   deleteButton.setColour(TextButton::textColourOnId, Colours::black);
+   deleteButton.onClick = [this]() {
+       if (onDeleteClicked)
+           onDeleteClicked(this);
+   };
+   addAndMakeVisible(deleteButton);
 
-    // Load Button
-    loadButton.setButtonText("LOAD");
-    loadButton.setSize(40, 18);
-    loadButton.onClick = [this]() {
-        // Load first available slot by default
-        for (int i = 0; i < 8; ++i)
-        {
-            if (presetInfo.slots[i].hasData)
-            {
-                if (onLoadSlotClicked)
-                    onLoadSlotClicked(presetInfo, i);
-                break;
-            }
-        }
-    };
-    addAndMakeVisible(loadButton);
+   // Load Button - smaller size
+   loadButton.setButtonText("LOAD");
+   loadButton.setSize(35, 16); // Reduced from 40x18 to 35x16
+   loadButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
+   loadButton.setColour(TextButton::buttonOnColourId, Colour(0xff4ECDC4));
+   loadButton.setColour(TextButton::textColourOffId, Colours::white);
+   loadButton.setColour(TextButton::textColourOnId, Colours::black);
+   loadButton.onClick = [this]() {
+       // Load first available slot by default
+       for (int i = 0; i < 8; ++i)
+       {
+           if (presetInfo.slots[i].hasData)
+           {
+               if (onLoadSlotClicked)
+                   onLoadSlotClicked(presetInfo, i);
+               break;
+           }
+       }
+   };
+   addAndMakeVisible(loadButton);
 
-    // Rename Editor
-    renameEditor.setText(presetInfo.name, dontSendNotification);
-    renameEditor.setSelectAllWhenFocused(true);
-    renameEditor.setFont(Font(14.0f, Font::bold));
-    renameEditor.onReturnKey = [this]() { confirmRename(); };
-    addAndMakeVisible(renameEditor);
+   // Rename Editor - more compact
+   renameEditor.setText(presetInfo.name, dontSendNotification);
+   renameEditor.setSelectAllWhenFocused(true);
+   renameEditor.setFont(Font(12.0f, Font::bold));
+   renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+   renameEditor.setColour(TextEditor::textColourId, Colours::white);
+   renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));
+   renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
+   renameEditor.onReturnKey = [this]() { confirmRename(); };
+   addAndMakeVisible(renameEditor);
 
-    // Create slot buttons
-    for (int i = 0; i < 8; ++i)
-    {
-        slotButtons[i] = std::make_unique<SlotButton>(i);
-        slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
-        slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
+   // Create slot buttons - smaller size
+   for (int i = 0; i < 8; ++i)
+   {
+       slotButtons[i] = std::make_unique<SlotButton>(i);
+       slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
+       slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
+       slotButtons[i]->setSize(16, 16); // Reduced from 20x20 to 16x16
 
-        slotButtons[i]->onClick = [this, i]() {
-            ModifierKeys modifiers = ModifierKeys::getCurrentModifiers();
-            handleSlotClicked(i, modifiers);
-        };
+       slotButtons[i]->onClick = [this, i]() {
+           ModifierKeys modifiers = ModifierKeys::getCurrentModifiers();
+           handleSlotClicked(i, modifiers);
+       };
 
-        addAndMakeVisible(*slotButtons[i]);
-    }
+       addAndMakeVisible(*slotButtons[i]);
+   }
 }
 
 PresetListItem::~PresetListItem() {}
@@ -149,26 +162,26 @@ void PresetListItem::paint(Graphics& g)
     {
         g.setColour(Colour(0xff2A2A2A).withAlpha(0.6f));
     }
-    g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
+    g.fillRoundedRectangle(bounds.toFloat(), 4.0f); // Slightly less rounded
 
     // Modern border
     if (isSelectedState)
     {
         g.setColour(Colour(0xff00D9FF));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.5f);
     }
     else
     {
         g.setColour(Colour(0xff404040));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
     }
 
-    auto textBounds = bounds.reduced(8);
-    textBounds.removeFromRight(90); // leave space for buttons
-    textBounds.removeFromBottom(30); // leave space for slots
+    auto textBounds = bounds.reduced(6);
+    textBounds.removeFromRight(75); // leave space for buttons
+    textBounds.removeFromBottom(20); // leave space for slots
 
-    // Modern white text styling
-    g.setFont(Font(11.0f));
+    // Compact text styling
+    g.setFont(Font(10.0f)); // Slightly smaller font
     g.setColour(Colours::white);
 
     // Count total samples across all slots
@@ -179,34 +192,34 @@ void PresetListItem::paint(Graphics& g)
             totalSamples += slot.sampleCount;
     }
 
-    String infoText = "Total Samples: " + String(totalSamples);
-    g.drawText(infoText, textBounds.removeFromTop(15), Justification::left, true);
+    String infoText = "Samples: " + String(totalSamples); // Shorter text
+    g.drawText(infoText, textBounds.removeFromTop(12), Justification::left, true);
 
-    g.setFont(Font(10.0f));
+    g.setFont(Font(9.0f)); // Smaller date font
     g.setColour(Colour(0xff999999)); // Light grey for secondary text
     g.drawText(presetInfo.createdDate, textBounds, Justification::left, true);
 
-    // Draw "Slots:" label with modern styling
-    auto slotsBounds = bounds.reduced(8);
-    slotsBounds.removeFromTop(bounds.getHeight() - 35);
-    slotsBounds.removeFromBottom(5);
+    // Draw "Slots:" label with compact styling
+    auto slotsBounds = bounds.reduced(6);
+    slotsBounds.removeFromTop(bounds.getHeight() - 25);
+    slotsBounds.removeFromBottom(4);
 
-    g.setFont(Font(10.0f));
+    g.setFont(Font(9.0f)); // Smaller font
     g.setColour(Colours::white);
-    g.drawText("Slots:", slotsBounds.removeFromLeft(35), Justification::left, true);
+    g.drawText("Slots:", slotsBounds.removeFromLeft(30), Justification::left, true);
 }
 
 void PresetListItem::resized()
 {
     auto bounds = getLocalBounds();
-    auto textBounds = bounds.reduced(8);
-    textBounds.removeFromRight(90);
-    renameEditor.setBounds(textBounds.removeFromTop(20));
+    auto textBounds = bounds.reduced(6); // Reduced padding
+    textBounds.removeFromRight(75); // Reduced space for buttons
+    renameEditor.setBounds(textBounds.removeFromTop(18)); // Reduced height
 
-    int buttonWidth = 40;
-    int buttonHeight = 18;
-    int margin = 5;
-    int spacing = 5;
+    int buttonWidth = 35;
+    int buttonHeight = 16;
+    int margin = 4; // Reduced margin
+    int spacing = 4; // Reduced spacing
 
     int rightEdge = bounds.getRight() - margin;
 
@@ -220,14 +233,14 @@ void PresetListItem::resized()
                          bounds.getY() + margin,
                          buttonWidth, buttonHeight);
 
-    // Position slot buttons
-    auto slotsBounds = bounds.reduced(8);
-    slotsBounds.removeFromTop(bounds.getHeight() - 35);
-    slotsBounds.removeFromBottom(5);
-    slotsBounds.removeFromLeft(40); // Space for "Slots:" label
+    // Position slot buttons - more compact layout
+    auto slotsBounds = bounds.reduced(6);
+    slotsBounds.removeFromTop(bounds.getHeight() - 25); // Reduced space
+    slotsBounds.removeFromBottom(4);
+    slotsBounds.removeFromLeft(35); // Space for "Slots:" label
 
-    int slotSpacing = 3;
-    int slotSize = 20;
+    int slotSpacing = 2; // Reduced spacing
+    int slotSize = 16; // Reduced size
 
     for (size_t i = 0; i < slotButtons.size(); ++i)
     {
@@ -377,6 +390,7 @@ PresetBrowserComponent::PresetBrowserComponent()
     renameEditor.onEscapeKey = [this]() { hideInlineRenameEditor(false); };
     renameEditor.onFocusLost = [this]() { hideInlineRenameEditor(true); };
     addAndMakeVisible(renameEditor);
+
 }
 
 PresetBrowserComponent::~PresetBrowserComponent() {}
@@ -436,8 +450,8 @@ void PresetBrowserComponent::refreshPresetList()
     Array<PresetInfo> presets = processor->getPresetManager().getAvailablePresets();
 
     int yPosition = 0;
-    const int itemHeight = 125; // Increased height for slots
-    const int spacing = 5;
+    const int itemHeight = 85; // Reduced from 125 to 85 for more compact layout
+    const int spacing = 3; // Reduced spacing
 
     for (const auto& presetInfo : presets)
     {
