@@ -22,6 +22,7 @@ SamplePad::SamplePad(int index)
     , audioThumbnail(512, formatManager, audioThumbnailCache)
     , freesoundId(String())
     , licenseType(String())
+    , padQuery(String())
     , playheadPosition(0.0f)
     , isPlaying(false)
     , hasValidSample(false)
@@ -32,10 +33,52 @@ SamplePad::SamplePad(int index)
     // Generate a unique color for each pad
     float hue = (float)padIndex / 16.0f;
     padColour = Colour::fromHSV(hue, 0.3f, 0.8f, 1.0f);
+
+    // Set up query text box
+    queryTextBox.setMultiLine(false);
+    queryTextBox.setReturnKeyStartsNewLine(false);
+    queryTextBox.setReadOnly(false);
+    queryTextBox.setScrollbarsShown(false);
+    queryTextBox.setCaretVisible(true);
+    queryTextBox.setPopupMenuEnabled(true);
+    queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.8f));
+    queryTextBox.setColour(TextEditor::textColourId, Colours::black);
+    queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
+    queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
+    queryTextBox.setFont(Font(9.0f));
+    queryTextBox.onReturnKey = [this]() {
+        // When user presses enter, trigger search with this pad's query
+        String query = queryTextBox.getText().trim();
+        if (query.isNotEmpty())
+        {
+            if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+            {
+                gridComponent->searchForSinglePadWithQuery(padIndex, query);
+            }
+        }
+    };
+    addAndMakeVisible(queryTextBox);
 }
 
 SamplePad::~SamplePad()
 {
+}
+
+void SamplePad::resized()
+{
+    auto bounds = getLocalBounds();
+
+    // Position query text box at the top, between badges
+    auto queryBounds = bounds.reduced(3);
+    int queryHeight = 14;
+    int leftBadgeWidth = hasValidSample && freesoundId.isNotEmpty() ? 33 : 18; // Web badge or just pad number
+    int rightBadgeWidth = hasValidSample && licenseType.isNotEmpty() ? 38 : 3; // License badge or margin
+
+    queryBounds = queryBounds.removeFromTop(queryHeight);
+    queryBounds.removeFromLeft(leftBadgeWidth);
+    queryBounds.removeFromRight(rightBadgeWidth);
+
+    queryTextBox.setBounds(queryBounds);
 }
 
 void SamplePad::paint(Graphics& g)
@@ -76,7 +119,9 @@ void SamplePad::paint(Graphics& g)
 
     if (hasValidSample)
     {
+        // Adjust waveform bounds to account for query text box at top
         auto waveformBounds = bounds.reduced(8, 20);
+        waveformBounds.removeFromTop(14); // Space for query text box
 
         // Draw waveform
         drawWaveform(g, waveformBounds);
@@ -90,9 +135,6 @@ void SamplePad::paint(Graphics& g)
         // Draw filename and author in black text at bottom left of waveform area
         g.setColour(Colours::black);
         g.setFont(9.0f);
-
-        // Get the waveform bounds (same as used for drawing waveform)
-        auto textBounds = bounds.reduced(8, 20);
 
         // Format filename to max 10 characters with ellipsis if needed
         String displayName = sampleName;
@@ -112,16 +154,17 @@ void SamplePad::paint(Graphics& g)
         String displayText = displayName + " by " + displayAuthor;
 
         // Position at bottom left of waveform area
-        auto filenameBounds = textBounds.removeFromBottom(12);
+        auto filenameBounds = waveformBounds.removeFromBottom(12);
         g.drawText(displayText, filenameBounds, Justification::bottomLeft, true);
 
-        // Draw "Web" badge in TOP LEFT corner
+        // Draw "Web" badge in TOP LEFT corner (below query box)
         if (freesoundId.isNotEmpty())
         {
             g.setFont(9.0f);
 
-            // Create web badge in top-left corner
+            // Create web badge in top-left corner, below query text box
             auto webBounds = bounds.reduced(3);
+            webBounds.removeFromTop(16); // Space for query text box
             int badgeWidth = 30;
             int badgeHeight = 12;
             webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
@@ -135,14 +178,15 @@ void SamplePad::paint(Graphics& g)
             g.drawText("Web", webBounds, Justification::centred);
         }
 
-        // Draw license badge in TOP RIGHT corner
+        // Draw license badge in TOP RIGHT corner (below query box)
         if (licenseType.isNotEmpty())
         {
             g.setFont(9.0f);
             String shortLicense = getLicenseShortName(licenseType);
 
-            // Create license badge in top-right corner
+            // Create license badge in top-right corner, below query text box
             auto licenseBounds = bounds.reduced(3);
+            licenseBounds.removeFromTop(16); // Space for query text box
             int badgeWidth = 35;
             int badgeHeight = 12;
             licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
@@ -197,10 +241,11 @@ void SamplePad::paint(Graphics& g)
 
     if (!hasValidSample)
     {
-        // Empty pad - draw centered text above the search badge
+        // Empty pad - draw centered text above the search badge, below query box
         g.setColour(Colours::white.withAlpha(0.5f));
         g.setFont(12.0f);
         auto emptyBounds = bounds.reduced(5);
+        emptyBounds.removeFromTop(20); // Space for query text box
         emptyBounds.removeFromBottom(20); // Leave space for search badge
         g.drawText("Empty", emptyBounds, Justification::centred);
     }
@@ -211,10 +256,6 @@ void SamplePad::paint(Graphics& g)
     auto numberBounds = bounds.reduced(2);
     auto numberRect = numberBounds.removeFromTop(10).removeFromLeft(15);
     g.drawText(String(padIndex + 1), numberRect, Justification::centred);
-}
-
-void SamplePad::resized()
-{
 }
 
 void SamplePad::mouseDown(const MouseEvent& event)
@@ -229,10 +270,29 @@ void SamplePad::mouseDown(const MouseEvent& event)
 
         if (searchBounds.contains(event.getPosition()))
         {
-            // Trigger single pad search
-            if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+            // Use the pad's individual query if it has one, otherwise use master query
+            String searchQuery = queryTextBox.getText().trim();
+            if (searchQuery.isEmpty() && processor)
             {
-                gridComponent->searchForSinglePad(padIndex);
+                searchQuery = processor->getQuery();
+            }
+
+            if (searchQuery.isNotEmpty())
+            {
+                // Update the text box with the query being used
+                queryTextBox.setText(searchQuery);
+
+                // Trigger single pad search
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                }
+            }
+            else
+            {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Empty Query",
+                    "Please enter a search term in the pad's text box or the main search box.");
             }
             return;
         }
@@ -429,43 +489,6 @@ void SamplePad::itemDropped(const SourceDetails& dragSourceDetails)
     }
 }
 
-void SamplePad::setSample(const File& file, const String& name, const String& author, String fsId, String license)
-{
-    audioFile = file;
-    sampleName = name;
-    authorName = author;
-    freesoundId = fsId;
-    licenseType = license;
-
-    hasValidSample = audioFile.existsAsFile();
-
-    // Always load waveform when setting a sample
-    if (hasValidSample)
-    {
-        loadWaveform();
-    }
-    else
-    {
-        audioThumbnail.clear();
-    }
-
-    repaint();
-}
-
-void SamplePad::clearSample()
-{
-    audioFile = File();
-    sampleName = "";
-    authorName = "";
-    freesoundId = String();
-    licenseType = String();
-    hasValidSample = false;
-    isPlaying = false;
-    playheadPosition = 0.0f;
-    audioThumbnail.clear();
-    repaint();
-}
-
 void SamplePad::loadWaveform()
 {
     if (audioFile.existsAsFile())
@@ -532,19 +555,6 @@ void SamplePad::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
     processor = p;
 }
 
-SamplePad::SampleInfo SamplePad::getSampleInfo() const
-{
-    SampleInfo info;
-    info.audioFile = audioFile;
-    info.sampleName = sampleName;
-    info.authorName = authorName;
-    info.freesoundId = freesoundId;
-    info.licenseType = licenseType;
-    info.hasValidSample = hasValidSample;
-    info.padIndex = 0; // Will be set by SampleGridComponent
-    return info;
-}
-
 String SamplePad::getLicenseShortName(const String& license) const
 {
     // Parse the actual Creative Commons URLs to determine license type
@@ -564,6 +574,84 @@ String SamplePad::getLicenseShortName(const String& license) const
         return "by-nc"; // Sampling+ is treated as by-nc according to Freesound
     else
         return "by-nc"; // Default to most restrictive for unknown licenses
+}
+
+void SamplePad::setSample(const File& audioFile, const String& name, const String& author, String fsId, String license, String query)
+{
+    sampleName = name;
+    authorName = author;
+    freesoundId = fsId;
+    licenseType = license;
+    padQuery = query;
+
+    // Update query text box
+    queryTextBox.setText(query, dontSendNotification);
+
+    // Update audio file and waveform
+    this->audioFile = audioFile;
+    hasValidSample = audioFile.existsAsFile();
+
+    if (hasValidSample)
+    {
+        loadWaveform();
+    }
+    else
+    {
+        audioThumbnail.clear();
+    }
+
+    resized(); // Recalculate layout
+    repaint();
+}
+
+void SamplePad::clearSample()
+{
+    audioFile = File();
+    sampleName = "";
+    authorName = "";
+    freesoundId = String();
+    licenseType = String();
+    padQuery = String();
+    hasValidSample = false;
+    isPlaying = false;
+    playheadPosition = 0.0f;
+    audioThumbnail.clear();
+
+    // Clear query text box
+    queryTextBox.setText("", dontSendNotification);
+
+    resized(); // Recalculate layout
+    repaint();
+}
+
+void SamplePad::setQuery(const String& query)
+{
+    padQuery = query;
+    queryTextBox.setText(query, dontSendNotification);
+}
+
+String SamplePad::getQuery() const
+{
+    return queryTextBox.getText().trim();
+}
+
+bool SamplePad::hasQuery() const
+{
+    return queryTextBox.getText().trim().isNotEmpty();
+}
+
+SamplePad::SampleInfo SamplePad::getSampleInfo() const
+{
+    SampleInfo info;
+    info.audioFile = audioFile;
+    info.sampleName = sampleName;
+    info.authorName = authorName;
+    info.freesoundId = freesoundId;
+    info.licenseType = licenseType;
+    info.query = getQuery(); // Get current query from text box
+    info.hasValidSample = hasValidSample;
+    info.padIndex = 0; // Will be set by SampleGridComponent
+    return info;
 }
 
 //==============================================================================
@@ -1117,54 +1205,6 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
     return allSamples;
 }
 
-void SampleGridComponent::searchForSinglePad(int padIndex)
-{
-    if (!processor || padIndex < 0 || padIndex >= TOTAL_PADS)
-        return;
-
-    // Get the search query from the processor (from the search input field)
-    String query = processor->getQuery();
-
-    if (query.isEmpty())
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Empty Query",
-            "Please enter a search term in the search box above.");
-        return;
-    }
-
-    // Search for a single sound
-    Array<FSSound> searchResults = searchSingleSound(query);
-
-    if (searchResults.isEmpty())
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "No Results",
-            "No sounds found for the query: " + query);
-        return;
-    }
-
-    // Get the first (random) result
-    FSSound newSound = searchResults[0];
-
-    // Create the filename
-    String fileName = "FS_ID_" + newSound.id + ".ogg";
-    File samplesFolder = processor->getCurrentDownloadLocation();
-    File audioFile = samplesFolder.getChildFile(fileName);
-
-    // Check if we already have this sample downloaded
-    if (audioFile.existsAsFile())
-    {
-        // Use existing file
-        loadSingleSample(padIndex, newSound, audioFile);
-    }
-    else
-    {
-        // Need to download it
-        downloadSingleSample(padIndex, newSound);
-    }
-}
-
 Array<FSSound> SampleGridComponent::searchSingleSound(const String& query)
 {
     FreesoundClient client(FREESOUND_API_KEY);
@@ -1261,7 +1301,166 @@ void SampleGridComponent::updateSinglePadInProcessor(int padIndex, const FSSound
     soundsData[padIndex] = soundData;
 }
 
-// Add this method to handle download checking:
+void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& masterQuery)
+{
+    if (!processor)
+        return;
+
+    File downloadDir = processor->getCurrentDownloadLocation();
+
+    // Find pads with empty queries
+    Array<int> emptyQueryPads;
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        if (!samplePads[i]->hasQuery())
+        {
+            emptyQueryPads.add(i);
+        }
+    }
+
+    if (emptyQueryPads.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "No Empty Pads",
+            "All pads already have individual search queries. Clear pad queries to use master search.");
+        return;
+    }
+
+    // Distribute sounds to empty query pads
+    int soundIndex = 0;
+    for (int padIndex : emptyQueryPads)
+    {
+        if (soundIndex >= sounds.size())
+            break;
+
+        const FSSound& sound = sounds[soundIndex];
+
+        // Set the master query in the pad's text box
+        samplePads[padIndex]->setQuery(masterQuery);
+
+        // Create filename using ID-based naming scheme
+        String expectedFilename = "FS_ID_" + sound.id + ".ogg";
+        File audioFile = downloadDir.getChildFile(expectedFilename);
+
+        // Get sample info
+        String sampleName = (soundIndex < soundInfo.size() && soundInfo[soundIndex].size() > 0) ? soundInfo[soundIndex][0] : sound.name;
+        String authorName = (soundIndex < soundInfo.size() && soundInfo[soundIndex].size() > 1) ? soundInfo[soundIndex][1] : sound.user;
+        String license = (soundIndex < soundInfo.size() && soundInfo[soundIndex].size() > 2) ? soundInfo[soundIndex][2] : sound.license;
+
+        if (audioFile.existsAsFile())
+        {
+            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, masterQuery);
+        }
+
+        soundIndex++;
+    }
+
+    // Update processor arrays to reflect the new state
+    updateProcessorArraysFromGrid();
+
+    // Update JSON metadata
+    updateJsonMetadata();
+
+    // Reload the sampler
+    if (processor)
+    {
+        processor->setSources();
+        processor->updateReadmeFile();
+    }
+
+    DBG("Master search applied to " + String(emptyQueryPads.size()) + " pads with empty queries");
+}
+
+void SampleGridComponent::searchForSinglePadWithQuery(int padIndex, const String& query)
+{
+    if (!processor || padIndex < 0 || padIndex >= TOTAL_PADS)
+        return;
+
+    if (query.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Empty Query",
+            "Please enter a search term.");
+        return;
+    }
+
+    // Search for a single sound with the specific query
+    Array<FSSound> searchResults = searchSingleSound(query);
+
+    if (searchResults.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "No Results",
+            "No sounds found for the query: " + query);
+        return;
+    }
+
+    // Get the first (random) result
+    FSSound newSound = searchResults[0];
+
+    // Create the filename
+    String fileName = "FS_ID_" + newSound.id + ".ogg";
+    File samplesFolder = processor->getCurrentDownloadLocation();
+    File audioFile = samplesFolder.getChildFile(fileName);
+
+    // Check if we already have this sample downloaded
+    if (audioFile.existsAsFile())
+    {
+        // Use existing file
+        loadSingleSampleWithQuery(padIndex, newSound, audioFile, query);
+    }
+    else
+    {
+        // Need to download it
+        downloadSingleSampleWithQuery(padIndex, newSound, query);
+    }
+}
+
+void SampleGridComponent::loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query)
+{
+    // Update the pad visually with the query
+    samplePads[padIndex]->setSample(audioFile, sound.name, sound.user, sound.id, sound.license, query);
+
+    // Update processor's internal arrays
+    updateSinglePadInProcessor(padIndex, sound);
+
+    // Reload the sampler to include the new sample
+    if (processor)
+    {
+        processor->setSources();
+        processor->updateReadmeFile();
+    }
+
+    // Update JSON metadata
+    updateJsonMetadata();
+}
+
+void SampleGridComponent::downloadSingleSampleWithQuery(int padIndex, const FSSound& sound, const String& query)
+{
+    // Store the query for later use
+    currentDownloadQuery = query;
+
+    // Create a download manager for single file
+    singlePadDownloadManager = std::make_unique<AudioDownloadManager>();
+    currentDownloadPadIndex = padIndex;
+    currentDownloadSound = sound;
+
+    // Use a timer to check for completion
+    startTimer(500); // Check every 500ms
+
+    // Start download
+    Array<FSSound> singleSoundArray;
+    singleSoundArray.add(sound);
+
+    File samplesFolder = processor->getCurrentDownloadLocation();
+    singlePadDownloadManager->startDownloads(singleSoundArray, samplesFolder, query);
+
+    // Show some feedback to user
+    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+        "Downloading",
+        "Downloading new sample for pad " + String(padIndex + 1) + "...");
+}
+
 void SampleGridComponent::timerCallback()
 {
     if (singlePadDownloadManager && currentDownloadPadIndex >= 0)
@@ -1275,7 +1474,7 @@ void SampleGridComponent::timerCallback()
         {
             // Download completed successfully
             stopTimer();
-            loadSingleSample(currentDownloadPadIndex, currentDownloadSound, audioFile);
+            loadSingleSampleWithQuery(currentDownloadPadIndex, currentDownloadSound, audioFile, currentDownloadQuery);
 
             AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
                 "Download Complete",
@@ -1284,6 +1483,7 @@ void SampleGridComponent::timerCallback()
             // Clean up
             singlePadDownloadManager.reset();
             currentDownloadPadIndex = -1;
+            currentDownloadQuery = "";
         }
         else if (!singlePadDownloadManager->isThreadRunning())
         {
@@ -1297,6 +1497,7 @@ void SampleGridComponent::timerCallback()
             // Clean up
             singlePadDownloadManager.reset();
             currentDownloadPadIndex = -1;
+            currentDownloadQuery = "";
         }
     }
 }

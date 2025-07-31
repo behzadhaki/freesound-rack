@@ -35,10 +35,15 @@ public:
     void itemDragExit(const SourceDetails& dragSourceDetails) override;
     void itemDropped(const SourceDetails& dragSourceDetails) override;
 
-    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String());
+    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String(), String query = String());
     void setPlayheadPosition(float position); // 0.0 to 1.0
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
+
+    // Query management
+    void setQuery(const String& query);
+    String getQuery() const;
+    bool hasQuery() const;
 
     // Method to get sample info for drag operations
     struct SampleInfo {
@@ -47,6 +52,7 @@ public:
         String authorName;
         String freesoundId;
         String licenseType;
+        String query; // Add query to sample info
         bool hasValidSample;
         int padIndex; // Index of the pad (1-based)
     };
@@ -77,6 +83,7 @@ private:
     File audioFile;
     String freesoundId;
     String licenseType;
+    String padQuery; // Individual query for this pad
 
     float playheadPosition;
     bool isPlaying;
@@ -84,6 +91,9 @@ private:
     bool isDragHover; // Track drag hover state
 
     Colour padColour;
+
+    // NEW: Individual query text box
+    TextEditor queryTextBox;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
@@ -113,8 +123,11 @@ public:
     // Shuffle samples randomly
     void shuffleSamples();
 
-    // NEW: Search for single pad
-    void searchForSinglePad(int padIndex);
+    // NEW: Master search that only affects pads with empty queries
+    void handleMasterSearch(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& masterQuery);
+
+    // NEW: Single pad search with specific query
+    void searchForSinglePadWithQuery(int padIndex, const String& query);
 
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
@@ -138,10 +151,13 @@ private:
     std::unique_ptr<AudioDownloadManager> singlePadDownloadManager;
     int currentDownloadPadIndex = -1;
     FSSound currentDownloadSound;
+    String currentDownloadQuery;
 
     // Helper methods for loading samples
     void loadSamplesFromJson(const File& metadataFile);
     void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
+    void loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query);
+    void downloadSingleSampleWithQuery(int padIndex, const FSSound& sound, const String& query);
 
     // Update JSON metadata after swap
     void updateJsonMetadata();

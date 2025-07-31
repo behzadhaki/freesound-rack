@@ -213,13 +213,24 @@ void FreesoundAdvancedSamplerAudioProcessor::setStateInformation (const void* da
 {
 }
 
-//==============================================================================
-void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady (Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)
+void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)
 {
-	query = textQuery;
-	soundsArray = soundInfo;
-    currentSoundsArray = sounds; // NEW: Store the sounds array
-	startDownloads(sounds);
+    query = textQuery;
+    soundsArray = soundInfo;
+    currentSoundsArray = sounds; // Store the sounds array
+
+    // Check if we have an editor with a grid component to handle master search
+    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    {
+        // Use the new master search method that only affects pads with empty queries
+        editor->getSampleGridComponent().handleMasterSearch(sounds, soundInfo, textQuery);
+    }
+
+    // Always start downloads to ensure all samples are available locally
+    startDownloads(sounds);
+
+    // NOTE: We do NOT call updateSamples here anymore since handleMasterSearch handles the grid update
+    // This prevents the text boxes from being cleared after master search
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>& sounds)
@@ -275,14 +286,18 @@ void FreesoundAdvancedSamplerAudioProcessor::downloadProgressChanged(const Audio
 
 void FreesoundAdvancedSamplerAudioProcessor::downloadCompleted(bool success)
 {
-	if (success)
-	{
-		setSources();
-	}
+    if (success)
+    {
+        setSources();
+    }
 
-	downloadListeners.call([success](DownloadListener& l) {
-		l.downloadCompleted(success);
-	});
+    downloadListeners.call([success](DownloadListener& l) {
+        l.downloadCompleted(success);
+    });
+
+    // DO NOT call updateSamples here for master search downloads
+    // The grid has already been updated by handleMasterSearch
+    // Only update if this was a preset load or other non-master-search operation
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addDownloadListener(DownloadListener* listener)

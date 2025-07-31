@@ -4,7 +4,7 @@
     FreesoundSearchComponent.h
     Created: 10 Sep 2019 5:44:51pm
     Author:  Frederic Font Corbera
-    Modified: Updated to work with grid layout and individual pad queries
+    Modified: Updated to work with grid layout
 
   ==============================================================================
 */
@@ -33,7 +33,7 @@ public:
         addAndMakeVisible (searchButton);
 
         // Add instruction label
-        instructionLabel.setText("Search for sounds and they will appear in the 4x4 grid below. Click pads to play samples. Click 'Web' badge to open sample page on Freesound. Click license badge to view Creative Commons license. Use drag area to export all samples. Click 'Search' badge on individual pads to search for that pad only.", dontSendNotification);
+        instructionLabel.setText("Search for sounds and they will appear in the 4x4 grid below. Click pads to play samples. Click 'Web' badge to open sample page on Freesound. Click license badge to view Creative Commons license. Use drag area to export all samples.", dontSendNotification);
         instructionLabel.setJustificationType(Justification::centred);
         instructionLabel.setColour(Label::textColourId, Colours::grey);
         addAndMakeVisible(instructionLabel);
@@ -75,7 +75,7 @@ public:
         instructionLabel.setBounds(bounds);
     }
 
-    void buttonClicked (Button* button) override
+    void FreesoundSearchComponent::buttonClicked(Button* button)
     {
         if (button == &searchButton)
         {
@@ -105,8 +105,14 @@ public:
                 soundInfo.push_back(soundData);
             }
 
-            // Just notify processor - let the processor handle the grid update
-            // This avoids the incomplete type issue while maintaining functionality
+            // NEW: Check if we can directly access the grid component
+            if (auto* editor = findParentComponentOfClass<FreesoundAdvancedSamplerAudioProcessorEditor>())
+            {
+                // Use the new master search approach
+                editor->getSampleGridComponent().handleMasterSearch(sounds, soundInfo, query);
+            }
+            FreesoundSearchComponent.h
+            // Still notify processor for compatibility
             processor->newSoundsReady(sounds, query, soundInfo);
         }
     }
