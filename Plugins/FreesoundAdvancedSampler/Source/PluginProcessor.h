@@ -18,37 +18,6 @@
 using namespace juce;
 
 //==============================================================================
-// Enhanced SamplerSound class with pitch and volume control
-//==============================================================================
-class PitchableVolumeSound : public SamplerSound
-{
-public:
-    PitchableVolumeSound(const String& name,
-                        AudioFormatReader& source,
-                        const BigInteger& notes,
-                        int midiNoteForNormalPitch,
-                        double attackTimeSecs,
-                        double releaseTimeSecs,
-                        double maxSampleLengthSeconds)
-        : SamplerSound(name, source, notes, midiNoteForNormalPitch,
-                      attackTimeSecs, releaseTimeSecs, maxSampleLengthSeconds)
-        , pitchCents(0.0f)
-        , volume(0.7f)
-    {
-    }
-
-    void setPitchCents(float cents) { pitchCents = cents; }
-    void setVolume(float vol) { volume = jlimit(0.0f, 1.0f, vol); }
-
-    float getPitchCents() const { return pitchCents; }
-    float getVolume() const { return volume; }
-
-private:
-    float pitchCents;
-    float volume;
-};
-
-//==============================================================================
 /**
 */
 class FreesoundAdvancedSamplerAudioProcessor  : public AudioProcessor,
@@ -94,7 +63,7 @@ public:
 
     //==============================================================================
     File tmpDownloadLocation;
-    File currentSessionDownloadLocation; // Current session's download folder
+    File currentSessionDownloadLocation; // NEW: Current session's download folder
 	void newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo);
 
 	void setSources();
@@ -104,8 +73,8 @@ public:
 	bool isArrayNotEmpty();
 	String getQuery();
 	std::vector<juce::StringArray> getData();
-    Array<FSSound> getCurrentSounds(); // Get current sounds array
-    File getCurrentDownloadLocation(); // Get current session's download location
+    Array<FSSound> getCurrentSounds(); // NEW: Get current sounds array
+    File getCurrentDownloadLocation(); // NEW: Get current session's download location
 	Array<FSSound>& getCurrentSoundsArrayReference() { return currentSoundsArray; }
 	std::vector<juce::StringArray>& getDataReference() { return soundsArray; }
 
@@ -134,7 +103,7 @@ public:
     void addDownloadListener(DownloadListener* listener);
     void removeDownloadListener(DownloadListener* listener);
 
-    // Playback listener for visual feedback
+    // NEW: Playback listener for visual feedback
     class PlaybackListener
     {
     public:
@@ -172,17 +141,8 @@ public:
 	bool saveToSlot(const File& presetFile, int slotIndex, const String& description = "");
 	Array<PadInfo> getCurrentPadInfos() const;
 
-    // NEW: Pitch and volume parameter methods
-    void updatePadParameters(int padIndex, float pitchCents, float volume);
-
-    struct PadParameters {
-        float pitchCents = 0.0f;
-        float volume = 0.7f;
-    };
-    PadParameters getPadParameters(int padIndex) const;
-
 private:
-    // Enhanced sampler voice class for playback tracking with pitch/volume support
+    // Enhanced sampler voice class for playback tracking
     class TrackingSamplerVoice : public SamplerVoice
     {
     public:
@@ -191,20 +151,17 @@ private:
         void startNote(int midiNoteNumber, float velocity, SynthesiserSound*, int currentPitchWheelPosition) override;
         void stopNote(float velocity, bool allowTailOff) override;
         void renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
-    	int getCurrentlyPlayingNote() const { return currentNoteNumber; }
 
     private:
         FreesoundAdvancedSamplerAudioProcessor& processor;
         int currentNoteNumber = -1;
         double samplePosition = 0.0;
         double sampleLength = 0.0;
-        float pitchRatio = 1.0f;
-        float volumeMultiplier = 1.0f;
     };
 
     AudioDownloadManager downloadManager;
     ListenerList<DownloadListener> downloadListeners;
-    ListenerList<PlaybackListener> playbackListeners;
+    ListenerList<PlaybackListener> playbackListeners; // NEW
 
 	Synthesiser sampler;
 	AudioFormatManager audioFormatManager;
@@ -213,17 +170,14 @@ private:
 	double startTime;
 	String query;
 	std::vector<juce::StringArray> soundsArray;
-    Array<FSSound> currentSoundsArray; // Store current sounds
+    Array<FSSound> currentSoundsArray; // NEW: Store current sounds
 
-    // Methods for playback tracking
+    // NEW: Methods for playback tracking
     void notifyNoteStarted(int noteNumber, float velocity);
     void notifyNoteStopped(int noteNumber);
     void notifyPlayheadPositionChanged(int noteNumber, float position);
 
 	PresetManager presetManager;
-
-    // NEW: Store pad parameters (pitch and volume for each of 16 pads)
-    std::array<PadParameters, 16> padParameters;
 
     friend class TrackingSamplerVoice;
 

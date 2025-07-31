@@ -4,7 +4,7 @@
     SampleGridComponent.cpp
     Created: New grid component for displaying samples in 4x4 grid
     Author: Generated
-    Modified: Added drag-and-drop swap functionality, shuffle button, and pitch/volume controls
+    Modified: Added drag-and-drop swap functionality and shuffle button
 
   ==============================================================================
 */
@@ -32,42 +32,8 @@ SamplePad::SamplePad(int index)
     // Generate a unique color for each pad
     float hue = (float)padIndex / 16.0f;
     padColour = Colour::fromHSV(hue, 0.3f, 0.8f, 1.0f);
-
-    // Setup pitch slider
-    pitchSlider.setSliderStyle(Slider::LinearHorizontal);
-    pitchSlider.setRange(-2400.0, 2400.0, 1.0);
-    pitchSlider.setValue(0.0);
-    pitchSlider.setTextBoxStyle(Slider::NoTextBox, false, 0, 0);
-    pitchSlider.setDoubleClickReturnValue(true, 0.0); // Double-click returns to 0 cents
-    pitchSlider.addListener(this);
-    pitchSlider.setVisible(false); // Initially hidden
-    addAndMakeVisible(pitchSlider);
-
-    // Setup volume slider
-    volumeSlider.setSliderStyle(Slider::LinearHorizontal);
-    volumeSlider.setRange(0.0, 1.0, 0.01);
-    volumeSlider.setValue(0.7); // Default volume
-    volumeSlider.setTextBoxStyle(Slider::NoTextBox, false, 0, 0);
-    volumeSlider.setDoubleClickReturnValue(true, 0.7); // Double-click returns to 70%
-    volumeSlider.addListener(this);
-    volumeSlider.setVisible(false); // Initially hidden
-    addAndMakeVisible(volumeSlider);
-
-    // Setup labels
-    pitchLabel.setText("P", dontSendNotification);
-    pitchLabel.setFont(Font(7.0f));
-    pitchLabel.setJustificationType(Justification::centred);
-    pitchLabel.setColour(Label::textColourId, Colours::white);
-    pitchLabel.setVisible(false); // Initially hidden
-    addAndMakeVisible(pitchLabel);
-
-    volumeLabel.setText("V", dontSendNotification);
-    volumeLabel.setFont(Font(7.0f));
-    volumeLabel.setJustificationType(Justification::centred);
-    volumeLabel.setColour(Label::textColourId, Colours::white);
-    volumeLabel.setVisible(false); // Initially hidden
-    addAndMakeVisible(volumeLabel);
 }
+
 SamplePad::~SamplePad()
 {
 }
@@ -110,56 +76,61 @@ void SamplePad::paint(Graphics& g)
 
     if (hasValidSample)
     {
-        // Reserve space at bottom for controls inside the pad
-        int controlsHeight = 20;
-        auto padContentBounds = bounds.reduced(4);
-        auto waveformBounds = padContentBounds.removeFromTop(padContentBounds.getHeight() - controlsHeight - 2);
+        auto waveformBounds = bounds.reduced(8, 20);
 
-        // Draw waveform in upper area
-        drawWaveform(g, waveformBounds.reduced(4, 10));
+        // Draw waveform
+        drawWaveform(g, waveformBounds);
 
         // Draw playhead if playing
         if (isPlaying)
         {
-            drawPlayhead(g, waveformBounds.reduced(4, 10));
+            drawPlayhead(g, waveformBounds);
         }
 
-        // Draw filename and author in small text at bottom of waveform area
+        // Draw filename and author in black text at bottom left of waveform area
         g.setColour(Colours::black);
-        g.setFont(7.0f);
+        g.setFont(9.0f);
 
-        // Format filename to max 8 characters with ellipsis if needed
+        // Get the waveform bounds (same as used for drawing waveform)
+        auto textBounds = bounds.reduced(8, 20);
+
+        // Format filename to max 10 characters with ellipsis if needed
         String displayName = sampleName;
-        if (displayName.length() > 8)
+        if (displayName.length() > 10)
         {
-            displayName = displayName.substring(0, 5) + "...";
+            displayName = displayName.substring(0, 7) + "...";
         }
 
         // Format author name
         String displayAuthor = authorName;
-        if (displayAuthor.length() > 6)
+        if (displayAuthor.length() > 10)
         {
-            displayAuthor = displayAuthor.substring(0, 3) + "...";
+            displayAuthor = displayAuthor.substring(0, 7) + "...";
         }
 
         // Create the full text string
-        String displayText = displayName + " " + displayAuthor;
+        String displayText = displayName + " by " + displayAuthor;
 
-        // Position at bottom of waveform area
-        auto textBounds = waveformBounds.removeFromBottom(8);
-        g.drawText(displayText, textBounds.reduced(2), Justification::bottomLeft, true);
+        // Position at bottom left of waveform area
+        auto filenameBounds = textBounds.removeFromBottom(12);
+        g.drawText(displayText, filenameBounds, Justification::bottomLeft, true);
 
         // Draw "Web" badge in TOP LEFT corner
         if (freesoundId.isNotEmpty())
         {
-            g.setFont(7.0f);
-            auto webBounds = bounds.reduced(2);
-            int badgeWidth = 20;
-            int badgeHeight = 8;
+            g.setFont(9.0f);
+
+            // Create web badge in top-left corner
+            auto webBounds = bounds.reduced(3);
+            int badgeWidth = 30;
+            int badgeHeight = 12;
             webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
 
+            // Draw blue background
             g.setColour(Colours::blue.withAlpha(0.8f));
             g.fillRoundedRectangle(webBounds.toFloat(), 2.0f);
+
+            // Draw white text
             g.setColour(Colours::white);
             g.drawText("Web", webBounds, Justification::centred);
         }
@@ -167,64 +138,52 @@ void SamplePad::paint(Graphics& g)
         // Draw license badge in TOP RIGHT corner
         if (licenseType.isNotEmpty())
         {
-            g.setFont(7.0f);
+            g.setFont(9.0f);
             String shortLicense = getLicenseShortName(licenseType);
-            auto licenseBounds = bounds.reduced(2);
-            int badgeWidth = 25;
-            int badgeHeight = 8;
+
+            // Create license badge in top-right corner
+            auto licenseBounds = bounds.reduced(3);
+            int badgeWidth = 35;
+            int badgeHeight = 12;
             licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
 
+            // Draw orange background
             g.setColour(Colours::orange.withAlpha(0.9f));
             g.fillRoundedRectangle(licenseBounds.toFloat(), 2.0f);
+
+            // Draw black text
             g.setColour(Colours::black);
             g.drawText(shortLicense, licenseBounds, Justification::centred);
         }
 
-        // Draw "Drag" badge in waveform area bottom right
+        // Draw "Drag" badge in BOTTOM LEFT corner
         {
-            g.setFont(6.0f);
-            auto dragBounds = waveformBounds.reduced(2);
-            int badgeWidth = 20;
-            int badgeHeight = 8;
-            dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+            g.setFont(8.0f);
 
+            // Create drag badge in bottom-left corner
+            auto dragBounds = bounds.reduced(3);
+            int badgeWidth = 30;
+            int badgeHeight = 12;
+            dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+            // Draw green background
             g.setColour(Colours::green.withAlpha(0.8f));
             g.fillRoundedRectangle(dragBounds.toFloat(), 2.0f);
+
+            // Draw white text
             g.setColour(Colours::white);
             g.drawText("Drag", dragBounds, Justification::centred);
         }
     }
-
-    // Draw "Search" badge in BOTTOM RIGHT corner (always visible)
+    else
     {
-        g.setFont(8.0f);
-
-        // Create search badge in bottom-right corner
-        auto searchBounds = bounds.reduced(3);
-        int badgeWidth = 35;
-        int badgeHeight = 12;
-        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
-
-        // Draw purple background
-        g.setColour(Colours::purple.withAlpha(0.8f));
-        g.fillRoundedRectangle(searchBounds.toFloat(), 2.0f);
-
-        // Draw white text
-        g.setColour(Colours::white);
-        g.drawText("Search", searchBounds, Justification::centred);
-    }
-
-    if (!hasValidSample)
-    {
-        // Empty pad - draw centered text above the search badge
+        // Empty pad
         g.setColour(Colours::white.withAlpha(0.5f));
         g.setFont(12.0f);
-        auto emptyBounds = bounds.reduced(5);
-        emptyBounds.removeFromBottom(20); // Leave space for search badge
-        g.drawText("Empty", emptyBounds, Justification::centred);
+        g.drawText("Empty", bounds, Justification::centred);
     }
 
-    // Pad number in top-left corner
+    // Pad number in top-left corner (over the web badge if present)
     g.setColour(Colours::white.withAlpha(0.9f));
     g.setFont(8.0f);
     auto numberBounds = bounds.reduced(2);
@@ -232,74 +191,22 @@ void SamplePad::paint(Graphics& g)
     g.drawText(String(padIndex + 1), numberRect, Justification::centred);
 }
 
-// 3. Update SamplePad::resized() to position controls inside pad
-
 void SamplePad::resized()
 {
-    auto bounds = getLocalBounds();
-
-    if (hasValidSample)
-    {
-        // Position controls at the bottom inside the pad
-        int controlsHeight = 20;
-        auto controlsBounds = bounds.removeFromBottom(controlsHeight).reduced(4, 2);
-
-        // Layout controls in two rows, very compact
-        int rowHeight = 9;
-        int labelWidth = 10;
-        int spacing = 1;
-
-        auto topRow = controlsBounds.removeFromTop(rowHeight);
-        auto bottomRow = controlsBounds;
-
-        // Top row: Pitch
-        auto pitchArea = topRow.reduced(spacing);
-        pitchLabel.setBounds(pitchArea.removeFromLeft(labelWidth));
-        pitchSlider.setBounds(pitchArea);
-
-        // Bottom row: Volume
-        auto volumeArea = bottomRow.reduced(spacing);
-        volumeLabel.setBounds(volumeArea.removeFromLeft(labelWidth));
-        volumeSlider.setBounds(volumeArea);
-    }
 }
-
-
 
 void SamplePad::mouseDown(const MouseEvent& event)
 {
-    // Check if clicked on search badge (bottom-right) - ALWAYS available
-    {
-        auto bounds = getLocalBounds();
-        auto searchBounds = bounds.reduced(3);
-        int badgeWidth = 35;
-        int badgeHeight = 12;
-        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
-
-        if (searchBounds.contains(event.getPosition()))
-        {
-            // Trigger single pad search
-            if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-            {
-                gridComponent->searchForSinglePad(padIndex);
-            }
-            return;
-        }
-    }
-
     if (!hasValidSample)
-        return; // Don't process other clicks for empty pads
-
-    auto bounds = getLocalBounds();
-    int controlsHeight = 20;
-    auto padContentBounds = bounds.removeFromTop(bounds.getHeight() - controlsHeight);
+        return;
 
     // Check if clicked on web badge (top-left)
     if (freesoundId.isNotEmpty())
     {
-        auto webBounds = bounds.reduced(2);
-        int badgeWidth = 20;
-        int badgeHeight = 8;
+        auto bounds = getLocalBounds();
+        auto webBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
         webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
 
         if (webBounds.contains(event.getPosition()))
@@ -314,9 +221,10 @@ void SamplePad::mouseDown(const MouseEvent& event)
     // Check if clicked on license badge (top-right)
     if (licenseType.isNotEmpty())
     {
-        auto licenseBounds = bounds.reduced(2);
-        int badgeWidth = 25;
-        int badgeHeight = 8;
+        auto bounds = getLocalBounds();
+        auto licenseBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
         licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
 
         if (licenseBounds.contains(event.getPosition()))
@@ -327,8 +235,24 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
+    // Check if clicked on drag badge (bottom-left) - for file export
+    {
+        auto bounds = getLocalBounds();
+        auto dragBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
+        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (dragBounds.contains(event.getPosition()))
+        {
+            // Store that we clicked on drag badge for mouseDrag to handle file export
+            return;
+        }
+    }
+
     // Check if clicked in waveform area - for manual triggering
-    auto waveformBounds = padContentBounds.reduced(8, 14);
+    auto bounds = getLocalBounds();
+    auto waveformBounds = bounds.reduced(8, 20);
 
     if (waveformBounds.contains(event.getPosition()))
     {
@@ -351,11 +275,29 @@ void SamplePad::mouseDrag(const MouseEvent& event)
         return;
 
     auto bounds = getLocalBounds();
-    int controlsHeight = 20;
-    auto padContentBounds = bounds.removeFromTop(bounds.getHeight() - controlsHeight);
+
+    // Check if drag started on the drag badge (bottom-left) - for file export
+    {
+        auto dragBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
+        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (dragBounds.contains(event.getMouseDownPosition()))
+        {
+            // Start external drag operation for file export
+            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
+            {
+                StringArray filePaths;
+                filePaths.add(audioFile.getFullPathName());
+                performExternalDragDropOfFiles(filePaths, false);
+            }
+            return;
+        }
+    }
 
     // Check if drag started in waveform area - no dragging allowed here
-    auto waveformBounds = padContentBounds.reduced(8, 14);
+    auto waveformBounds = bounds.reduced(8, 20);
     if (waveformBounds.contains(event.getMouseDownPosition()))
     {
         // No dragging from waveform area - only triggering
@@ -365,9 +307,9 @@ void SamplePad::mouseDrag(const MouseEvent& event)
     // Check if drag started on web or license badges - no dragging
     if (freesoundId.isNotEmpty())
     {
-        auto webBounds = bounds.reduced(2);
-        int badgeWidth = 20;
-        int badgeHeight = 8;
+        auto webBounds = bounds.reduced(3);
+        int badgeWidth = 30;
+        int badgeHeight = 12;
         webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
 
         if (webBounds.contains(event.getMouseDownPosition()))
@@ -376,9 +318,9 @@ void SamplePad::mouseDrag(const MouseEvent& event)
 
     if (licenseType.isNotEmpty())
     {
-        auto licenseBounds = bounds.reduced(2);
-        int badgeWidth = 25;
-        int badgeHeight = 8;
+        auto licenseBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
         licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
 
         if (licenseBounds.contains(event.getMouseDownPosition()))
@@ -399,23 +341,6 @@ void SamplePad::mouseDrag(const MouseEvent& event)
         {
             gridComponent->startDragging(dragData, this);
         }
-    }
-}
-
-void SamplePad::sliderValueChanged(Slider* slider)
-{
-    if (slider == &pitchSlider || slider == &volumeSlider)
-    {
-        updateAudioParameters();
-    }
-}
-
-void SamplePad::updateAudioParameters()
-{
-    if (processor && hasValidSample)
-    {
-        // Update the sampler sound with new pitch and volume
-        processor->updatePadParameters(padIndex, pitchSlider.getValue(), volumeSlider.getValue());
     }
 }
 
@@ -473,17 +398,9 @@ void SamplePad::setSample(const File& file, const String& name, const String& au
 
     hasValidSample = audioFile.existsAsFile();
 
-    // Show/hide controls based on whether we have a valid sample
-    pitchSlider.setVisible(hasValidSample);
-    volumeSlider.setVisible(hasValidSample);
-    pitchLabel.setVisible(hasValidSample);
-    volumeLabel.setVisible(hasValidSample);
-
-    // Reset controls to defaults for new samples
+    // Always load waveform when setting a sample
     if (hasValidSample)
     {
-        pitchSlider.setValue(0.0, dontSendNotification);
-        volumeSlider.setValue(0.7, dontSendNotification);
         loadWaveform();
     }
     else
@@ -491,7 +408,6 @@ void SamplePad::setSample(const File& file, const String& name, const String& au
         audioThumbnail.clear();
     }
 
-    resized(); // Trigger layout update
     repaint();
 }
 
@@ -506,13 +422,6 @@ void SamplePad::clearSample()
     isPlaying = false;
     playheadPosition = 0.0f;
     audioThumbnail.clear();
-
-    // Hide controls
-    pitchSlider.setVisible(false);
-    volumeSlider.setVisible(false);
-    pitchLabel.setVisible(false);
-    volumeLabel.setVisible(false);
-
     repaint();
 }
 
@@ -533,7 +442,6 @@ void SamplePad::loadWaveform()
         });
     }
 }
-
 
 void SamplePad::drawWaveform(Graphics& g, Rectangle<int> bounds)
 {
@@ -583,18 +491,6 @@ void SamplePad::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
     processor = p;
 }
 
-void SamplePad::setPitchCents(float cents)
-{
-    pitchSlider.setValue(cents, dontSendNotification);
-    updateAudioParameters();
-}
-
-void SamplePad::setVolume(float volume)
-{
-    volumeSlider.setValue(volume, dontSendNotification);
-    updateAudioParameters();
-}
-
 SamplePad::SampleInfo SamplePad::getSampleInfo() const
 {
     SampleInfo info;
@@ -605,8 +501,6 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.licenseType = licenseType;
     info.hasValidSample = hasValidSample;
     info.padIndex = 0; // Will be set by SampleGridComponent
-    info.pitchCents = pitchSlider.getValue();
-    info.volume = volumeSlider.getValue();
     return info;
 }
 
@@ -797,19 +691,12 @@ void SampleGridComponent::loadSamplesFromJson(const File& metadataFile)
         String license = sample.getProperty("license", "Unknown");
         String freesoundId = sample.getProperty("freesound_id", "");
 
-        // Load pitch and volume parameters
-        float pitchCents = sample.getProperty("pitch_cents", 0.0f);
-        float volume = sample.getProperty("volume", 0.7f);
-
         if (fileName.isNotEmpty())
         {
             File audioFile = downloadDir.getChildFile(fileName);
             if (audioFile.existsAsFile())
             {
                 samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
-                // Restore pitch and volume settings
-                samplePads[i]->setPitchCents(pitchCents);
-                samplePads[i]->setVolume(volume);
             }
         }
     }
@@ -842,15 +729,6 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
         if (audioFile.existsAsFile())
         {
             samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
-
-            // Restore pitch and volume parameters from processor
-            if (processor)
-            {
-                auto params = processor->getPadParameters(i);
-                samplePads[i]->setPitchCents(params.pitchCents);
-                samplePads[i]->setVolume(params.volume);
-            }
-
             DBG("  Successfully set sample on pad " + String(i));
         }
         else
@@ -895,7 +773,7 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
         return;
     }
 
-    // Get sample info from both pads (including pitch and volume)
+    // Get sample info from both pads
     auto sourcePad = samplePads[sourcePadIndex].get();
     auto targetPad = samplePads[targetPadIndex].get();
 
@@ -907,9 +785,6 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     {
         sourcePad->setSample(targetInfo.audioFile, targetInfo.sampleName,
                            targetInfo.authorName, targetInfo.freesoundId, targetInfo.licenseType);
-        // Restore pitch and volume settings
-        sourcePad->setPitchCents(targetInfo.pitchCents);
-        sourcePad->setVolume(targetInfo.volume);
     }
     else
     {
@@ -920,9 +795,6 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     {
         targetPad->setSample(sourceInfo.audioFile, sourceInfo.sampleName,
                            sourceInfo.authorName, sourceInfo.freesoundId, sourceInfo.licenseType);
-        // Restore pitch and volume settings
-        targetPad->setPitchCents(sourceInfo.pitchCents);
-        targetPad->setVolume(sourceInfo.volume);
     }
     else
     {
@@ -939,6 +811,7 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     if (processor)
     {
         processor->setSources();
+        // Also update the README file to reflect new order
         processor->updateReadmeFile();
     }
 }
@@ -948,7 +821,7 @@ void SampleGridComponent::shuffleSamples()
     if (!processor)
         return;
 
-    // Collect all current sample info (including pitch and volume)
+    // Collect all current sample info
     Array<SamplePad::SampleInfo> allSamples;
     for (int i = 0; i < TOTAL_PADS; ++i)
     {
@@ -977,15 +850,12 @@ void SampleGridComponent::shuffleSamples()
         allSamples.swap(i, j);
     }
 
-    // Redistribute shuffled samples to pads (preserving their pitch and volume settings)
+    // Redistribute shuffled samples to pads
     for (int i = 0; i < allSamples.size() && i < TOTAL_PADS; ++i)
     {
         const auto& sample = allSamples[i];
         samplePads[i]->setSample(sample.audioFile, sample.sampleName,
                                 sample.authorName, sample.freesoundId, sample.licenseType);
-        // Restore pitch and volume settings
-        samplePads[i]->setPitchCents(sample.pitchCents);
-        samplePads[i]->setVolume(sample.volume);
     }
 
     // Update processor arrays and metadata to match new order
@@ -999,7 +869,7 @@ void SampleGridComponent::shuffleSamples()
         processor->updateReadmeFile();
     }
 
-    DBG("Samples shuffled successfully with preserved pitch and volume settings");
+    DBG("Samples shuffled successfully");
 }
 
 void SampleGridComponent::updateProcessorArraysFromGrid()
@@ -1106,10 +976,6 @@ void SampleGridComponent::updateJsonMetadata()
             sample->setProperty("author", padInfo.authorName);
             sample->setProperty("license", padInfo.licenseType);
 
-            // Add pitch and volume parameters
-            sample->setProperty("pitch_cents", padInfo.pitchCents);
-            sample->setProperty("volume", padInfo.volume);
-
             // We need to get duration and file size from the original JSON
             // Find the original entry by freesound_id
             var originalSamplesArray = parsedJson.getProperty("samples", var());
@@ -1210,188 +1076,6 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
     return allSamples;
 }
 
-void SampleGridComponent::searchForSinglePad(int padIndex)
-{
-    if (!processor || padIndex < 0 || padIndex >= TOTAL_PADS)
-        return;
-
-    // Get the search query from the processor (from the search input field)
-    String query = processor->getQuery();
-
-    if (query.isEmpty())
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Empty Query",
-            "Please enter a search term in the search box above.");
-        return;
-    }
-
-    // Search for a single sound
-    Array<FSSound> searchResults = searchSingleSound(query);
-
-    if (searchResults.isEmpty())
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "No Results",
-            "No sounds found for the query: " + query);
-        return;
-    }
-
-    // Get the first (random) result
-    FSSound newSound = searchResults[0];
-
-    // Create the filename
-    String fileName = "FS_ID_" + newSound.id + ".ogg";
-    File samplesFolder = processor->getCurrentDownloadLocation();
-    File audioFile = samplesFolder.getChildFile(fileName);
-
-    // Check if we already have this sample downloaded
-    if (audioFile.existsAsFile())
-    {
-        // Use existing file
-        loadSingleSample(padIndex, newSound, audioFile);
-    }
-    else
-    {
-        // Need to download it
-        downloadSingleSample(padIndex, newSound);
-    }
-}
-
-Array<FSSound> SampleGridComponent::searchSingleSound(const String& query)
-{
-    FreesoundClient client(FREESOUND_API_KEY);
-    SoundList list = client.textSearch(query, "duration:[0 TO 0.5]", "score", 1, -1, 50, "id,name,username,license,previews");
-    Array<FSSound> sounds = list.toArrayOfSounds();
-
-    if (sounds.isEmpty())
-        return sounds;
-
-    // Randomize and pick one
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(sounds.begin(), sounds.end(), g);
-
-    // Return just the first one
-    Array<FSSound> result;
-    result.add(sounds[0]);
-    return result;
-}
-
-void SampleGridComponent::loadSingleSample(int padIndex, const FSSound& sound, const File& audioFile)
-{
-    // Update the pad visually
-    samplePads[padIndex]->setSample(audioFile, sound.name, sound.user, sound.id, sound.license);
-
-    // Update processor's internal arrays
-    updateSinglePadInProcessor(padIndex, sound);
-
-    // Reload the sampler to include the new sample
-    if (processor)
-    {
-        processor->setSources();
-        processor->updateReadmeFile();
-    }
-
-    // Update JSON metadata
-    updateJsonMetadata();
-}
-
-void SampleGridComponent::downloadSingleSample(int padIndex, const FSSound& sound)
-{
-    // Create a download manager for single file
-    singlePadDownloadManager = std::make_unique<AudioDownloadManager>();
-    currentDownloadPadIndex = padIndex;
-    currentDownloadSound = sound;
-
-    // Use a simple callback approach instead of inheritance
-    // We'll check for completion in a timer or use the processor's download system
-
-    // Start download
-    Array<FSSound> singleSoundArray;
-    singleSoundArray.add(sound);
-
-    File samplesFolder = processor->getCurrentDownloadLocation();
-
-    // Use a timer to check for completion
-    startTimer(500); // Check every 500ms
-    singlePadDownloadManager->startDownloads(singleSoundArray, samplesFolder, processor->getQuery());
-
-    // Show some feedback to user
-    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-        "Downloading",
-        "Downloading new sample for pad " + String(padIndex + 1) + "...");
-}
-
-void SampleGridComponent::updateSinglePadInProcessor(int padIndex, const FSSound& sound)
-{
-    if (!processor)
-        return;
-
-    auto& currentSounds = processor->getCurrentSoundsArrayReference();
-    auto& soundsData = processor->getDataReference();
-
-    // Ensure arrays are large enough
-    while (currentSounds.size() <= padIndex)
-    {
-        FSSound emptySound;
-        currentSounds.add(emptySound);
-    }
-
-    while (soundsData.size() <= padIndex)
-    {
-        StringArray emptyData;
-        soundsData.push_back(emptyData);
-    }
-
-    // Update the specific pad
-    currentSounds.set(padIndex, sound);
-
-    StringArray soundData;
-    soundData.add(sound.name);
-    soundData.add(sound.user);
-    soundData.add(sound.license);
-    soundsData[padIndex] = soundData;
-}
-
-void SampleGridComponent::timerCallback()
-{
-    if (singlePadDownloadManager && currentDownloadPadIndex >= 0)
-    {
-        // Check if the expected file exists
-        String fileName = "FS_ID_" + currentDownloadSound.id + ".ogg";
-        File samplesFolder = processor->getCurrentDownloadLocation();
-        File audioFile = samplesFolder.getChildFile(fileName);
-
-        if (audioFile.existsAsFile())
-        {
-            // Download completed successfully
-            stopTimer();
-            loadSingleSample(currentDownloadPadIndex, currentDownloadSound, audioFile);
-
-            AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-                "Download Complete",
-                "New sample loaded on pad " + String(currentDownloadPadIndex + 1));
-
-            // Clean up
-            singlePadDownloadManager.reset();
-            currentDownloadPadIndex = -1;
-        }
-        else if (!singlePadDownloadManager->isThreadRunning())
-        {
-            // Download thread finished but no file - failed
-            stopTimer();
-
-            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                "Download Failed",
-                "Failed to download sample for pad " + String(currentDownloadPadIndex + 1));
-
-            // Clean up
-            singlePadDownloadManager.reset();
-            currentDownloadPadIndex = -1;
-        }
-    }
-}
 //==============================================================================
 // SampleDragArea Implementation
 //==============================================================================
