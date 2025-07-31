@@ -13,6 +13,8 @@
 
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "PluginProcessor.h"
+#include "FreesoundKeys.h"
+#include <random>
 
 class SamplePad : public Component,
                   public DragAndDropContainer,
@@ -86,9 +88,12 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
 
+// Updates to SampleGridComponent.h
+
 class SampleGridComponent : public Component,
                            public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
-                           public DragAndDropContainer
+                           public DragAndDropContainer,
+                           public Timer  // Add Timer inheritance for download checking
 {
 public:
     SampleGridComponent();
@@ -110,10 +115,16 @@ public:
     // Shuffle samples randomly
     void shuffleSamples();
 
+    // NEW: Search for single pad
+    void searchForSinglePad(int padIndex);
+
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
     void noteStopped(int noteNumber) override;
     void playheadPositionChanged(int noteNumber, float position) override;
+
+    // Timer callback for download checking
+    void timerCallback() override;
 
 private:
     static constexpr int GRID_SIZE = 4;
@@ -125,6 +136,11 @@ private:
     // Shuffle button
     TextButton shuffleButton;
 
+    // NEW: Single pad download management
+    std::unique_ptr<AudioDownloadManager> singlePadDownloadManager;
+    int currentDownloadPadIndex = -1;
+    FSSound currentDownloadSound;
+
     // Helper methods for loading samples
     void loadSamplesFromJson(const File& metadataFile);
     void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
@@ -134,6 +150,12 @@ private:
 
     // Update processor arrays from current grid state
     void updateProcessorArraysFromGrid();
+
+    // NEW: Single pad search helper methods
+    Array<FSSound> searchSingleSound(const String& query);
+    void loadSingleSample(int padIndex, const FSSound& sound, const File& audioFile);
+    void downloadSingleSample(int padIndex, const FSSound& sound);
+    void updateSinglePadInProcessor(int padIndex, const FSSound& sound);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };

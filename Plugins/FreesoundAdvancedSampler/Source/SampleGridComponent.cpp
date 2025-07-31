@@ -175,12 +175,34 @@ void SamplePad::paint(Graphics& g)
             g.drawText("Drag", dragBounds, Justification::centred);
         }
     }
-    else
+
+    // Draw "Search" badge in BOTTOM RIGHT corner (always visible)
     {
-        // Empty pad
+        g.setFont(8.0f);
+
+        // Create search badge in bottom-right corner
+        auto searchBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
+        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+
+        // Draw purple background
+        g.setColour(Colours::purple.withAlpha(0.8f));
+        g.fillRoundedRectangle(searchBounds.toFloat(), 2.0f);
+
+        // Draw white text
+        g.setColour(Colours::white);
+        g.drawText("Search", searchBounds, Justification::centred);
+    }
+
+    if (!hasValidSample)
+    {
+        // Empty pad - draw centered text above the search badge
         g.setColour(Colours::white.withAlpha(0.5f));
         g.setFont(12.0f);
-        g.drawText("Empty", bounds, Justification::centred);
+        auto emptyBounds = bounds.reduced(5);
+        emptyBounds.removeFromBottom(20); // Leave space for search badge
+        g.drawText("Empty", emptyBounds, Justification::centred);
     }
 
     // Pad number in top-left corner (over the web badge if present)
@@ -197,8 +219,27 @@ void SamplePad::resized()
 
 void SamplePad::mouseDown(const MouseEvent& event)
 {
+    // Check if clicked on search badge (bottom-right) - ALWAYS available
+    {
+        auto bounds = getLocalBounds();
+        auto searchBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
+        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+
+        if (searchBounds.contains(event.getPosition()))
+        {
+            // Trigger single pad search
+            if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+            {
+                gridComponent->searchForSinglePad(padIndex);
+            }
+            return;
+        }
+    }
+
     if (!hasValidSample)
-        return;
+        return; // Don't process other clicks for empty pads
 
     // Check if clicked on web badge (top-left)
     if (freesoundId.isNotEmpty())
@@ -442,6 +483,7 @@ void SamplePad::loadWaveform()
         });
     }
 }
+
 
 void SamplePad::drawWaveform(Graphics& g, Rectangle<int> bounds)
 {
@@ -1076,6 +1118,188 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
     return allSamples;
 }
 
+void SampleGridComponent::searchForSinglePad(int padIndex)
+{
+    if (!processor || padIndex < 0 || padIndex >= TOTAL_PADS)
+        return;
+
+    // Get the search query from the processor (from the search input field)
+    String query = processor->getQuery();
+
+    if (query.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Empty Query",
+            "Please enter a search term in the search box above.");
+        return;
+    }
+
+    // Search for a single sound
+    Array<FSSound> searchResults = searchSingleSound(query);
+
+    if (searchResults.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "No Results",
+            "No sounds found for the query: " + query);
+        return;
+    }
+
+    // Get the first (random) result
+    FSSound newSound = searchResults[0];
+
+    // Create the filename
+    String fileName = "FS_ID_" + newSound.id + ".ogg";
+    File samplesFolder = processor->getCurrentDownloadLocation();
+    File audioFile = samplesFolder.getChildFile(fileName);
+
+    // Check if we already have this sample downloaded
+    if (audioFile.existsAsFile())
+    {
+        // Use existing file
+        loadSingleSample(padIndex, newSound, audioFile);
+    }
+    else
+    {
+        // Need to download it
+        downloadSingleSample(padIndex, newSound);
+    }
+}
+
+Array<FSSound> SampleGridComponent::searchSingleSound(const String& query)
+{
+    FreesoundClient client(FREESOUND_API_KEY);
+    SoundList list = client.textSearch(query, "duration:[0 TO 0.5]", "score", 1, -1, 50, "id,name,username,license,previews");
+    Array<FSSound> sounds = list.toArrayOfSounds();
+
+    if (sounds.isEmpty())
+        return sounds;
+
+    // Randomize and pick one
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(sounds.begin(), sounds.end(), g);
+
+    // Return just the first one
+    Array<FSSound> result;
+    result.add(sounds[0]);
+    return result;
+}
+
+void SampleGridComponent::loadSingleSample(int padIndex, const FSSound& sound, const File& audioFile)
+{
+    // Update the pad visually
+    samplePads[padIndex]->setSample(audioFile, sound.name, sound.user, sound.id, sound.license);
+
+    // Update processor's internal arrays
+    updateSinglePadInProcessor(padIndex, sound);
+
+    // Reload the sampler to include the new sample
+    if (processor)
+    {
+        processor->setSources();
+        processor->updateReadmeFile();
+    }
+
+    // Update JSON metadata
+    updateJsonMetadata();
+}
+
+void SampleGridComponent::downloadSingleSample(int padIndex, const FSSound& sound)
+{
+    // Create a download manager for single file
+    singlePadDownloadManager = std::make_unique<AudioDownloadManager>();
+    currentDownloadPadIndex = padIndex;
+    currentDownloadSound = sound;
+
+    // Use a simple callback approach instead of inheritance
+    // We'll check for completion in a timer or use the processor's download system
+
+    // Start download
+    Array<FSSound> singleSoundArray;
+    singleSoundArray.add(sound);
+
+    File samplesFolder = processor->getCurrentDownloadLocation();
+
+    // Use a timer to check for completion
+    startTimer(500); // Check every 500ms
+    singlePadDownloadManager->startDownloads(singleSoundArray, samplesFolder, processor->getQuery());
+
+    // Show some feedback to user
+    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+        "Downloading",
+        "Downloading new sample for pad " + String(padIndex + 1) + "...");
+}
+
+void SampleGridComponent::updateSinglePadInProcessor(int padIndex, const FSSound& sound)
+{
+    if (!processor)
+        return;
+
+    auto& currentSounds = processor->getCurrentSoundsArrayReference();
+    auto& soundsData = processor->getDataReference();
+
+    // Ensure arrays are large enough
+    while (currentSounds.size() <= padIndex)
+    {
+        FSSound emptySound;
+        currentSounds.add(emptySound);
+    }
+
+    while (soundsData.size() <= padIndex)
+    {
+        StringArray emptyData;
+        soundsData.push_back(emptyData);
+    }
+
+    // Update the specific pad
+    currentSounds.set(padIndex, sound);
+
+    StringArray soundData;
+    soundData.add(sound.name);
+    soundData.add(sound.user);
+    soundData.add(sound.license);
+    soundsData[padIndex] = soundData;
+}
+
+void SampleGridComponent::timerCallback()
+{
+    if (singlePadDownloadManager && currentDownloadPadIndex >= 0)
+    {
+        // Check if the expected file exists
+        String fileName = "FS_ID_" + currentDownloadSound.id + ".ogg";
+        File samplesFolder = processor->getCurrentDownloadLocation();
+        File audioFile = samplesFolder.getChildFile(fileName);
+
+        if (audioFile.existsAsFile())
+        {
+            // Download completed successfully
+            stopTimer();
+            loadSingleSample(currentDownloadPadIndex, currentDownloadSound, audioFile);
+
+            AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+                "Download Complete",
+                "New sample loaded on pad " + String(currentDownloadPadIndex + 1));
+
+            // Clean up
+            singlePadDownloadManager.reset();
+            currentDownloadPadIndex = -1;
+        }
+        else if (!singlePadDownloadManager->isThreadRunning())
+        {
+            // Download thread finished but no file - failed
+            stopTimer();
+
+            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                "Download Failed",
+                "Failed to download sample for pad " + String(currentDownloadPadIndex + 1));
+
+            // Clean up
+            singlePadDownloadManager.reset();
+            currentDownloadPadIndex = -1;
+        }
+    }
+}
 //==============================================================================
 // SampleDragArea Implementation
 //==============================================================================
