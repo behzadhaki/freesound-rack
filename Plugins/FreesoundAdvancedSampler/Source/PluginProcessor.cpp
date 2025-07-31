@@ -327,48 +327,52 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         audioFormatManager.registerBasicFormats();
     }
 
-    // Instead of relying on JSON metadata, use the currentSoundsArray directly
-    // This ensures we load exactly what's in memory, not what might be in a stale JSON file
-
-    Array<File> audioFiles;
-
-    // Build file array from currentSoundsArray (which was just updated by loadPreset)
-    for (int i = 0; i < currentSoundsArray.size() && i < 16; ++i)
+    // Load samples by their actual pad positions, not sequentially
+    // This ensures that pad N always maps to MIDI note (36 + N)
+    for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
-        const FSSound& sound = currentSoundsArray[i];
-        String fileName = "FS_ID_" + sound.id + ".ogg";
-        File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
-
-        if (audioFile.existsAsFile())
+        // Check if we have a sound for this specific pad position
+        if (padIndex < currentSoundsArray.size())
         {
-            audioFiles.add(audioFile);
-            DBG("Loading audio file: " + audioFile.getFullPathName());
+            const FSSound& sound = currentSoundsArray[padIndex];
+
+            // Skip empty sounds (sounds with empty ID)
+            if (sound.id.isEmpty())
+            {
+                DBG("Pad " + String(padIndex) + " is empty, skipping");
+                continue;
+            }
+
+            String fileName = "FS_ID_" + sound.id + ".ogg";
+            File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
+
+            if (audioFile.existsAsFile())
+            {
+                std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+
+                if (reader != nullptr)
+                {
+                    BigInteger notes;
+                    // CRITICAL: Use the actual pad index for MIDI note, not the loop counter
+                    int midiNote = 36 + padIndex;
+                    notes.setBit(midiNote, true);
+                    sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote, 0, maxLength, maxLength));
+
+                    DBG("Successfully loaded sample for pad " + String(padIndex) + " to MIDI note " + String(midiNote) + ": " + audioFile.getFileName());
+                }
+                else
+                {
+                    DBG("Failed to create reader for pad " + String(padIndex) + ": " + audioFile.getFullPathName());
+                }
+            }
+            else
+            {
+                DBG("Audio file not found for pad " + String(padIndex) + ": " + audioFile.getFullPathName());
+            }
         }
         else
         {
-            DBG("Audio file not found: " + audioFile.getFullPathName());
-        }
-    }
-
-    // Load the audio files in order
-    for (int i = 0; i < audioFiles.size() && i < 16; ++i)
-    {
-        File audioFile = audioFiles[i];
-        std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
-
-        if (reader != nullptr)
-        {
-            BigInteger notes;
-            // Each pad gets a single MIDI note starting at 36
-            int midiNote = 36 + i; // Pad 0 = note 36, Pad 1 = note 37, etc.
-            notes.setBit(midiNote, true);
-            sampler.addSound(new SamplerSound(String(i), *reader, notes, midiNote, 0, maxLength, maxLength));
-
-            DBG("Successfully loaded sample " + String(i) + " to MIDI note " + String(midiNote) + ": " + audioFile.getFileName());
-        }
-        else
-        {
-            DBG("Failed to create reader for: " + audioFile.getFullPathName());
+            DBG("No sound data for pad " + String(padIndex));
         }
     }
 
