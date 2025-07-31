@@ -87,86 +87,113 @@ void SamplePad::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Background
+    // Modern dark background with subtle gradients
     if (isDragHover)
     {
-        g.setColour(Colours::yellow.withAlpha(0.5f));
+        // Bright accent when dragging over
+        g.setColour(Colour(0xff00D9FF).withAlpha(0.6f)); // Bright cyan for drag hover
     }
     else if (isPlaying)
     {
-        g.setColour(padColour.brighter(0.3f));
+        // Glowing effect when playing
+        g.setGradientFill(ColourGradient(
+            padColour.brighter(0.4f), bounds.getCentre().toFloat(),
+            padColour.darker(0.2f), bounds.getBottomRight().toFloat(), false));
     }
     else if (hasValidSample)
     {
-        g.setColour(padColour);
+        // Subtle gradient for active pads
+        g.setGradientFill(ColourGradient(
+            padColour.withAlpha(0.9f), bounds.getTopLeft().toFloat(),
+            padColour.darker(0.3f).withAlpha(0.9f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
-        g.setColour(Colours::darkgrey);
+        // Dark grey for empty pads
+        g.setColour(Colour(0xff1A1A1A)); // Very dark grey
     }
 
-    g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
+    g.fillRoundedRectangle(bounds.toFloat(), 6.0f); // Slightly more rounded corners
 
-    // Border
+    // Modern border styling
     if (isDragHover)
     {
-        g.setColour(Colours::yellow);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 2.0f);
+        g.setColour(Colour(0xff00D9FF)); // Bright cyan border for drag hover
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.5f);
+    }
+    else if (isPlaying)
+    {
+        g.setColour(Colours::white);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+    }
+    else if (hasValidSample)
+    {
+        g.setColour(Colour(0xff404040)); // Medium grey border
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
     else
     {
-        g.setColour(Colours::white.withAlpha(0.3f));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
+        g.setColour(Colour(0xff2A2A2A)); // Dark grey border for empty pads
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
 
     // === TOP LINE: Pad number + Web badge + License badge ===
 
-    // Pad number in top-left corner
-    g.setColour(Colours::white.withAlpha(0.9f));
-    g.setFont(8.0f);
-    auto numberBounds = bounds.reduced(2);
-    auto numberRect = numberBounds.removeFromTop(12).removeFromLeft(15);
+    // Pad number with modern styling
+    g.setColour(Colours::white);
+    g.setFont(Font(9.0f, Font::bold));
+    auto numberBounds = bounds.reduced(4);
+    auto numberRect = numberBounds.removeFromTop(14).removeFromLeft(18);
+
+    // Small dark background for pad number
+    g.setColour(Colour(0xff000000).withAlpha(0.6f));
+    g.fillRoundedRectangle(numberRect.toFloat(), 2.0f);
+    g.setColour(Colours::white);
     g.drawText(String(padIndex + 1), numberRect, Justification::centred);
 
     // Web badge and License badge in top-right area
     if (hasValidSample)
     {
-        g.setFont(9.0f);
+        g.setFont(Font(8.0f, Font::bold));
 
         // Start from top-right and work leftward
-        auto topRightBounds = bounds.reduced(3);
-        topRightBounds = topRightBounds.removeFromTop(12);
+        auto topRightBounds = bounds.reduced(4);
+        topRightBounds = topRightBounds.removeFromTop(14);
 
-        // License badge (rightmost)
+        // License badge (rightmost) - Modern orange/amber styling
         if (licenseType.isNotEmpty())
         {
             String shortLicense = getLicenseShortName(licenseType);
-            int licenseBadgeWidth = 35;
+            int licenseBadgeWidth = 32;
             auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
 
-            // Draw orange background
-            g.setColour(Colours::orange.withAlpha(0.9f));
-            g.fillRoundedRectangle(licenseBounds.toFloat(), 2.0f);
+            // Modern amber gradient
+            g.setGradientFill(ColourGradient(
+                Colour(0xffFFB347), licenseBounds.getTopLeft().toFloat(),
+                Colour(0xffFF8C00), licenseBounds.getBottomRight().toFloat(), false));
+            g.fillRoundedRectangle(licenseBounds.toFloat(), 3.0f);
 
-            // Draw black text
-            g.setColour(Colours::black);
+            // Dark text for better contrast
+            g.setColour(Colour(0xff1A1A1A));
             g.drawText(shortLicense, licenseBounds, Justification::centred);
 
             // Add small spacing between badges
-            topRightBounds.removeFromRight(2);
+            topRightBounds.removeFromRight(3);
         }
 
-        // Web badge (to the left of license badge)
+        // Web badge (to the left of license badge) - Modern blue styling
         if (freesoundId.isNotEmpty())
         {
-            int webBadgeWidth = 30;
+            int webBadgeWidth = 28;
             auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
 
-            // Draw blue background
-            g.setColour(Colours::blue.withAlpha(0.8f));
-            g.fillRoundedRectangle(webBounds.toFloat(), 2.0f);
+            // Modern blue gradient
+            g.setGradientFill(ColourGradient(
+                Colour(0xff00D9FF), webBounds.getTopLeft().toFloat(),
+                Colour(0xff0099CC), webBounds.getBottomRight().toFloat(), false));
+            g.fillRoundedRectangle(webBounds.toFloat(), 3.0f);
 
-            // Draw white text
+            // White text
             g.setColour(Colours::white);
             g.drawText("Web", webBounds, Justification::centred);
         }
@@ -178,10 +205,10 @@ void SamplePad::paint(Graphics& g)
     {
         // Adjust waveform bounds to account for top and bottom badges
         auto waveformBounds = bounds.reduced(8);
-        waveformBounds.removeFromTop(16); // Space for top line badges
-        waveformBounds.removeFromBottom(16); // Space for bottom line
+        waveformBounds.removeFromTop(18); // Space for top line badges
+        waveformBounds.removeFromBottom(18); // Space for bottom line
 
-        // Draw waveform
+        // Draw waveform with modern styling
         drawWaveform(g, waveformBounds);
 
         // Draw playhead if playing
@@ -190,9 +217,9 @@ void SamplePad::paint(Graphics& g)
             drawPlayhead(g, waveformBounds);
         }
 
-        // Draw filename and author in black text at bottom of waveform area
-        g.setColour(Colours::black);
-        g.setFont(9.0f);
+        // Draw filename and author with modern white text
+        g.setColour(Colours::white);
+        g.setFont(Font(8.5f, Font::bold));
 
         // Format filename to max 10 characters with ellipsis if needed
         String displayName = sampleName;
@@ -211,48 +238,55 @@ void SamplePad::paint(Graphics& g)
         // Create the full text string
         String displayText = displayName + " by " + displayAuthor;
 
-        // Position at bottom of waveform area
-        auto filenameBounds = waveformBounds.removeFromBottom(12);
-        g.drawText(displayText, filenameBounds, Justification::bottomLeft, true);
+        // Position at bottom of waveform area with dark background
+        auto filenameBounds = waveformBounds.removeFromBottom(14);
+        g.setColour(Colour(0xff000000).withAlpha(0.7f));
+        g.fillRoundedRectangle(filenameBounds.toFloat(), 2.0f);
+        g.setColour(Colours::white);
+        g.drawText(displayText, filenameBounds, Justification::centred, true);
     }
 
     // === BOTTOM LINE: Drag badge + Query text box + Search badge ===
 
-    // Drag badge in bottom-left corner
+    // Drag badge in bottom-left corner - Modern green styling
     if (hasValidSample)
     {
-        g.setFont(8.0f);
+        g.setFont(Font(8.0f, Font::bold));
 
         // Create drag badge in bottom-left corner
-        auto dragBounds = bounds.reduced(3);
-        int badgeWidth = 30;
-        int badgeHeight = 12;
+        auto dragBounds = bounds.reduced(4);
+        int badgeWidth = 28;
+        int badgeHeight = 14;
         dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
-        // Draw green background
-        g.setColour(Colours::green.withAlpha(0.8f));
-        g.fillRoundedRectangle(dragBounds.toFloat(), 2.0f);
+        // Modern green gradient
+        g.setGradientFill(ColourGradient(
+            Colour(0xff4ECDC4), dragBounds.getTopLeft().toFloat(),
+            Colour(0xff26A69A), dragBounds.getBottomRight().toFloat(), false));
+        g.fillRoundedRectangle(dragBounds.toFloat(), 3.0f);
 
-        // Draw white text
+        // White text
         g.setColour(Colours::white);
         g.drawText("Drag", dragBounds, Justification::centred);
     }
 
-    // Search badge in bottom-right corner (always visible)
+    // Search badge in bottom-right corner - Modern purple styling (always visible)
     {
-        g.setFont(8.0f);
+        g.setFont(Font(8.0f, Font::bold));
 
         // Create search badge in bottom-right corner
-        auto searchBounds = bounds.reduced(3);
-        int badgeWidth = 35;
-        int badgeHeight = 12;
+        auto searchBounds = bounds.reduced(4);
+        int badgeWidth = 32;
+        int badgeHeight = 14;
         searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
 
-        // Draw purple background
-        g.setColour(Colours::purple.withAlpha(0.8f));
-        g.fillRoundedRectangle(searchBounds.toFloat(), 2.0f);
+        // Modern purple gradient
+        g.setGradientFill(ColourGradient(
+            Colour(0xff9C88FF), searchBounds.getTopLeft().toFloat(),
+            Colour(0xff7B68EE), searchBounds.getBottomRight().toFloat(), false));
+        g.fillRoundedRectangle(searchBounds.toFloat(), 3.0f);
 
-        // Draw white text
+        // White text
         g.setColour(Colours::white);
         g.drawText("Search", searchBounds, Justification::centred);
     }
@@ -260,11 +294,11 @@ void SamplePad::paint(Graphics& g)
     // Empty pad text (centered, avoiding all badges)
     if (!hasValidSample)
     {
-        g.setColour(Colours::white.withAlpha(0.5f));
-        g.setFont(12.0f);
-        auto emptyBounds = bounds.reduced(5);
-        emptyBounds.removeFromTop(16); // Space for top line
-        emptyBounds.removeFromBottom(16); // Space for bottom line
+        g.setColour(Colour(0xff666666)); // Medium grey for empty text
+        g.setFont(Font(12.0f, Font::bold));
+        auto emptyBounds = bounds.reduced(8);
+        emptyBounds.removeFromTop(18); // Space for top line
+        emptyBounds.removeFromBottom(18); // Space for bottom line
         g.drawText("Empty", emptyBounds, Justification::centred);
     }
 }
@@ -703,7 +737,35 @@ SampleGridComponent::~SampleGridComponent()
 
 void SampleGridComponent::paint(Graphics& g)
 {
-    g.fillAll(getLookAndFeel().findColour(ResizableWindow::backgroundColourId));
+    // Dark grid background
+    g.setColour(Colour(0xff0F0F0F));
+    g.fillAll();
+
+    // Add subtle grid lines for visual organization
+    g.setColour(Colour(0xff2A2A2A).withAlpha(0.3f));
+
+    auto bounds = getLocalBounds();
+    int padding = 4;
+    int bottomControlsHeight = 30;
+    bounds.removeFromBottom(bottomControlsHeight + padding);
+
+    int totalPadding = padding * (GRID_SIZE + 1);
+    int padWidth = (bounds.getWidth() - totalPadding) / GRID_SIZE;
+    int padHeight = (bounds.getHeight() - totalPadding) / GRID_SIZE;
+
+    // Draw vertical grid lines
+    for (int col = 0; col <= GRID_SIZE; ++col)
+    {
+        int x = padding + col * (padWidth + padding) - (padding / 2);
+        g.drawLine(x, bounds.getY(), x, bounds.getBottom(), 1.0f);
+    }
+
+    // Draw horizontal grid lines
+    for (int row = 0; row <= GRID_SIZE; ++row)
+    {
+        int y = padding + row * (padHeight + padding) - (padding / 2);
+        g.drawLine(bounds.getX(), y, bounds.getRight(), y, 1.0f);
+    }
 }
 
 void SampleGridComponent::resized()
@@ -1546,31 +1608,33 @@ void SampleDragArea::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Background
+    // Modern dark drag area styling
     if (isDragging)
     {
-        g.setColour(Colours::blue.withAlpha(0.3f));
+        g.setGradientFill(ColourGradient(
+            Colour(0xff00D9FF).withAlpha(0.5f), bounds.getTopLeft().toFloat(),
+            Colour(0xff0099CC).withAlpha(0.5f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
-        g.setColour(Colours::grey.withAlpha(0.2f));
+        g.setColour(Colour(0xff2A2A2A).withAlpha(0.8f));
     }
-    g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
+    g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
 
-    // Border
-    g.setColour(Colours::white.withAlpha(0.5f));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
+    // Modern border
+    g.setColour(isDragging ? Colour(0xff00D9FF) : Colour(0xff404040));
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.5f);
 
-    // Icon and text
-    g.setColour(Colours::white.withAlpha(0.8f));
-    g.setFont(10.0f);
+    // Modern icon and text styling
+    g.setColour(Colours::white);
+    g.setFont(Font(10.0f, Font::bold));
 
-    // Draw a simple drag icon (three horizontal lines)
+    // Draw a modern drag icon (three horizontal lines)
     auto iconBounds = bounds.removeFromLeft(20);
     int lineY = iconBounds.getCentreY() - 6;
     for (int i = 0; i < 3; ++i)
     {
-        g.fillRect(iconBounds.getX() + 4, lineY + i * 4, 12, 2);
+        g.fillRoundedRectangle(iconBounds.getX() + 4, lineY + i * 4, 12, 2, 1.0f);
     }
 
     // Draw text
@@ -1640,6 +1704,12 @@ DirectoryOpenButton::DirectoryOpenButton()
 {
     setButtonText("View\nFiles");
     setSize(60, 40);
+
+    // Modern dark button styling
+    setColour(TextButton::buttonColourId, Colour(0xff404040));
+    setColour(TextButton::buttonOnColourId, Colour(0xffFFB347));
+    setColour(TextButton::textColourOffId, Colours::white);
+    setColour(TextButton::textColourOnId, Colours::black);
 
     // Set up the click callback using lambda
     onClick = [this]() {

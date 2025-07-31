@@ -138,21 +138,38 @@ void PresetListItem::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    g.setColour(isSelectedState ? Colours::blue.withAlpha(0.3f)
-                                : Colours::darkgrey.withAlpha(0.2f));
-    g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
+    // Modern dark styling
+    if (isSelectedState)
+    {
+        g.setGradientFill(ColourGradient(
+            Colour(0xff00D9FF).withAlpha(0.4f), bounds.getTopLeft().toFloat(),
+            Colour(0xff0099CC).withAlpha(0.4f), bounds.getBottomRight().toFloat(), false));
+    }
+    else
+    {
+        g.setColour(Colour(0xff2A2A2A).withAlpha(0.6f));
+    }
+    g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
 
-    g.setColour(isSelectedState ? Colours::blue
-                                : Colours::grey.withAlpha(0.3f));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 2.0f : 1.0f);
+    // Modern border
+    if (isSelectedState)
+    {
+        g.setColour(Colour(0xff00D9FF));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+    }
+    else
+    {
+        g.setColour(Colour(0xff404040));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
+    }
 
     auto textBounds = bounds.reduced(8);
     textBounds.removeFromRight(90); // leave space for buttons
     textBounds.removeFromBottom(30); // leave space for slots
 
-    // Info text
+    // Modern white text styling
     g.setFont(Font(11.0f));
-    g.setColour(Colours::lightgrey);
+    g.setColour(Colours::white);
 
     // Count total samples across all slots
     int totalSamples = 0;
@@ -166,16 +183,16 @@ void PresetListItem::paint(Graphics& g)
     g.drawText(infoText, textBounds.removeFromTop(15), Justification::left, true);
 
     g.setFont(Font(10.0f));
-    g.setColour(Colours::grey);
+    g.setColour(Colour(0xff999999)); // Light grey for secondary text
     g.drawText(presetInfo.createdDate, textBounds, Justification::left, true);
 
-    // Draw "Slots:" label
+    // Draw "Slots:" label with modern styling
     auto slotsBounds = bounds.reduced(8);
     slotsBounds.removeFromTop(bounds.getHeight() - 35);
     slotsBounds.removeFromBottom(5);
 
     g.setFont(Font(10.0f));
-    g.setColour(Colours::lightgrey);
+    g.setColour(Colours::white);
     g.drawText("Slots:", slotsBounds.removeFromLeft(35), Justification::left, true);
 }
 
@@ -319,24 +336,43 @@ void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifi
 PresetBrowserComponent::PresetBrowserComponent()
     : processor(nullptr)
 {
+    // Dark styling for title
     titleLabel.setText("Preset Browser", dontSendNotification);
     titleLabel.setFont(Font(16.0f, Font::bold));
     titleLabel.setJustificationType(Justification::centred);
+    titleLabel.setColour(Label::textColourId, Colours::white);
     addAndMakeVisible(titleLabel);
 
+    // Modern dark button styling
     savePresetButton.setButtonText("Save Current");
+    savePresetButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
+    savePresetButton.setColour(TextButton::buttonOnColourId, Colour(0xff4ECDC4));
+    savePresetButton.setColour(TextButton::textColourOffId, Colours::white);
+    savePresetButton.setColour(TextButton::textColourOnId, Colours::black);
     savePresetButton.onClick = [this]() { saveCurrentPreset(); };
     addAndMakeVisible(savePresetButton);
 
     refreshButton.setButtonText("Refresh");
+    refreshButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
+    refreshButton.setColour(TextButton::buttonOnColourId, Colour(0xff9C88FF));
+    refreshButton.setColour(TextButton::textColourOffId, Colours::white);
+    refreshButton.setColour(TextButton::textColourOnId, Colours::black);
     refreshButton.onClick = [this]() { refreshPresetList(); };
     addAndMakeVisible(refreshButton);
 
+    // Dark viewport styling
     presetViewport.setViewedComponent(&presetListContainer, false);
     presetViewport.setScrollBarsShown(true, false);
+    presetViewport.setColour(ScrollBar::backgroundColourId, Colour(0xff2A2A2A));
+    presetViewport.setColour(ScrollBar::thumbColourId, Colour(0xff555555));
     addAndMakeVisible(presetViewport);
 
+    // Dark rename editor
     renameEditor.setVisible(false);
+    renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+    renameEditor.setColour(TextEditor::textColourId, Colours::white);
+    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));
+    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
     renameEditor.onReturnKey = [this]() { hideInlineRenameEditor(true); };
     renameEditor.onEscapeKey = [this]() { hideInlineRenameEditor(false); };
     renameEditor.onFocusLost = [this]() { hideInlineRenameEditor(true); };
@@ -347,9 +383,19 @@ PresetBrowserComponent::~PresetBrowserComponent() {}
 
 void PresetBrowserComponent::paint(Graphics& g)
 {
-    g.fillAll(getLookAndFeel().findColour(ResizableWindow::backgroundColourId));
-    g.setColour(Colours::grey.withAlpha(0.3f));
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2), 4.0f, 1.0f);
+    // Dark preset browser background
+    g.setColour(Colour(0xff1A1A1A));
+    g.fillAll();
+
+    // Modern border
+    g.setColour(Colour(0xff404040));
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2), 6.0f, 1.5f);
+
+    // Add header separator line
+    auto bounds = getLocalBounds();
+    g.setColour(Colour(0xff2A2A2A));
+    g.drawLine(bounds.getX() + 10, bounds.getY() + 60,
+               bounds.getRight() - 10, bounds.getY() + 60, 1.0f);
 }
 
 void PresetBrowserComponent::resized()

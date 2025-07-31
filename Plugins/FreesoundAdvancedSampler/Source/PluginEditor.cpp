@@ -95,9 +95,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::~FreesoundAdvancedSamplerAudioProc
 }
 
 //==============================================================================
-void FreesoundAdvancedSamplerAudioProcessorEditor::paint (Graphics& g)
+void FreesoundAdvancedSamplerAudioProcessorEditor::paint(Graphics& g)
 {
-    g.fillAll (getLookAndFeel().findColour (ResizableWindow::backgroundColourId));
+    // Modern dark background with subtle gradient
+    g.setGradientFill(ColourGradient(
+        Colour(0xff1A1A1A), 0, 0,
+        Colour(0xff0D0D0D), getWidth(), getHeight(), false));
+    g.fillAll();
 }
 
 // Update this method in PluginEditor.cpp
