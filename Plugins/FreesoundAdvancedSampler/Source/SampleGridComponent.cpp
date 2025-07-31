@@ -1196,8 +1196,8 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
         SamplePad::SampleInfo info = samplePads[i]->getSampleInfo();
         if (info.hasValidSample)
         {
-            // Add pad index to the info
-            info.padIndex = i + 1; // 1-based index for user-friendly numbering
+            // Use 0-based index to match processor expectations
+            info.padIndex = i; // Changed from i + 1 to i
             allSamples.add(info);
         }
     }
@@ -1500,6 +1500,19 @@ void SampleGridComponent::timerCallback()
             currentDownloadQuery = "";
         }
     }
+}
+
+SamplePad::SampleInfo SampleGridComponent::getPadInfo(int padIndex) const
+{
+    if (padIndex >= 0 && padIndex < TOTAL_PADS)
+    {
+        return samplePads[padIndex]->getSampleInfo();
+    }
+
+    // Return empty info for invalid indices
+    SamplePad::SampleInfo emptyInfo;
+    emptyInfo.hasValidSample = false;
+    return emptyInfo;
 }
 
 //==============================================================================

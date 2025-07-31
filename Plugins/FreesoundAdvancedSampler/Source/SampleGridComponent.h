@@ -113,6 +113,7 @@ public:
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
     void updateSamples(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo);
     void clearSamples();
+    SamplePad::SampleInfo getPadInfo(int padIndex) const;
 
     // Method to get all sample info for drag operations
     Array<SamplePad::SampleInfo> getAllSampleInfo() const;

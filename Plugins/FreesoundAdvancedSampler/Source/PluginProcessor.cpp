@@ -431,7 +431,48 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyNoteStopped(int noteNumber)
 
 bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description, int slotIndex)
 {
-    Array<PadInfo> padInfos = getCurrentPadInfos();
+    Array<PadInfo> padInfos;
+
+    // Get pad info from the grid if editor is available
+    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    {
+        auto& gridComponent = editor->getSampleGridComponent();
+        auto allSampleInfo = gridComponent.getAllSampleInfo();
+
+        for (const auto& sampleInfo : allSampleInfo)
+        {
+            if (sampleInfo.hasValidSample)
+            {
+                PadInfo padInfo;
+                padInfo.padIndex = sampleInfo.padIndex - 1; // Convert from 1-based to 0-based
+                padInfo.freesoundId = sampleInfo.freesoundId;
+                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
+                padInfo.originalName = sampleInfo.sampleName;
+                padInfo.author = sampleInfo.authorName;
+                padInfo.license = sampleInfo.licenseType;
+
+                // Get additional info from the existing arrays if available
+                for (int i = 0; i < currentSoundsArray.size(); ++i)
+                {
+                    if (currentSoundsArray[i].id == sampleInfo.freesoundId)
+                    {
+                        padInfo.duration = currentSoundsArray[i].duration;
+                        padInfo.fileSize = currentSoundsArray[i].filesize;
+                        break;
+                    }
+                }
+
+                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+                padInfos.add(padInfo);
+            }
+        }
+    }
+    else
+    {
+        // Fallback to the old method
+        padInfos = getCurrentPadInfos();
+    }
+
     return presetManager.saveCurrentPreset(name, description, padInfos, query, slotIndex);
 }
 
@@ -470,20 +511,34 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
         }
     }
 
-    // Build FSSound array from preset data in the correct order
-    // Sort padInfos by padIndex to ensure correct order
-    std::sort(padInfos.begin(), padInfos.end(), [](const PadInfo& a, const PadInfo& b) {
-        return a.padIndex < b.padIndex;
-    });
+    // Initialize arrays to hold 16 positions (all empty initially)
+    currentSoundsArray.resize(16);
+    soundsArray.resize(16);
 
+    // Clear all positions
+    for (int i = 0; i < 16; ++i)
+    {
+        currentSoundsArray.set(i, FSSound()); // Empty sound
+
+        StringArray emptyData;
+        emptyData.add(""); // Empty name
+        emptyData.add(""); // Empty author
+        emptyData.add(""); // Empty license
+        soundsArray[i] = emptyData;
+    }
+
+    // Load samples into their specific pad positions
     for (const auto& padInfo : padInfos)
     {
+        // Validate pad index
+        if (padInfo.padIndex < 0 || padInfo.padIndex >= 16)
+            continue;
+
         // Check if sample file exists
         File sampleFile = presetManager.getSampleFile(padInfo.freesoundId);
         if (!sampleFile.existsAsFile())
         {
-            // Sample missing - skip this pad but continue
-            DBG("Missing sample file for ID: " + padInfo.freesoundId);
+            DBG("Missing sample file for ID: " + padInfo.freesoundId + " at pad " + String(padInfo.padIndex));
             continue;
         }
 
@@ -496,15 +551,17 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
         sound.duration = padInfo.duration;
         sound.filesize = padInfo.fileSize;
 
-        // Add to arrays
-        currentSoundsArray.add(sound);
+        // Place sound at its original pad position
+        currentSoundsArray.set(padInfo.padIndex, sound);
 
         // Create sound info for legacy compatibility
         StringArray soundData;
         soundData.add(padInfo.originalName);
         soundData.add(padInfo.author);
         soundData.add(padInfo.license);
-        soundsArray.push_back(soundData);
+        soundsArray[padInfo.padIndex] = soundData;
+
+        DBG("Loaded sample at pad " + String(padInfo.padIndex) + ": " + padInfo.originalName);
     }
 
     // Update current session location to samples folder
@@ -514,18 +571,69 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
     setSources();
 
     // Debug output
-    DBG("Loaded preset slot " + String(slotIndex) + " with " + String(currentSoundsArray.size()) + " samples");
-    for (int i = 0; i < currentSoundsArray.size(); ++i)
+    int loadedCount = 0;
+    for (int i = 0; i < 16; ++i)
     {
-        DBG("Sample " + String(i) + ": " + currentSoundsArray[i].name);
+        if (!currentSoundsArray[i].id.isEmpty())
+        {
+            loadedCount++;
+            DBG("Pad " + String(i) + ": " + currentSoundsArray[i].name);
+        }
+        else
+        {
+            DBG("Pad " + String(i) + ": empty");
+        }
     }
+
+    DBG("Loaded preset slot " + String(slotIndex) + " with " + String(loadedCount) + " samples in their original positions");
 
     return true;
 }
 
 bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const File& presetFile, int slotIndex, const String& description)
 {
-    Array<PadInfo> padInfos = getCurrentPadInfos();
+    Array<PadInfo> padInfos;
+
+    // Get pad info from the grid if editor is available
+    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    {
+        auto& gridComponent = editor->getSampleGridComponent();
+        auto allSampleInfo = gridComponent.getAllSampleInfo();
+
+        for (const auto& sampleInfo : allSampleInfo)
+        {
+            if (sampleInfo.hasValidSample)
+            {
+                PadInfo padInfo;
+                padInfo.padIndex = sampleInfo.padIndex - 1; // Convert from 1-based to 0-based
+                padInfo.freesoundId = sampleInfo.freesoundId;
+                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
+                padInfo.originalName = sampleInfo.sampleName;
+                padInfo.author = sampleInfo.authorName;
+                padInfo.license = sampleInfo.licenseType;
+
+                // Get additional info from the existing arrays
+                for (int i = 0; i < currentSoundsArray.size(); ++i)
+                {
+                    if (currentSoundsArray[i].id == sampleInfo.freesoundId)
+                    {
+                        padInfo.duration = currentSoundsArray[i].duration;
+                        padInfo.fileSize = currentSoundsArray[i].filesize;
+                        break;
+                    }
+                }
+
+                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+                padInfos.add(padInfo);
+            }
+        }
+    }
+    else
+    {
+        // Fallback to the old method
+        padInfos = getCurrentPadInfos();
+    }
+
     return presetManager.saveToSlot(presetFile, slotIndex, description, padInfos, query);
 }
 
@@ -533,32 +641,116 @@ Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() cons
 {
     Array<PadInfo> padInfos;
 
-    // This method needs to be implemented based on how you want to extract
-    // current pad information. For now, using the existing arrays:
-
-    int maxSize = jmin(currentSoundsArray.size(), (int)soundsArray.size());
-
-    for (int i = 0; i < maxSize; ++i)
+    // Get pad info from the grid to preserve exact positions
+    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
     {
-        const FSSound& sound = currentSoundsArray[i];
+        auto& gridComponent = editor->getSampleGridComponent();
 
-        PadInfo padInfo;
-        padInfo.padIndex = i;
-        padInfo.freesoundId = sound.id;
-        padInfo.fileName = "FS_ID_" + sound.id + ".ogg";
-        padInfo.originalName = sound.name;
-        padInfo.author = sound.user;
-        padInfo.license = sound.license;
-        padInfo.duration = sound.duration;
-        padInfo.fileSize = sound.filesize;
-        padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+        // Iterate through all 16 pad positions
+        for (int padIndex = 0; padIndex < 16; ++padIndex)
+        {
+            auto sampleInfo = gridComponent.getPadInfo(padIndex);
 
-        padInfos.add(padInfo);
+            if (sampleInfo.hasValidSample)
+            {
+                PadInfo padInfo;
+                padInfo.padIndex = padIndex; // Use actual pad position (0-based)
+                padInfo.freesoundId = sampleInfo.freesoundId;
+                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
+                padInfo.originalName = sampleInfo.sampleName;
+                padInfo.author = sampleInfo.authorName;
+                padInfo.license = sampleInfo.licenseType;
+
+                // Get duration and file size from processor arrays if available
+                for (const auto& sound : currentSoundsArray)
+                {
+                    if (sound.id == sampleInfo.freesoundId)
+                    {
+                        padInfo.duration = sound.duration;
+                        padInfo.fileSize = sound.filesize;
+                        break;
+                    }
+                }
+
+                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+                padInfos.add(padInfo);
+            }
+        }
+    }
+    else
+    {
+        // Fallback method when no editor is available
+        for (int i = 0; i < jmin(currentSoundsArray.size(), (int)soundsArray.size()); ++i)
+        {
+            const FSSound& sound = currentSoundsArray[i];
+
+            if (sound.id.isEmpty())
+                continue;
+
+            PadInfo padInfo;
+            padInfo.padIndex = i;
+            padInfo.freesoundId = sound.id;
+            padInfo.fileName = "FS_ID_" + sound.id + ".ogg";
+            padInfo.originalName = sound.name;
+            padInfo.author = sound.user;
+            padInfo.license = sound.license;
+            padInfo.duration = sound.duration;
+            padInfo.fileSize = sound.filesize;
+            padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+
+            padInfos.add(padInfo);
+        }
     }
 
     return padInfos;
 }
 
+Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfosFromGrid() const
+{
+    Array<PadInfo> padInfos;
+
+    // Get the grid component from the editor
+    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    {
+        auto& gridComponent = editor->getSampleGridComponent();
+        auto allSampleInfo = gridComponent.getAllSampleInfo();
+
+        for (const auto& sampleInfo : allSampleInfo)
+        {
+            if (sampleInfo.hasValidSample)
+            {
+                PadInfo padInfo;
+                padInfo.padIndex = sampleInfo.padIndex - 1; // Convert from 1-based to 0-based
+                padInfo.freesoundId = sampleInfo.freesoundId;
+                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
+                padInfo.originalName = sampleInfo.sampleName;
+                padInfo.author = sampleInfo.authorName;
+                padInfo.license = sampleInfo.licenseType;
+
+                // Get additional info from the existing arrays if available
+                for (int i = 0; i < currentSoundsArray.size(); ++i)
+                {
+                    if (currentSoundsArray[i].id == sampleInfo.freesoundId)
+                    {
+                        padInfo.duration = currentSoundsArray[i].duration;
+                        padInfo.fileSize = currentSoundsArray[i].filesize;
+                        break;
+                    }
+                }
+
+                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
+                padInfos.add(padInfo);
+            }
+        }
+    }
+    else
+    {
+        // Fallback to the old method if no editor is available
+        return getCurrentPadInfos();
+    }
+
+    return padInfos;
+}
 
 void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery)
 {

@@ -140,6 +140,7 @@ public:
 	bool loadPreset(const File& presetFile, int slotIndex = 0);
 	bool saveToSlot(const File& presetFile, int slotIndex, const String& description = "");
 	Array<PadInfo> getCurrentPadInfos() const;
+	Array<PadInfo> getCurrentPadInfosFromGrid() const;
 
 private:
     // Enhanced sampler voice class for playback tracking
