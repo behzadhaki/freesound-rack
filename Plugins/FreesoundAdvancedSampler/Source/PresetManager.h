@@ -4,6 +4,7 @@
     PresetManager.h
     Created: New preset management system with multi-slot support
     Author: Generated
+    Modified: Added pitch and volume parameter support
 
   ==============================================================================
 */
@@ -49,7 +50,11 @@ struct PadInfo
     int fileSize;
     String downloadedAt;
 
-    PadInfo() : padIndex(-1), duration(0.0), fileSize(0) {}
+    // NEW: Add pitch and volume parameters
+    float pitchCents;
+    float volume;
+
+    PadInfo() : padIndex(-1), duration(0.0), fileSize(0), pitchCents(0.0f), volume(0.7f) {}
 };
 
 class PresetManager

@@ -4,7 +4,7 @@
     SampleGridComponent.h
     Created: New grid component for displaying samples in 4x4 grid
     Author: Generated
-    Modified: Added drag-and-drop swap functionality and shuffle button
+    Modified: Added drag-and-drop swap functionality, shuffle button, and pitch/volume controls
 
   ==============================================================================
 */
@@ -18,7 +18,8 @@
 
 class SamplePad : public Component,
                   public DragAndDropContainer,
-                  public DragAndDropTarget
+                  public DragAndDropTarget,
+                  public Slider::Listener
 {
 public:
     SamplePad(int padIndex);
@@ -28,6 +29,9 @@ public:
     void resized() override;
     void mouseDown(const MouseEvent& event) override;
     void mouseDrag(const MouseEvent& event) override;
+
+    // Slider::Listener implementation
+    void sliderValueChanged(Slider* slider) override;
 
     // DragAndDropTarget implementation
     bool isInterestedInDragSource(const SourceDetails& dragSourceDetails) override;
@@ -49,6 +53,8 @@ public:
         String licenseType;
         bool hasValidSample;
         int padIndex; // Index of the pad (1-based)
+        float pitchCents; // Pitch shift in cents
+        float volume; // Volume (0.0 to 1.0)
     };
     SampleInfo getSampleInfo() const;
 
@@ -58,11 +64,20 @@ public:
     // Clear sample data
     void clearSample();
 
+    // Get current pitch and volume values
+    float getPitchCents() const { return pitchSlider.getValue(); }
+    float getVolume() const { return volumeSlider.getValue(); }
+
+    // Set pitch and volume values (for preset loading)
+    void setPitchCents(float cents);
+    void setVolume(float volume);
+
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
     String getLicenseShortName(const String& license) const;
+    void updateAudioParameters();
 
     int padIndex;
     FreesoundAdvancedSamplerAudioProcessor* processor;
@@ -84,6 +99,12 @@ private:
     bool isDragHover; // Track drag hover state
 
     Colour padColour;
+
+    // Control sliders
+    Slider pitchSlider;
+    Slider volumeSlider;
+    Label pitchLabel;
+    Label volumeLabel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
