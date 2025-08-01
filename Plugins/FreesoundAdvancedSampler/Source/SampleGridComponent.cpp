@@ -860,8 +860,8 @@ void SampleGridComponent::resized()
     shuffleButton.setBounds(controlsBounds.removeFromLeft(buttonWidth));
     controlsBounds.removeFromLeft(spacing);
 
-    clearAllButton.setBounds(controlsBounds.removeFromLeft(buttonWidth));
-    controlsBounds.removeFromLeft(spacing);
+    clearAllButton.setBounds(controlsBounds.removeFromRight(buttonWidth));
+    // controlsBounds.removeFromLeft(spacing);
 
     // Calculate grid layout in remaining space
     int totalPadding = padding * (GRID_SIZE + 1);
@@ -1803,7 +1803,7 @@ void SampleDragArea::setSampleGridComponent(SampleGridComponent* gridComponent)
 DirectoryOpenButton::DirectoryOpenButton()
     : processor(nullptr)
 {
-    setButtonText("View\nFiles");
+    setButtonText("View Files");
     setSize(60, 40);
 
     // Modern dark button styling
@@ -1844,6 +1844,39 @@ DirectoryOpenButton::DirectoryOpenButton()
 DirectoryOpenButton::~DirectoryOpenButton()
 {
 }
+
+void DirectoryOpenButton::paint(Graphics &g) {
+
+    // use same styling as SampleDragArea
+    auto bounds = getLocalBounds();
+
+    // highlight same as SampleDragArea when hovered
+    if (isMouseOver())
+    {
+        g.setGradientFill(ColourGradient(
+            Colour(0x8000D9FF).withAlpha(0.5f), bounds.getTopLeft().toFloat(),
+            Colour(0x800099CC).withAlpha(0.5f), bounds.getBottomRight().toFloat(), false));
+        g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
+    }
+    else
+    {
+        g.setColour(Colour(0x80404040));
+        g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
+    }
+
+
+    g.setColour(Colour(0x802A2A2A).withAlpha(0.8f));
+    g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
+    g.setColour(Colour(0x80404040));
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.5f);
+    g.setColour(Colours::white);
+    g.setFont(Font(10.0f, Font::bold));
+    g.drawText("View Resources", bounds, Justification::centred);
+
+
+}
+
+
 
 void DirectoryOpenButton::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
 {

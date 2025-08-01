@@ -84,8 +84,9 @@ PresetListItem::PresetListItem(const PresetInfo& info)
    setSize(200, 85); // Reduced height from 120 to 85
 
    // Delete Button - smaller size
-   deleteButton.setButtonText("DEL");
-   deleteButton.setSize(35, 16); // Reduced from 40x18 to 35x16
+   deleteButton.setButtonText("-");
+    // smaller font
+   deleteButton.setSize(20, 8); // Reduced from 40x18 to 35x16
    deleteButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
    deleteButton.setColour(TextButton::buttonOnColourId, Colour(0xffFF6B6B));
    deleteButton.setColour(TextButton::textColourOffId, Colours::white);
@@ -129,123 +130,65 @@ PresetListItem::~PresetListItem() {}
 void PresetListItem::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
+    const int lineHeight = bounds.getHeight() / 3;
 
-    // Modern dark styling
-    if (isSelectedState)
-    {
+    // Background
+    if (isSelectedState) {
         g.setGradientFill(ColourGradient(
             Colour(0xff00D9FF).withAlpha(0.4f), bounds.getTopLeft().toFloat(),
             Colour(0xff0099CC).withAlpha(0.4f), bounds.getBottomRight().toFloat(), false));
-    }
-    else
-    {
+    } else {
         g.setColour(Colour(0xff2A2A2A).withAlpha(0.6f));
     }
-    g.fillRoundedRectangle(bounds.toFloat(), 4.0f); // Slightly less rounded
+    g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
-    // Modern border
-    if (isSelectedState)
-    {
-        g.setColour(Colour(0xff00D9FF));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.5f);
-    }
-    else
-    {
-        g.setColour(Colour(0xff404040));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
-    }
+    // Border
+    g.setColour(isSelectedState ? Colour(0xff00D9FF) : Colour(0xff404040));
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 1.5f : 1.0f);
 
-
-
-    auto textBounds = bounds.reduced(6);
-    textBounds.removeFromRight(75); // leave space for buttons
-    textBounds.removeFromBottom(20); // leave space for slots
-
-    // Draw bank name with date styling
-    g.setFont(Font(12.0f, Font::bold));
-    g.setColour(Colours::white);
-    g.drawText(presetInfo.name, textBounds.removeFromTop(18), Justification::left, true);
-
-    // Draw "Empty Bank" indicator if no slots have data
+    // Line 2: Info
+    auto infoLine = bounds.withHeight(lineHeight).translated(0, lineHeight);
     bool hasData = false;
+    int totalSamples = 0;
     for (const auto& slot : presetInfo.slots) {
         if (slot.hasData) {
             hasData = true;
-            break;
+            totalSamples += slot.sampleCount;
         }
     }
 
-    if (!hasData) {
-        g.setFont(Font(10.0f, Font::italic));
-        g.setColour(Colours::grey);
-        g.drawText("Empty Bank", textBounds.removeFromTop(14), Justification::left, true);
-    }
-
-    // Compact text styling
-    g.setFont(Font(10.0f)); // Slightly smaller font
-    g.setColour(Colours::white);
-
-    // Count total samples across all slots
-    int totalSamples = 0;
-    for (const auto& slot : presetInfo.slots)
-    {
-        if (slot.hasData)
-            totalSamples += slot.sampleCount;
-    }
-
-    auto infoBounds = textBounds.removeFromTop(14);
-    String infoText = "Samples: " + String(totalSamples); // Shorter text
-    g.drawText(infoText, infoBounds.removeFromLeft(infoBounds.getWidth()/2) , Justification::left, true);
-
-    g.setFont(Font(9.0f)); // Smaller date font
-    g.setColour(Colour(0xff999999)); // Light grey for secondary text
-    g.drawText(presetInfo.createdDate, infoBounds, Justification::left, true);
-
-    // Draw "Slots:" label with compact styling
-    auto slotsBounds = bounds.reduced(6);
-    slotsBounds.removeFromTop(bounds.getHeight() - 25);
-    slotsBounds.removeFromBottom(4);
-
-    g.setFont(Font(9.0f)); // Smaller font
-    g.setColour(Colours::white);
-    g.drawText("Slots:", slotsBounds.removeFromLeft(30), Justification::left, true);
-
+    g.setFont(Font(10.0f, hasData ? Font::plain : Font::italic));
+    g.setColour(hasData ? Colours::white : Colours::grey);
+    g.drawText(hasData ? String(totalSamples) + " samples | " + presetInfo.createdDate
+                       : "Empty bank",
+               infoLine.reduced(6, 0), Justification::left, true);
 }
 
 void PresetListItem::resized()
 {
     auto bounds = getLocalBounds();
-    auto textBounds = bounds.reduced(6); // Reduced padding
-    textBounds.removeFromRight(75); // Reduced space for buttons
-    renameEditor.setBounds(textBounds.removeFromTop(18)); // Reduced height
+    const int lineHeight = bounds.getHeight() / 3;
 
-    int buttonWidth = 35;
-    int buttonHeight = 16;
-    int margin = 4; // Reduced margin
-    int spacing = 4; // Reduced spacing
+    // Line 1: Name editor and delete button
+    auto topLine = bounds.withHeight(lineHeight);
 
-    int rightEdge = bounds.getRight() - margin;
+    // Text editor with rounded corners
+    renameEditor.setBounds(topLine.removeFromLeft(bounds.getWidth() - 45).reduced(4, 2));
+    renameEditor.setIndents(8, (renameEditor.getHeight() - renameEditor.getTextHeight()) / 2);
 
-    deleteButton.setBounds(rightEdge - buttonWidth,
-                           bounds.getY() + margin,
-                           buttonWidth, buttonHeight);
+    // Delete button
+    deleteButton.setBounds(topLine.reduced(4, 2));
 
-    rightEdge -= buttonWidth + spacing;
+    // Line 3: Centered slot buttons
+    auto slotsBounds = bounds.withHeight(lineHeight).translated(0, lineHeight*2);
 
-    // Position slot buttons - more compact layout
-    auto slotsBounds = bounds.reduced(6);
-    slotsBounds.removeFromTop(bounds.getHeight() - 25); // Reduced space
-    slotsBounds.removeFromBottom(4);
-    slotsBounds.removeFromLeft(35); // Space for "Slots:" label
+    const int slotSize = 16;
+    const int totalSlotsWidth = (slotSize * 8) + (2 * 7); // 8 slots with 2px spacing
+    const int startX = (bounds.getWidth() - totalSlotsWidth) / 2;
 
-    int slotSpacing = 2; // Reduced spacing
-    int slotSize = 16; // Reduced size
-
-    for (size_t i = 0; i < slotButtons.size(); ++i)
-    {
-        if (slotButtons[i])
-        {
-            int x = slotsBounds.getX() + static_cast<int>(i) * (slotSize + slotSpacing);
+    for (size_t i = 0; i < slotButtons.size(); ++i) {
+        if (slotButtons[i]) {
+            int x = startX + static_cast<int>(i) * (slotSize + 2);
             slotButtons[i]->setBounds(x, slotsBounds.getY(), slotSize, slotSize);
         }
     }
@@ -350,9 +293,9 @@ PresetBrowserComponent::PresetBrowserComponent()
 {
     // Dark styling for title
     titleLabel.setText("Preset Browser", dontSendNotification);
-    titleLabel.setFont(Font(16.0f, Font::bold));
+    titleLabel.setFont(Font(12.0f, Font::bold));
     titleLabel.setJustificationType(Justification::centred);
-    titleLabel.setColour(Label::textColourId, Colours::white);
+    titleLabel.setColour(Label::textColourId, Colours::grey);
     addAndMakeVisible(titleLabel);
 
     // Dark viewport styling

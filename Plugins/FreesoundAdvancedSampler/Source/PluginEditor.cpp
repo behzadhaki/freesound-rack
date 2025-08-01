@@ -79,7 +79,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
 
     setWantsKeyboardFocus(true);
 
-    setSize (1200, 700);  // Increased width for preset browser
+    setSize (1000, 700);  // Increased width for preset browser
     setResizable(false, false);
 
     // FIXED: Use a WeakReference instead of Timer::callAfterDelay to prevent crashes
@@ -112,40 +112,55 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::paint(Graphics& g)
 void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
-    int margin = 10;
-    int searchHeight = 100;
-    int progressHeight = 60;
-    int bottomControlsHeight = 40;
-    int buttonWidth = 60;
-    int presetBrowserWidth = 300;
-    int spacing = 5;
+    const int margin = 8;  // Reduced from 10 for tighter spacing
+    const int searchHeight = 90;  // Slightly reduced
+    const int progressHeight = 50;  // Reduced from 60
+    const int presetBrowserWidth = 210;
+    const int buttonHeight = 30;  // Matches "+ New Bank" height
+    const int spacing = 4;  // Tighter spacing
 
-    // Search component at top
-    freesoundSearchComponent.setBounds(bounds.removeFromTop(searchHeight).reduced(margin));
+    // Search component at top (slightly slimmer)
+    freesoundSearchComponent.setBounds(bounds.removeFromTop(searchHeight).reduced(margin, margin));
 
-    // Progress components at bottom
-    auto progressBounds = bounds.removeFromBottom(progressHeight).reduced(margin);
-    statusLabel.setBounds(progressBounds.removeFromTop(20));
-    progressBar.setBounds(progressBounds.removeFromTop(20));
-    cancelButton.setBounds(progressBounds.removeFromTop(20));
+    // Progress components at bottom (more compact)
+    auto progressBounds = bounds.removeFromBottom(progressHeight).reduced(margin, 0);  // No vertical margin
+    statusLabel.setBounds(progressBounds.removeFromTop(18));  // Slightly smaller
+    progressBar.setBounds(progressBounds.removeFromTop(18));
+    cancelButton.setBounds(progressBounds.removeFromTop(18));
 
-    // Main content area
-    auto contentBounds = bounds.reduced(margin);
+    // Main content area - no vertical margin to eliminate bottom gap
+    bounds.removeFromLeft(margin);
+    auto contentBounds = bounds.withTrimmedBottom(margin);  // Only trim top
 
-    // Preset browser on the right side
-    presetBrowserComponent.setBounds(contentBounds.removeFromRight(presetBrowserWidth));
-    contentBounds.removeFromRight(margin); // Spacing between grid and preset browser
+    // Left area (preset browser + controls)
+    auto leftArea = contentBounds.removeFromLeft(presetBrowserWidth);
 
-    // Bottom controls area for external controls only (View Files and Drag)
-    auto bottomControlsBounds = contentBounds.removeFromBottom(bottomControlsHeight);
+    // Preset browser takes most of left area
+    presetBrowserComponent.setBounds(leftArea.removeFromTop(leftArea.getHeight() - buttonHeight - spacing));
 
-    // View Files and Drag area at bottom right
-    directoryOpenButton.setBounds(bottomControlsBounds.removeFromRight(buttonWidth));
-    bottomControlsBounds.removeFromRight(spacing);
-    sampleDragArea.setBounds(bottomControlsBounds.removeFromRight(80)); // Drag area width
+    // Controls go below preset browser
+    auto controlArea = leftArea.withTrimmedTop(spacing);
+    controlArea.removeFromLeft(margin);
+    controlArea.removeFromRight(margin);
+    sampleDragArea.setBounds(controlArea.removeFromLeft(controlArea.getWidth()/3).reduced(0, 2));
+    controlArea.removeFromTop(3);
+    controlArea.removeFromBottom(3);
+    directoryOpenButton.setBounds(controlArea.removeFromRight(int(controlArea.getWidth()*0.8f)));
 
-    // Sample grid takes remaining space (it will handle its own shuffle button internally)
-    sampleGridComponent.setBounds(contentBounds);
+    // Sample grid - calculate square dimensions
+    contentBounds.removeFromLeft(spacing);  // Spacing between preset area and grid
+
+    const int padSize = jmin(contentBounds.getWidth() / 4, contentBounds.getHeight() / 4);
+    const int gridWidth = padSize * 5.5;
+    const int gridHeight = padSize * 4;
+
+    // Center grid vertically (will automatically match preset area height)
+    sampleGridComponent.setBounds(
+        contentBounds.getX(),
+        contentBounds.getY() + (contentBounds.getHeight() - gridHeight) / 2,
+        gridWidth,
+        gridHeight
+    );
 }
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress)

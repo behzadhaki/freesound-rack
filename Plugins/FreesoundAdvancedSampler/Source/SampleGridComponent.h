@@ -219,7 +219,7 @@ class DirectoryOpenButton : public TextButton
 public:
     DirectoryOpenButton();
     ~DirectoryOpenButton() override;
-
+    void paint(Graphics &g) override;
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* processor);
 
 private:
