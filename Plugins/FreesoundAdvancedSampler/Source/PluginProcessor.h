@@ -58,8 +58,8 @@ public:
     void changeProgramName (int index, const String& newName) override;
 
     //==============================================================================
-    void getStateInformation (MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
+	void getStateInformation (MemoryBlock& destData) override;
+	void setStateInformation (const void* data, int sizeInBytes) override;
 
     //==============================================================================
     File tmpDownloadLocation;
@@ -179,6 +179,9 @@ private:
     void notifyPlayheadPositionChanged(int noteNumber, float position);
 
 	PresetManager presetManager;
+
+	void savePluginState(XmlElement& xml);
+	void loadPluginState(const XmlElement& xml);
 
     friend class TrackingSamplerVoice;
 

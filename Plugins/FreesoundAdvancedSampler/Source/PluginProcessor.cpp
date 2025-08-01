@@ -206,12 +206,130 @@ AudioProcessorEditor* FreesoundAdvancedSamplerAudioProcessor::createEditor()
 }
 
 //==============================================================================
-void FreesoundAdvancedSamplerAudioProcessor::getStateInformation (MemoryBlock& destData)
+void FreesoundAdvancedSamplerAudioProcessor::getStateInformation(MemoryBlock& destData)
 {
+    // Create an outer XML element
+    auto xml = std::make_unique<XmlElement>("FreesoundAdvancedSamplerState");
+
+    // Save current state
+    savePluginState(*xml);
+
+    // Store as binary
+    copyXmlToBinary(*xml, destData);
 }
 
-void FreesoundAdvancedSamplerAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void FreesoundAdvancedSamplerAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+    // Try to load from binary
+    auto xml = getXmlFromBinary(data, sizeInBytes);
+    if (xml != nullptr)
+    {
+        loadPluginState(*xml);
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
+{
+    // Save basic plugin state
+    xml.setAttribute("query", query);
+    xml.setAttribute("lastDownloadLocation", currentSessionDownloadLocation.getFullPathName());
+
+    // Save current sounds and their positions
+    auto* soundsXml = xml.createNewChildElement("Sounds");
+    for (int i = 0; i < currentSoundsArray.size(); ++i)
+    {
+        const auto& sound = currentSoundsArray[i];
+        if (sound.id.isNotEmpty())
+        {
+            auto* soundXml = soundsXml->createNewChildElement("Sound");
+            soundXml->setAttribute("padIndex", i);
+            soundXml->setAttribute("id", sound.id);
+            soundXml->setAttribute("name", sound.name);
+            soundXml->setAttribute("user", sound.user);
+            soundXml->setAttribute("license", sound.license);
+            soundXml->setAttribute("duration", sound.duration);
+            soundXml->setAttribute("filesize", sound.filesize);
+
+            // Save associated metadata if available
+            if (i < soundsArray.size() && soundsArray[i].size() >= 3)
+            {
+                soundXml->setAttribute("displayName", soundsArray[i][0]);
+                soundXml->setAttribute("displayAuthor", soundsArray[i][1]);
+                soundXml->setAttribute("displayLicense", soundsArray[i][2]);
+            }
+        }
+    }
+
+    // NOTE: Removed preset-related saving
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& xml)
+{
+    // Load basic plugin state
+    query = xml.getStringAttribute("query", "");
+    currentSessionDownloadLocation = File(xml.getStringAttribute("lastDownloadLocation",
+        presetManager.getSamplesFolder().getFullPathName()));
+
+    // Clear current state
+    currentSoundsArray.clear();
+    soundsArray.clear();
+    currentSoundsArray.resize(16);
+    soundsArray.resize(16);
+
+    // Load sounds
+    if (auto* soundsXml = xml.getChildByName("Sounds"))
+    {
+        for (auto* soundXml : soundsXml->getChildIterator())
+        {
+            if (soundXml->hasTagName("Sound"))
+            {
+                int padIndex = soundXml->getIntAttribute("padIndex", -1);
+                if (padIndex >= 0 && padIndex < 16)
+                {
+                    FSSound sound;
+                    sound.id = soundXml->getStringAttribute("id");
+                    sound.name = soundXml->getStringAttribute("name");
+                    sound.user = soundXml->getStringAttribute("user");
+                    sound.license = soundXml->getStringAttribute("license");
+                    sound.duration = soundXml->getDoubleAttribute("duration", 0.5);
+                    sound.filesize = soundXml->getIntAttribute("filesize", 50000);
+
+                    currentSoundsArray.set(padIndex, sound);
+
+                    // Create sound info for legacy compatibility
+                    StringArray soundData;
+                    soundData.add(soundXml->getStringAttribute("displayName", sound.name));
+                    soundData.add(soundXml->getStringAttribute("displayAuthor", sound.user));
+                    soundData.add(soundXml->getStringAttribute("displayLicense", sound.license));
+                    soundsArray[padIndex] = soundData;
+                }
+            }
+        }
+    }
+
+    // NOTE: Removed preset-related loading
+
+    // If we have sounds, set up the sampler
+    bool hasSounds = false;
+    for (const auto& sound : currentSoundsArray)
+    {
+        if (sound.id.isNotEmpty())
+        {
+            hasSounds = true;
+            break;
+        }
+    }
+
+    if (hasSounds)
+    {
+        setSources();
+
+        // Update the editor if available
+        if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+        {
+            editor->getSampleGridComponent().updateSamples(currentSoundsArray, soundsArray);
+        }
+    }
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)
@@ -319,30 +437,22 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
     int poliphony = 16;
     int maxLength = 10;
 
-    // Add tracking voices instead of regular sampler voices
+    // Add tracking voices
     for (int i = 0; i < poliphony; i++) {
         sampler.addVoice(new TrackingSamplerVoice(*this));
     }
 
-    if(audioFormatManager.getNumKnownFormats() == 0){
+    if (audioFormatManager.getNumKnownFormats() == 0) {
         audioFormatManager.registerBasicFormats();
     }
 
-    // Load samples by their actual pad positions, not sequentially
-    // This ensures that pad N always maps to MIDI note (36 + N)
+    // Load samples by their actual pad positions
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
         // Check if we have a sound for this specific pad position
-        if (padIndex < currentSoundsArray.size())
+        if (padIndex < currentSoundsArray.size() && !currentSoundsArray[padIndex].id.isEmpty())
         {
             const FSSound& sound = currentSoundsArray[padIndex];
-
-            // Skip empty sounds (sounds with empty ID)
-            if (sound.id.isEmpty())
-            {
-                DBG("Pad " + String(padIndex) + " is empty, skipping");
-                continue;
-            }
 
             String fileName = "FS_ID_" + sound.id + ".ogg";
             File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
@@ -354,30 +464,13 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
                 if (reader != nullptr)
                 {
                     BigInteger notes;
-                    // CRITICAL: Use the actual pad index for MIDI note, not the loop counter
-                    int midiNote = 36 + padIndex;
+                    int midiNote = 36 + padIndex; // Note 36 = pad 0, Note 37 = pad 1, etc.
                     notes.setBit(midiNote, true);
                     sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote, 0, maxLength, maxLength));
-
-                    DBG("Successfully loaded sample for pad " + String(padIndex) + " to MIDI note " + String(midiNote) + ": " + audioFile.getFileName());
-                }
-                else
-                {
-                    DBG("Failed to create reader for pad " + String(padIndex) + ": " + audioFile.getFullPathName());
                 }
             }
-            else
-            {
-                DBG("Audio file not found for pad " + String(padIndex) + ": " + audioFile.getFullPathName());
-            }
-        }
-        else
-        {
-            DBG("No sound data for pad " + String(padIndex));
         }
     }
-
-    DBG("Sampler now has " + String(sampler.getNumSounds()) + " sounds loaded");
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addToMidiBuffer(int notenumber)
