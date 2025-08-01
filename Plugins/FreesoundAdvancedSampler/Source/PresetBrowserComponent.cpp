@@ -156,6 +156,7 @@ void PresetListItem::paint(Graphics& g)
     }
 
 
+
     auto textBounds = bounds.reduced(6);
     textBounds.removeFromRight(75); // leave space for buttons
     textBounds.removeFromBottom(20); // leave space for slots
@@ -192,13 +193,13 @@ void PresetListItem::paint(Graphics& g)
             totalSamples += slot.sampleCount;
     }
 
-
+    auto infoBounds = textBounds.removeFromTop(14);
     String infoText = "Samples: " + String(totalSamples); // Shorter text
-    g.drawText(infoText, textBounds.removeFromTop(12), Justification::left, true);
+    g.drawText(infoText, infoBounds.removeFromLeft(infoBounds.getWidth()/2) , Justification::left, true);
 
     g.setFont(Font(9.0f)); // Smaller date font
     g.setColour(Colour(0xff999999)); // Light grey for secondary text
-    g.drawText(presetInfo.createdDate, textBounds, Justification::left, true);
+    g.drawText(presetInfo.createdDate, infoBounds, Justification::left, true);
 
     // Draw "Slots:" label with compact styling
     auto slotsBounds = bounds.reduced(6);
@@ -208,6 +209,7 @@ void PresetListItem::paint(Graphics& g)
     g.setFont(Font(9.0f)); // Smaller font
     g.setColour(Colours::white);
     g.drawText("Slots:", slotsBounds.removeFromLeft(30), Justification::left, true);
+
 }
 
 void PresetListItem::resized()
