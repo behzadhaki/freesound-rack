@@ -96,27 +96,6 @@ PresetListItem::PresetListItem(const PresetInfo& info)
    };
    addAndMakeVisible(deleteButton);
 
-   // Load Button - smaller size
-   loadButton.setButtonText("LOAD");
-   loadButton.setSize(35, 16); // Reduced from 40x18 to 35x16
-   loadButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
-   loadButton.setColour(TextButton::buttonOnColourId, Colour(0xff4ECDC4));
-   loadButton.setColour(TextButton::textColourOffId, Colours::white);
-   loadButton.setColour(TextButton::textColourOnId, Colours::black);
-   loadButton.onClick = [this]() {
-       // Load first available slot by default
-       for (int i = 0; i < 8; ++i)
-       {
-           if (presetInfo.slots[i].hasData)
-           {
-               if (onLoadSlotClicked)
-                   onLoadSlotClicked(presetInfo, i);
-               break;
-           }
-       }
-   };
-   addAndMakeVisible(loadButton);
-
    // Rename Editor - more compact
    renameEditor.setText(presetInfo.name, dontSendNotification);
    renameEditor.setSelectAllWhenFocused(true);
@@ -250,10 +229,6 @@ void PresetListItem::resized()
                            buttonWidth, buttonHeight);
 
     rightEdge -= buttonWidth + spacing;
-
-    loadButton.setBounds(rightEdge - buttonWidth,
-                         bounds.getY() + margin,
-                         buttonWidth, buttonHeight);
 
     // Position slot buttons - more compact layout
     auto slotsBounds = bounds.reduced(6);

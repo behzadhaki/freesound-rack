@@ -58,7 +58,6 @@ private:
     bool isSelectedState = false;
 
     TextButton deleteButton;
-    TextButton loadButton;
     TextEditor renameEditor;
     std::array<std::unique_ptr<SlotButton>, 8> slotButtons;
 
