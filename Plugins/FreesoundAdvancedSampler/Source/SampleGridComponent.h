@@ -65,6 +65,8 @@ public:
     // Clear sample data
     void clearSample();
 
+    void handleDeleteClick();
+
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
@@ -142,6 +144,9 @@ public:
     // used for keyboard focus (playing samples with keyboard)
     void mouseDown(const MouseEvent& event) override;
 
+    // Update JSON metadata after swap
+    void updateJsonMetadata();
+
 private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;
@@ -163,9 +168,6 @@ private:
     void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
     void loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query);
     void downloadSingleSampleWithQuery(int padIndex, const FSSound& sound, const String& query);
-
-    // Update JSON metadata after swap
-    void updateJsonMetadata();
 
     // Update processor arrays from current grid state
     void updateProcessorArraysFromGrid();

@@ -160,7 +160,27 @@ void SamplePad::paint(Graphics& g)
         auto topRightBounds = bounds.reduced(4);
         topRightBounds = topRightBounds.removeFromTop(14);
 
-        // License badge (rightmost) - Modern orange/amber styling
+        // DEL badge (rightmost) - Modern red styling
+        if (hasValidSample)
+        {
+            int delBadgeWidth = 28;
+            auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
+
+            // Modern red gradient
+            g.setGradientFill(ColourGradient(
+                Colour(0xffFF6B6B), delBounds.getTopLeft().toFloat(),
+                Colour(0xffE53935), delBounds.getBottomRight().toFloat(), false));
+            g.fillRoundedRectangle(delBounds.toFloat(), 3.0f);
+
+            // White text
+            g.setColour(Colours::white);
+            g.drawText("DEL", delBounds, Justification::centred);
+
+            // Add small spacing between badges
+            topRightBounds.removeFromRight(3);
+        }
+
+        // License badge (middle) - Modern orange/amber styling
         if (licenseType.isNotEmpty())
         {
             String shortLicense = getLicenseShortName(licenseType);
@@ -181,7 +201,7 @@ void SamplePad::paint(Graphics& g)
             topRightBounds.removeFromRight(3);
         }
 
-        // Web badge (to the left of license badge) - Modern blue styling
+        // Web badge (leftmost) - Modern blue styling
         if (freesoundId.isNotEmpty())
         {
             int webBadgeWidth = 28;
@@ -303,10 +323,11 @@ void SamplePad::paint(Graphics& g)
     }
 }
 
+
 void SamplePad::mouseDown(const MouseEvent& event)
 {
-   // Check if clicked on search badge (bottom-right) - ALWAYS available
-   {
+    // Check if clicked on search badge (bottom-right) - ALWAYS available
+    {
        auto bounds = getLocalBounds();
        auto searchBounds = bounds.reduced(3);
        int badgeWidth = 35;
@@ -341,67 +362,59 @@ void SamplePad::mouseDown(const MouseEvent& event)
            }
            return;
        }
-   }
+    }
+
+    auto bounds = getLocalBounds();
+    auto topRightBounds = bounds.reduced(3);
+    topRightBounds = topRightBounds.removeFromTop(12);
 
    if (!hasValidSample)
        return; // Don't process other clicks for empty pads
 
-   // Check if clicked on web badge or license badge (top-right area)
-   {
-       auto bounds = getLocalBounds();
-       auto topRightBounds = bounds.reduced(3);
-       topRightBounds = topRightBounds.removeFromTop(12);
+    // Check DEL badge (rightmost)
+    if (hasValidSample)
+    {
+        int delBadgeWidth = 28;
+        auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
 
-       // Check license badge first (rightmost)
-       if (licenseType.isNotEmpty())
-       {
-           int licenseBadgeWidth = 35;
-           auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
+        if (delBounds.contains(event.getPosition()))
+        {
+            handleDeleteClick();
+            return;
+        }
+        topRightBounds.removeFromRight(3);
+    }
 
-           if (licenseBounds.contains(event.getPosition()))
-           {
-               // Open the actual Creative Commons license URL
-               URL(licenseType).launchInDefaultBrowser();
-               return;
-           }
+    // Check License badge (middle)
+    if (licenseType.isNotEmpty())
+    {
+        int licenseBadgeWidth = 32;
+        auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
 
-           // Remove spacing between badges
-           topRightBounds.removeFromRight(2);
-       }
+        if (licenseBounds.contains(event.getPosition()))
+        {
+            URL(licenseType).launchInDefaultBrowser();
+            return;
+        }
+        topRightBounds.removeFromRight(3);
+    }
 
-       // Check web badge (to the left of license badge)
-       if (freesoundId.isNotEmpty())
-       {
-           int webBadgeWidth = 30;
-           auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
+    // Check Web badge (leftmost)
+    if (freesoundId.isNotEmpty())
+    {
+        int webBadgeWidth = 28;
+        auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
 
-           if (webBounds.contains(event.getPosition()))
-           {
-               // Open Freesound page in browser
-               String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
-               URL(freesoundUrl).launchInDefaultBrowser();
-               return;
-           }
-       }
-   }
-
-   // Check if clicked on drag badge (bottom-left) - for file export
-   {
-       auto bounds = getLocalBounds();
-       auto dragBounds = bounds.reduced(3);
-       int badgeWidth = 30;
-       int badgeHeight = 12;
-       dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
-
-       if (dragBounds.contains(event.getPosition()))
-       {
-           // Store that we clicked on drag badge for mouseDrag to handle file export
-           return;
-       }
-   }
+        if (webBounds.contains(event.getPosition()))
+        {
+            String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+            URL(freesoundUrl).launchInDefaultBrowser();
+            return;
+        }
+    }
 
    // Check if clicked in waveform area - for manual triggering
-   auto bounds = getLocalBounds();
+   bounds = getLocalBounds();
    auto waveformBounds = bounds.reduced(8);
    waveformBounds.removeFromTop(16); // Space for top line badges
    waveformBounds.removeFromBottom(16); // Space for bottom line
@@ -419,6 +432,50 @@ void SamplePad::mouseDown(const MouseEvent& event)
 
    // If clicked on edge areas (outside waveform but not on badges), do nothing here
    // mouseDrag will handle edge dragging for swapping
+}
+
+void SamplePad::handleDeleteClick()
+{
+    if (!hasValidSample)
+        return;
+
+    // Confirm with user before deleting
+    AlertWindow::showOkCancelBox(
+        AlertWindow::QuestionIcon,
+        "Delete Sample",
+        "Are you sure you want to delete this sample?",
+        "Yes", "No",
+        nullptr,
+        ModalCallbackFunction::create([this](int result) {
+            if (result == 1) // User clicked "Yes"
+            {
+                // Clear this pad
+                clearSample();
+
+                // Notify parent grid component
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    // Update processor arrays if available
+                    if (processor)
+                    {
+                        // Clear this pad in processor arrays
+                        auto& sounds = processor->getCurrentSoundsArrayReference();
+                        auto& data = processor->getDataReference();
+
+                        if (padIndex < sounds.size())
+                            sounds.set(padIndex, FSSound());
+
+                        if (padIndex < data.size())
+                            data[padIndex] = StringArray();
+
+                        processor->setSources(); // Rebuild sampler
+                    }
+
+                    gridComponent->updateJsonMetadata();
+                }
+            }
+        })
+    );
 }
 
 void SamplePad::mouseDrag(const MouseEvent& event)
@@ -667,11 +724,9 @@ void SamplePad::clearSample()
     isPlaying = false;
     playheadPosition = 0.0f;
     audioThumbnail.clear();
-
-    // Clear query text box
     queryTextBox.setText("", dontSendNotification);
 
-    resized(); // Recalculate layout
+    resized();
     repaint();
 }
 
