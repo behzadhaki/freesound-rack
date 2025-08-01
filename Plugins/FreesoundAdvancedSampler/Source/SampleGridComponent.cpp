@@ -725,6 +725,25 @@ SampleGridComponent::SampleGridComponent()
         shuffleSamples();
     };
     addAndMakeVisible(shuffleButton);
+
+    // Set up clear all button
+    clearAllButton.setButtonText("Clear All");
+    clearAllButton.onClick = [this]() {
+        // Confirm with user before clearing
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Clear All Pads",
+            "Are you sure you want to clear all pads? This cannot be undone.",
+            "Yes", "No",
+            nullptr,
+            ModalCallbackFunction::create([this](int result) {
+                if (result == 1) { // User clicked "Yes"
+                    clearAllPads();
+                }
+            })
+        );
+    };
+    addAndMakeVisible(clearAllButton);
 }
 
 SampleGridComponent::~SampleGridComponent()
@@ -785,6 +804,9 @@ void SampleGridComponent::resized()
     // Position controls in bottom area
     auto controlsBounds = bottomArea.reduced(padding);
     shuffleButton.setBounds(controlsBounds.removeFromLeft(buttonWidth));
+    controlsBounds.removeFromLeft(spacing);
+
+    clearAllButton.setBounds(controlsBounds.removeFromLeft(buttonWidth));
     controlsBounds.removeFromLeft(spacing);
 
     // Calculate grid layout in remaining space
@@ -969,6 +991,13 @@ void SampleGridComponent::clearSamples()
     for (auto& pad : samplePads)
     {
         pad->clearSample();
+
+    }
+
+    for (auto& pad : samplePads)
+    {
+        pad->clearSample();
+        pad->setQuery(""); // Also clear any individual pad queries
     }
 }
 
@@ -1591,6 +1620,22 @@ void SampleGridComponent::mouseDown(const MouseEvent& event)
     Component::mouseDown(event);
 }
 
+void SampleGridComponent::clearAllPads()
+{
+    // Clear all pads visually
+    clearSamples();
+
+    // Clear processor arrays if available
+    if (processor)
+    {
+        processor->getCurrentSoundsArrayReference().clear();
+        processor->getDataReference().clear();
+        processor->setSources(); // Rebuild sampler with empty state
+    }
+
+    // Update any metadata
+    updateJsonMetadata();
+}
 //==============================================================================
 // SampleDragArea Implementation
 //==============================================================================

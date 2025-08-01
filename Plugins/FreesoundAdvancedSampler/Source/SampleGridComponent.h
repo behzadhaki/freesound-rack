@@ -176,6 +176,10 @@ private:
     void downloadSingleSample(int padIndex, const FSSound& sound);
     void updateSinglePadInProcessor(int padIndex, const FSSound& sound);
 
+    // clear all pads button and methods
+    TextButton clearAllButton;  // Add this line
+    void clearAllPads();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };
 
