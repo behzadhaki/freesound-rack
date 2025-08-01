@@ -60,6 +60,7 @@ public:
 
     // Get pad index
     int getPadIndex() const { return padIndex; }
+    int setPadIndex(int index) { padIndex = index; return padIndex; }
 
     // Clear sample data
     void clearSample();

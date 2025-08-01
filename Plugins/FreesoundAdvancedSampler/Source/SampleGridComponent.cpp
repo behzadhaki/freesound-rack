@@ -977,51 +977,39 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     if (sourcePadIndex < 0 || sourcePadIndex >= TOTAL_PADS ||
         targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS ||
         sourcePadIndex == targetPadIndex)
-    {
         return;
-    }
 
-    // Get sample info from both pads
-    auto sourcePad = samplePads[sourcePadIndex].get();
-    auto targetPad = samplePads[targetPadIndex].get();
+    // Swap visual pad objects
+    std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
 
-    auto sourceInfo = sourcePad->getSampleInfo();
-    auto targetInfo = targetPad->getSampleInfo();
+    // Swap their bounds to keep layout consistent
+    auto sourceBounds = samplePads[sourcePadIndex]->getBounds();
+    auto targetBounds = samplePads[targetPadIndex]->getBounds();
+    samplePads[sourcePadIndex]->setBounds(targetBounds);
+    samplePads[targetPadIndex]->setBounds(sourceBounds);
 
-    // Swap the samples in the visual grid
-    if (targetInfo.hasValidSample)
+    // Update padIndex of each pad so MIDI note triggering is correct
+    samplePads[sourcePadIndex]->setPadIndex(sourcePadIndex);
+    samplePads[targetPadIndex]->setPadIndex(targetPadIndex);
+
+    // Update processor-side arrays to keep logic in sync
+    if (processor != nullptr)
     {
-        sourcePad->setSample(targetInfo.audioFile, targetInfo.sampleName,
-                           targetInfo.authorName, targetInfo.freesoundId, targetInfo.licenseType);
-    }
-    else
-    {
-        sourcePad->clearSample();
-    }
+        // Swap current sound data
+        auto& sounds = processor->getCurrentSoundsArrayReference();
+        std::swap(sounds.getReference(sourcePadIndex), sounds.getReference(targetPadIndex));
 
-    if (sourceInfo.hasValidSample)
-    {
-        targetPad->setSample(sourceInfo.audioFile, sourceInfo.sampleName,
-                           sourceInfo.authorName, sourceInfo.freesoundId, sourceInfo.licenseType);
-    }
-    else
-    {
-        targetPad->clearSample();
-    }
+        // Swap associated metadata (author, license, etc.)
+        auto& metadata = processor->getDataReference();
+        std::swap(metadata[sourcePadIndex], metadata[targetPadIndex]);
 
-    // Update the processor's internal arrays to match the new visual order
-    updateProcessorArraysFromGrid();
-
-    // Update JSON metadata
-    updateJsonMetadata();
-
-    // Reload the sampler with new pad order
-    if (processor)
-    {
+        // Rebuild the sampler to apply updated MIDI mappings
         processor->setSources();
-        // Also update the README file to reflect new order
-        processor->updateReadmeFile();
     }
+
+    // Repaint both pads to reflect new visuals
+    samplePads[sourcePadIndex]->repaint();
+    samplePads[targetPadIndex]->repaint();
 }
 
 void SampleGridComponent::shuffleSamples()
