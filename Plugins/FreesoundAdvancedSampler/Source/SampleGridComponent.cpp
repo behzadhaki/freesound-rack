@@ -104,8 +104,8 @@ void SamplePad::paint(Graphics& g)
     {
         // Subtle gradient for active pads
         g.setGradientFill(ColourGradient(
-            padColour.withAlpha(0.9f), bounds.getTopLeft().toFloat(),
-            padColour.darker(0.3f).withAlpha(0.9f), bounds.getBottomRight().toFloat(), false));
+            padColour.withAlpha(0.3f), bounds.getTopLeft().toFloat(),
+            padColour.darker(0.3f).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
@@ -729,10 +729,13 @@ SampleGridComponent::SampleGridComponent()
 
 SampleGridComponent::~SampleGridComponent()
 {
+    stopTimer();
+
     if (processor)
     {
         processor->removePlaybackListener(this);
     }
+
 }
 
 void SampleGridComponent::paint(Graphics& g)
@@ -954,13 +957,9 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
         samplePads[i]->clearSample();
     }
 
-    // Force a repaint of all pads after a brief delay to ensure waveforms are loaded
-    Timer::callAfterDelay(200, [this]() {
-        for (auto& pad : samplePads)
-        {
-            pad->repaint();
-        }
-    });
+    // FIXED: Use a member timer instead of Timer::callAfterDelay to ensure proper cleanup
+    // Start the delayed repaint timer
+    startTimer(200); // This will call timerCallback after 200ms
 
     DBG("Grid update complete");
 }
@@ -1535,9 +1534,10 @@ void SampleGridComponent::downloadSingleSampleWithQuery(int padIndex, const FSSo
 
 void SampleGridComponent::timerCallback()
 {
+    // Check if we're handling single pad downloads
     if (singlePadDownloadManager && currentDownloadPadIndex >= 0)
     {
-        // Check if the expected file exists
+        // Existing single pad download logic...
         String fileName = "FS_ID_" + currentDownloadSound.id + ".ogg";
         File samplesFolder = processor->getCurrentDownloadLocation();
         File audioFile = samplesFolder.getChildFile(fileName);
@@ -1566,6 +1566,20 @@ void SampleGridComponent::timerCallback()
             singlePadDownloadManager.reset();
             currentDownloadPadIndex = -1;
             currentDownloadQuery = "";
+        }
+    }
+    else
+    {
+        // This is the delayed repaint from loadSamplesFromArrays
+        stopTimer(); // Stop the timer since this is a one-time repaint
+
+        // Safely repaint all pads, checking if they're still valid
+        for (auto& pad : samplePads)
+        {
+            if (pad && pad->isShowing() && pad->getLocalBounds().getWidth() > 0 && pad->getLocalBounds().getHeight() > 0)
+            {
+                pad->repaint();
+            }
         }
     }
 }

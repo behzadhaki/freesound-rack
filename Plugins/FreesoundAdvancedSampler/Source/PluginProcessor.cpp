@@ -91,6 +91,7 @@ FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor(
 	downloadManager.removeListener(this);
 
 	// Note: We no longer delete the tmp directory to preserve downloaded files
+
 }
 
 //==============================================================================

@@ -81,10 +81,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     setSize (1200, 700);  // Increased width for preset browser
     setResizable(false, false);
 
-    // Grab focus after a delay to ensure component is ready
-    Timer::callAfterDelay(200, [this]() {
-        if (isShowing()) {
-            grabKeyboardFocus();
+    // FIXED: Use a WeakReference instead of Timer::callAfterDelay to prevent crashes
+    // The WeakReference will become null if this component is destroyed
+    Component::SafePointer<FreesoundAdvancedSamplerAudioProcessorEditor> safeThis(this);
+
+    Timer::callAfterDelay(200, [safeThis]() {
+        if (safeThis != nullptr && safeThis->isShowing()) {
+            safeThis->grabKeyboardFocus();
         }
     });
 }
