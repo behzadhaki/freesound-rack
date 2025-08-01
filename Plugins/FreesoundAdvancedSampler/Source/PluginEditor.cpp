@@ -36,6 +36,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
 
     // Set up preset browser with multi-slot support
     presetBrowserComponent.setProcessor(&processor);
+    presetBrowserComponent.refreshPresetList();
     presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo, int slotIndex) {
         handlePresetLoadRequested(presetInfo, slotIndex);
     };

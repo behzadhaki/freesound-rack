@@ -89,12 +89,14 @@ public:
 
     void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
 
+    void createNewPresetBank();
+
 private:
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
     Label titleLabel;
-    TextButton savePresetButton;
-    TextButton refreshButton;
+    TextButton addBankButton;
+    bool shouldHighlightFirstSlot = false;
 
     Viewport presetViewport;
     Component presetListContainer;

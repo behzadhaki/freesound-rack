@@ -176,9 +176,30 @@ void PresetListItem::paint(Graphics& g)
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
     }
 
+
     auto textBounds = bounds.reduced(6);
     textBounds.removeFromRight(75); // leave space for buttons
     textBounds.removeFromBottom(20); // leave space for slots
+
+    // Draw bank name with date styling
+    g.setFont(Font(12.0f, Font::bold));
+    g.setColour(Colours::white);
+    g.drawText(presetInfo.name, textBounds.removeFromTop(18), Justification::left, true);
+
+    // Draw "Empty Bank" indicator if no slots have data
+    bool hasData = false;
+    for (const auto& slot : presetInfo.slots) {
+        if (slot.hasData) {
+            hasData = true;
+            break;
+        }
+    }
+
+    if (!hasData) {
+        g.setFont(Font(10.0f, Font::italic));
+        g.setColour(Colours::grey);
+        g.drawText("Empty Bank", textBounds.removeFromTop(14), Justification::left, true);
+    }
 
     // Compact text styling
     g.setFont(Font(10.0f)); // Slightly smaller font
@@ -191,6 +212,7 @@ void PresetListItem::paint(Graphics& g)
         if (slot.hasData)
             totalSamples += slot.sampleCount;
     }
+
 
     String infoText = "Samples: " + String(totalSamples); // Shorter text
     g.drawText(infoText, textBounds.removeFromTop(12), Justification::left, true);
@@ -356,23 +378,6 @@ PresetBrowserComponent::PresetBrowserComponent()
     titleLabel.setColour(Label::textColourId, Colours::white);
     addAndMakeVisible(titleLabel);
 
-    // Modern dark button styling
-    savePresetButton.setButtonText("Save Current");
-    savePresetButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
-    savePresetButton.setColour(TextButton::buttonOnColourId, Colour(0xff4ECDC4));
-    savePresetButton.setColour(TextButton::textColourOffId, Colours::white);
-    savePresetButton.setColour(TextButton::textColourOnId, Colours::black);
-    savePresetButton.onClick = [this]() { saveCurrentPreset(); };
-    addAndMakeVisible(savePresetButton);
-
-    refreshButton.setButtonText("Refresh");
-    refreshButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
-    refreshButton.setColour(TextButton::buttonOnColourId, Colour(0xff9C88FF));
-    refreshButton.setColour(TextButton::textColourOffId, Colours::white);
-    refreshButton.setColour(TextButton::textColourOnId, Colours::black);
-    refreshButton.onClick = [this]() { refreshPresetList(); };
-    addAndMakeVisible(refreshButton);
-
     // Dark viewport styling
     presetViewport.setViewedComponent(&presetListContainer, false);
     presetViewport.setScrollBarsShown(true, false);
@@ -391,6 +396,18 @@ PresetBrowserComponent::PresetBrowserComponent()
     renameEditor.onFocusLost = [this]() { hideInlineRenameEditor(true); };
     addAndMakeVisible(renameEditor);
 
+    // New add bank button at bottom
+    addBankButton.setButtonText("+ New Bank");
+    addBankButton.setColour(TextButton::buttonColourId, Colour(0xff2A2A2A));
+    addBankButton.setColour(TextButton::buttonOnColourId, Colour(0xff4ECDC4));
+    addBankButton.setColour(TextButton::textColourOffId, Colours::white.withAlpha(0.8f));
+    addBankButton.setColour(TextButton::textColourOnId, Colours::black);
+    addBankButton.onClick = [this]() {
+        createNewPresetBank();
+        shouldHighlightFirstSlot = true;
+        repaint();
+    };
+    addAndMakeVisible(addBankButton);
 }
 
 PresetBrowserComponent::~PresetBrowserComponent() {}
@@ -419,24 +436,47 @@ void PresetBrowserComponent::resized()
     titleLabel.setBounds(bounds.removeFromTop(25));
     bounds.removeFromTop(10);
 
-    auto buttonArea = bounds.removeFromTop(30);
-    int buttonWidth = 80;
-    int spacing = 10;
+    // Preset viewport takes most space
+    presetViewport.setBounds(bounds.removeFromTop(bounds.getHeight() - 40));
 
-    savePresetButton.setBounds(buttonArea.removeFromLeft(buttonWidth));
-    buttonArea.removeFromLeft(spacing);
-    refreshButton.setBounds(buttonArea.removeFromLeft(buttonWidth));
+    // Add button at bottom (full width)
+    addBankButton.setBounds(bounds.withHeight(30));
+}
 
-    bounds.removeFromTop(10);
-    presetViewport.setBounds(bounds);
+void PresetBrowserComponent::createNewPresetBank()
+{
+    if (!processor) return;
 
-    updatePresetList();
+    String newName = "Bank " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
+
+    // Create empty array for pad infos
+    Array<PadInfo> emptyPadInfos;
+
+    if (processor->getPresetManager().saveCurrentPreset(
+        newName, "New empty bank", emptyPadInfos, "", 0))
+    {
+        refreshPresetList();
+
+        // Reset highlight after delay
+        Timer::callAfterDelay(1000, [this]() {
+            shouldHighlightFirstSlot = false;
+            repaint();
+        });
+    }
 }
 
 void PresetBrowserComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
 {
     processor = p;
-    refreshPresetList();
+
+    // Ensure the processor is valid and directories exist
+    if (processor) {
+
+        // Delay the refresh slightly to ensure UI is ready
+        MessageManager::callAsync([this]() {
+            refreshPresetList();
+        });
+    }
 }
 
 void PresetBrowserComponent::refreshPresetList()
@@ -570,16 +610,37 @@ void PresetBrowserComponent::handleDeleteSlotClicked(const PresetInfo& presetInf
     if (!processor)
         return;
 
-    if (processor->getPresetManager().deleteSlot(presetInfo.presetFile, slotIndex))
-    {
-        refreshPresetList();
-        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "Slot Deleted", "Slot " + String(slotIndex + 1) + " deleted");
+    // Check if this is the last remaining slot with data
+    bool hasOtherSlotsWithData = false;
+    for (int i = 0; i < 8; ++i) {
+        if (i != slotIndex && presetInfo.slots[i].hasData) {
+            hasOtherSlotsWithData = true;
+            break;
+        }
     }
-    else
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Delete Failed", "Failed to delete slot " + String(slotIndex + 1));
+
+    if (!hasOtherSlotsWithData) {
+        // This is the only slot with data - ask if they want to delete the whole preset
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Delete Last Slot",
+            "This is the last slot with data. Delete the entire preset instead?",
+            "Delete Preset",
+            "Cancel",
+            nullptr,
+            ModalCallbackFunction::create([this, presetInfo](int result) {
+                if (result == 1) { // User clicked "Delete Preset"
+                    processor->getPresetManager().deletePreset(presetInfo.presetFile);
+                    refreshPresetList();
+                }
+            })
+        );
+    }
+    else {
+        // There are other slots with data - proceed with normal slot deletion
+        if (processor->getPresetManager().deleteSlot(presetInfo.presetFile, slotIndex)) {
+            refreshPresetList();
+        }
     }
 }
 

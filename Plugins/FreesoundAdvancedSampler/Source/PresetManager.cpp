@@ -65,6 +65,18 @@ bool PresetManager::saveCurrentPreset(const String& name, const String& descript
         root->setProperty("preset_info", juce::var(presetInfo.get()));
     }
 
+    // Create empty slot data if no padInfos provided
+    Array<PadInfo> emptyPadInfos;
+    if (padInfos.isEmpty())
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            PadInfo emptyInfo;
+            emptyInfo.padIndex = i;
+            emptyPadInfos.add(emptyInfo);
+        }
+    }
+
     // Create slot data
     juce::DynamicObject::Ptr slotData = new juce::DynamicObject();
 
@@ -258,29 +270,11 @@ bool PresetManager::deleteSlot(const File& presetFile, int slotIndex)
     // Remove the slot
     rootObject->removeProperty(getSlotKey(slotIndex));
 
-    // Check if any slots remain
-    bool hasAnySlots = false;
-    for (int i = 0; i < 8; ++i)
-    {
-        if (rootObject->hasProperty(getSlotKey(i)))
-        {
-            hasAnySlots = true;
-            break;
-        }
-    }
-
-    // If no slots remain, delete the entire preset file
-    if (!hasAnySlots)
-    {
-        return deletePreset(presetFile);
-    }
-
-    // Write back to file
+    // Always keep the preset file even if no slots remain
     String jsonString = juce::JSON::toString(parsedJson, true);
     bool success = presetFile.replaceWithText(jsonString);
 
-    if (success && presetFile == activePresetFile && slotIndex == activeSlotIndex)
-    {
+    if (success && presetFile == activePresetFile && slotIndex == activeSlotIndex) {
         activePresetFile = File();
         activeSlotIndex = -1;
     }
