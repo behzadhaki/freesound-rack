@@ -29,7 +29,7 @@ class SamplePad : public Component,
                   public Timer  // Add Timer inheritance for cleanup
 {
 public:
-    SamplePad(int index);
+    SamplePad(int index, bool isSearchable = true);
     ~SamplePad() override;
 
     void paint(Graphics& g) override;
@@ -81,12 +81,15 @@ public:
     void performEnhancedDragDrop();
     void handleCopyClick();
 
+    bool isSearchable() const { return isSearchableMode; }
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
     String getLicenseShortName(const String& license) const;
     void cleanupProgressComponents();  // Safe cleanup method
+
+    bool isSearchableMode;
 
     int padIndex;
     FreesoundAdvancedSamplerAudioProcessor* processor;

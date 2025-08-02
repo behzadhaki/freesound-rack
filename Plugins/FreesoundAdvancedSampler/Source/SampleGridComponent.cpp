@@ -16,7 +16,7 @@
 //==============================================================================
 
 // In SamplePad constructor:
-SamplePad::SamplePad(int index)
+SamplePad::SamplePad(int index, bool isSearchable)
     : padIndex(index)
     , processor(nullptr)
     , audioThumbnailCache(5)
@@ -29,6 +29,7 @@ SamplePad::SamplePad(int index)
     , hasValidSample(false)
     , isDragHover(false)
     , currentDownloadProgress(0.0)
+    , isSearchableMode(isSearchable)  // Initialize new member
 {
     formatManager.registerBasicFormats();
 
@@ -36,31 +37,37 @@ SamplePad::SamplePad(int index)
     float hue = (float)padIndex / 16.0f;
     padColour = Colour::fromHSV(hue, 0.3f, 0.8f, 1.0f);
 
-    // Set up query text box (existing code)
+    // Set up query text box with conditional behavior
     queryTextBox.setMultiLine(false);
     queryTextBox.setReturnKeyStartsNewLine(false);
-    queryTextBox.setReadOnly(false);
+    queryTextBox.setReadOnly(!isSearchableMode);  // Read-only if not searchable
     queryTextBox.setScrollbarsShown(false);
-    queryTextBox.setCaretVisible(true);
-    queryTextBox.setPopupMenuEnabled(true);
-    queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.8f));
-    queryTextBox.setColour(TextEditor::textColourId, Colours::black);
+    queryTextBox.setCaretVisible(isSearchableMode);  // No caret if not searchable
+    queryTextBox.setPopupMenuEnabled(isSearchableMode);  // No popup menu if not searchable
+    queryTextBox.setColour(TextEditor::backgroundColourId,
+        isSearchableMode ? Colours::white.withAlpha(0.8f) : Colours::grey.withAlpha(0.6f));
+    queryTextBox.setColour(TextEditor::textColourId,
+        isSearchableMode ? Colours::black : Colours::white);  // White text for view-only mode
     queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
     queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
     queryTextBox.setFont(Font(9.0f));
-    queryTextBox.onReturnKey = [this]() {
-        String query = queryTextBox.getText().trim();
-        if (query.isNotEmpty())
-        {
-            if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-            {
-                gridComponent->searchForSinglePadWithQuery(padIndex, query);
-            }
-        }
-    };
-    addAndMakeVisible(queryTextBox);
 
-    // DON'T create progress components in constructor - create them on demand
+    // Only add search functionality if searchable
+    if (isSearchableMode)
+    {
+        queryTextBox.onReturnKey = [this]() {
+            String query = queryTextBox.getText().trim();
+            if (query.isNotEmpty())
+            {
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, query);
+                }
+            }
+        };
+    }
+
+    addAndMakeVisible(queryTextBox);
 }
 
 SamplePad::~SamplePad()
@@ -108,6 +115,7 @@ void SamplePad::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
+    // === EXISTING BACKGROUND AND BORDER CODE STAYS THE SAME ===
     // Modern dark background with subtle gradients (existing code stays the same)
     if (isDragHover)
     {
@@ -167,29 +175,33 @@ void SamplePad::paint(Graphics& g)
 
     // === TOP LINE: MIDI/Keyboard number + Web badge + License badge ===
 
-    // MIDI Note and Keyboard Key display (UPDATED)
+    // MIDI Note and Keyboard Key display
     g.setColour(Colours::white);
     g.setFont(Font(8.0f, Font::bold));
     auto numberBounds = bounds.reduced(4);
-    auto numberRect = numberBounds.removeFromTop(14).removeFromLeft(24); // Slightly wider for MIDI info
+    auto numberRect = numberBounds.removeFromTop(14).removeFromLeft(24);
 
     // Small dark background for MIDI/keyboard info
     g.setColour(Colour(0x80000000).withAlpha(0.6f));
     g.fillRoundedRectangle(numberRect.toFloat(), 2.0f);
     g.setColour(Colours::white);
 
-    // Calculate MIDI note number (pad 0 = MIDI note 36, pad 1 = note 37, etc.)
-    int midiNote = padIndex + 36;
+    if (isSearchableMode)
+    {
+        // Original behavior: show MIDI note and keyboard key
+        int midiNote = padIndex + 36;
+        String keyboardKey = getKeyboardKeyForPad(padIndex);
+        String displayText = String(midiNote) + " | " + keyboardKey;
+        g.drawText(displayText, numberRect, Justification::centred);
+    }
+    else
+    {
+        // View-only mode: just show pad number
+        String displayText = "Pad " + String(padIndex + 1);
+        g.drawText(displayText, numberRect, Justification::centred);
+    }
 
-    // Get keyboard key for this pad
-    String keyboardKey = getKeyboardKeyForPad(padIndex);
-
-    // Format display text: "MIDI/Key" format
-    String displayText = String(midiNote) + " | " + keyboardKey;
-
-    g.drawText(displayText, numberRect, Justification::centred);
-
-    // Web badge and License badge in top-right area (existing code stays the same)
+    // Top-right badges - CONDITIONAL RENDERING BASED ON MODE
     if (hasValidSample)
     {
         g.setFont(Font(8.0f, Font::bold));
@@ -198,8 +210,8 @@ void SamplePad::paint(Graphics& g)
         auto topRightBounds = bounds.reduced(4);
         topRightBounds = topRightBounds.removeFromTop(14);
 
-        // DEL badge (rightmost) - Darker red styling
-        if (hasValidSample)
+        // DEL badge (rightmost) - ONLY show in searchable mode
+        if (isSearchableMode)
         {
             int delBadgeWidth = 28;
             auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
@@ -215,7 +227,7 @@ void SamplePad::paint(Graphics& g)
             topRightBounds.removeFromRight(3);
         }
 
-        // License badge (middle) - Darker amber styling
+        // License badge (middle) - Always show if license exists
         if (licenseType.isNotEmpty())
         {
             String shortLicense = getLicenseShortName(licenseType);
@@ -233,7 +245,7 @@ void SamplePad::paint(Graphics& g)
             topRightBounds.removeFromRight(3);
         }
 
-        // Web badge (leftmost) - Darker blue styling
+        // Web badge (leftmost) - Always show if freesound ID exists
         if (freesoundId.isNotEmpty())
         {
             int webBadgeWidth = 28;
@@ -250,7 +262,6 @@ void SamplePad::paint(Graphics& g)
     }
 
     // === MIDDLE: Waveform and sample text === (existing code stays the same)
-
     if (hasValidSample)
     {
         // Adjust waveform bounds to account for top and bottom badges
@@ -286,7 +297,7 @@ void SamplePad::paint(Graphics& g)
         }
 
         // Create the full text string
-        String displayText = displayName + " by " + displayAuthor;
+        String displayText = "Freesound ID: "+ freesoundId + " | " + displayName + " by " + displayAuthor   ;
 
         // Position at bottom of waveform area with dark background
         auto filenameBounds = waveformBounds.removeFromBottom(14);
@@ -296,13 +307,14 @@ void SamplePad::paint(Graphics& g)
         g.drawText(displayText, filenameBounds, Justification::centred, true);
     }
 
-    // === BOTTOM LINE: Drag badge + Query text box + Search badge === (existing code stays the same)
+    // === BOTTOM LINE: Conditional badges based on mode ===
 
-    // Drag badge in bottom-left corner - Modern green styling
+    // Bottom badges - show drag and copy if sample exists, search only if searchable
     if (hasValidSample)
     {
         g.setFont(Font(8.0f, Font::bold));
 
+        // Drag badge - Always show if sample exists
         auto dragBounds = bounds.reduced(4);
         int badgeWidth = 28;
         int badgeHeight = 14;
@@ -315,39 +327,30 @@ void SamplePad::paint(Graphics& g)
 
         g.setColour(Colours::white);
         g.drawText("Drag", dragBounds, Justification::centred);
-    }
 
-    if (hasValidSample)
-    {
-        g.setFont(Font(8.0f, Font::bold));
-
-        // Create copy badge next to drag badge
+        // Copy badge - Always show if sample exists
         auto copyBounds = bounds.reduced(4);
         int dragBadgeWidth = 26;
         int copyBadgeWidth = 26;
-        int badgeHeight = 14;
         int badgeSpacing = 3;
 
         copyBounds = copyBounds.removeFromBottom(badgeHeight);
-        copyBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);  // Skip drag badge
+        copyBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);
         copyBounds = copyBounds.removeFromLeft(copyBadgeWidth);
 
-        // Modern orange gradient for copy badge
         g.setGradientFill(ColourGradient(
-            Colour(0x80FF8C00), copyBounds.getTopLeft().toFloat(),   // Dark orange
-            Colour(0x80E67300), copyBounds.getBottomRight().toFloat(), false));  // Deeper orange
+            Colour(0x80FF8C00), copyBounds.getTopLeft().toFloat(),
+            Colour(0x80E67300), copyBounds.getBottomRight().toFloat(), false));
         g.fillRoundedRectangle(copyBounds.toFloat(), 3.0f);
 
-        // White text
         g.setColour(Colours::white);
         g.drawText("Copy", copyBounds, Justification::centred);
     }
 
-    // Search badge in bottom-right corner (always visible when not downloading)
-    if (!isDownloading)
+    // Search badge - ONLY show in searchable mode and when not downloading
+    if (isSearchableMode && !isDownloading)
     {
         g.setFont(Font(8.0f, Font::bold));
-
         auto searchBounds = bounds.reduced(4);
         int badgeWidth = 32;
         int badgeHeight = 14;
@@ -419,42 +422,43 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (isDownloading)
         return;
 
-    // Check if clicked on search badge (bottom-right) - ALWAYS available when not downloading
+    // Check if clicked on search badge (bottom-right) - ONLY in searchable mode
+    if (isSearchableMode && !isDownloading)
     {
-       auto bounds = getLocalBounds();
-       auto searchBounds = bounds.reduced(3);
-       int badgeWidth = 32;
-       int badgeHeight = 12;
-       searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+        auto bounds = getLocalBounds();
+        auto searchBounds = bounds.reduced(3);
+        int badgeWidth = 32;
+        int badgeHeight = 12;
+        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
 
-       if (searchBounds.contains(event.getPosition()))
-       {
-           // Existing search badge logic...
-           String searchQuery = queryTextBox.getText().trim();
-           if (searchQuery.isEmpty() && processor)
-           {
-               searchQuery = processor->getQuery();
-           }
+        if (searchBounds.contains(event.getPosition()))
+        {
+            String searchQuery = queryTextBox.getText().trim();
+            if (searchQuery.isEmpty() && processor)
+            {
+                searchQuery = processor->getQuery();
+            }
 
-           if (searchQuery.isNotEmpty())
-           {
-               queryTextBox.setText(searchQuery);
+            if (searchQuery.isNotEmpty())
+            {
+                queryTextBox.setText(searchQuery);
 
-               if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-               {
-                   gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
-               }
-           }
-           else
-           {
-               AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                   "Empty Query",
-                   "Please enter a search term in the pad's text box or the main search box.");
-           }
-           return;
-       }
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                }
+            }
+            else
+            {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Empty Query",
+                    "Please enter a search term in the pad's text box or the main search box.");
+            }
+            return;
+        }
     }
 
+    // Check top-right badges
     auto bounds = getLocalBounds();
     auto topRightBounds = bounds.reduced(3);
     topRightBounds = topRightBounds.removeFromTop(12);
@@ -462,8 +466,8 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (!hasValidSample)
         return; // Don't process other clicks for empty pads
 
-    // Check DEL badge (rightmost in top line)
-    if (hasValidSample)
+    // Check DEL badge (rightmost in top line) - ONLY in searchable mode
+    if (hasValidSample && isSearchableMode)
     {
         int delBadgeWidth = 28;
         auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
@@ -476,7 +480,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         topRightBounds.removeFromRight(3);
     }
 
-    // Check License badge (middle in top line)
+    // Check License badge (middle in top line) - Always available
     if (licenseType.isNotEmpty())
     {
         int licenseBadgeWidth = 32;
@@ -490,7 +494,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         topRightBounds.removeFromRight(3);
     }
 
-    // Check Web badge (leftmost in top line)
+    // Check Web badge (leftmost in top line) - Always available
     if (freesoundId.isNotEmpty())
     {
         int webBadgeWidth = 28;
@@ -504,7 +508,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
-    // NEW: Check Copy badge (bottom line, next to drag badge)
+    // Check Copy badge (bottom line, next to drag badge) - Always available
     if (hasValidSample)
     {
         auto bottomBounds = bounds.reduced(3);
@@ -524,7 +528,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         }
     }
 
-    // Check if clicked in waveform area - for manual triggering
+    // Check if clicked in waveform area - for manual triggering (always available)
     bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
     waveformBounds.removeFromTop(16); // Space for top line badges
@@ -532,7 +536,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
 
     if (waveformBounds.contains(event.getPosition()))
     {
-        // Play the sample
+        // Play the sample (click playback works in both modes)
         if (processor)
         {
             int noteNumber = padIndex + 36;
@@ -542,7 +546,106 @@ void SamplePad::mouseDown(const MouseEvent& event)
     }
 
     // If clicked on edge areas (outside waveform but not on badges), do nothing here
-    // mouseDrag will handle edge dragging for swapping
+    // mouseDrag will handle edge dragging for swapping in searchable mode
+}
+
+// Complete mouseDrag method for SamplePad
+void SamplePad::mouseDrag(const MouseEvent& event)
+{
+    if (!hasValidSample)
+        return;
+
+    auto bounds = getLocalBounds();
+
+    // Check if drag started on the DRAG badge (bottom-left) - Always available
+    {
+        auto dragBounds = bounds.reduced(3);
+        int badgeWidth = 26;
+        int badgeHeight = 12;
+        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+
+        if (dragBounds.contains(event.getMouseDownPosition()))
+        {
+            // Start regular file drag operation
+            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
+            {
+                StringArray filePaths;
+                filePaths.add(audioFile.getFullPathName());
+                performExternalDragDropOfFiles(filePaths, false);
+            }
+            return;
+        }
+    }
+
+    // Check if drag started on the COPY badge - Always available
+    {
+        auto copyBounds = bounds.reduced(3);
+        int dragBadgeWidth = 26;
+        int copyBadgeWidth = 26;
+        int badgeHeight = 12;
+        int badgeSpacing = 3;
+
+        copyBounds = copyBounds.removeFromBottom(badgeHeight);
+        copyBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);  // Skip drag badge
+        copyBounds = copyBounds.removeFromLeft(copyBadgeWidth);
+
+        if (copyBounds.contains(event.getMouseDownPosition()))
+        {
+            // Start enhanced drag operation with metadata
+            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
+            {
+                performEnhancedDragDrop();
+            }
+            return;
+        }
+    }
+
+    // Check if drag started in waveform area - no dragging allowed here (both modes)
+    auto waveformBounds = bounds.reduced(8, 20);
+    if (waveformBounds.contains(event.getMouseDownPosition()))
+    {
+        // No dragging from waveform area - only triggering
+        return;
+    }
+
+    // Check if drag started on web or license badges - no dragging (both modes)
+    auto topBounds = bounds.reduced(3);
+    topBounds = topBounds.removeFromTop(12);
+
+    if (freesoundId.isNotEmpty())
+    {
+        int webBadgeWidth = 28;
+        auto webBounds = topBounds.removeFromRight(webBadgeWidth);
+
+        if (webBounds.contains(event.getMouseDownPosition()))
+            return;
+    }
+
+    if (licenseType.isNotEmpty())
+    {
+        int licenseBadgeWidth = 32;
+        auto licenseBounds = topBounds.removeFromRight(licenseBadgeWidth);
+
+        if (licenseBounds.contains(event.getMouseDownPosition()))
+            return;
+    }
+
+    // Edge area dragging for pad swapping - Available in BOTH modes
+    // If we get here, drag started in edge area - start swapping drag
+    if (event.getDistanceFromDragStart() > 10)
+    {
+        juce::DynamicObject::Ptr dragObject = new juce::DynamicObject();
+        dragObject->setProperty("type", "samplePad");
+        dragObject->setProperty("sourcePadIndex", padIndex);
+
+        var dragData(dragObject.get());
+
+        // Use the parent grid's drag container
+        if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+        {
+            gridComponent->startDragging(dragData, this);
+        }
+    }
 }
 
 void SamplePad::handleCopyClick()
@@ -636,104 +739,6 @@ void SamplePad::performEnhancedDragDrop()
 
     // Visual feedback during drag
     setMouseCursor(MouseCursor::DraggingHandCursor);
-}
-
-void SamplePad::mouseDrag(const MouseEvent& event)
-{
-    if (!hasValidSample)
-        return;
-
-    auto bounds = getLocalBounds();
-
-    // Check if drag started on the DRAG badge (bottom-left) - for regular file export
-    {
-        auto dragBounds = bounds.reduced(3);
-        int badgeWidth = 26;
-        int badgeHeight = 12;
-        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
-
-        if (dragBounds.contains(event.getMouseDownPosition()))
-        {
-            // Start regular file drag operation
-            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
-            {
-                StringArray filePaths;
-                filePaths.add(audioFile.getFullPathName());
-                performExternalDragDropOfFiles(filePaths, false);
-            }
-            return;
-        }
-    }
-
-    // Check if drag started on the COPY badge - for enhanced metadata transfer
-    {
-        auto copyBounds = bounds.reduced(3);
-        int dragBadgeWidth = 26;
-        int copyBadgeWidth = 26;
-        int badgeHeight = 12;
-        int badgeSpacing = 3;
-
-        copyBounds = copyBounds.removeFromBottom(badgeHeight);
-        copyBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);  // Skip drag badge
-        copyBounds = copyBounds.removeFromLeft(copyBadgeWidth);
-
-        if (copyBounds.contains(event.getMouseDownPosition()))
-        {
-            // Start enhanced drag operation with metadata
-            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
-            {
-                performEnhancedDragDrop();
-            }
-            return;
-        }
-    }
-
-    // Check if drag started in waveform area - no dragging allowed here
-    auto waveformBounds = bounds.reduced(8, 20);
-    if (waveformBounds.contains(event.getMouseDownPosition()))
-    {
-        // No dragging from waveform area - only triggering
-        return;
-    }
-
-    // Check if drag started on web or license badges - no dragging
-    if (freesoundId.isNotEmpty())
-    {
-        auto webBounds = bounds.reduced(3);
-        int badgeWidth = 30;
-        int badgeHeight = 12;
-        webBounds = webBounds.removeFromTop(badgeHeight).removeFromLeft(badgeWidth);
-
-        if (webBounds.contains(event.getMouseDownPosition()))
-            return;
-    }
-
-    if (licenseType.isNotEmpty())
-    {
-        auto licenseBounds = bounds.reduced(3);
-        int badgeWidth = 35;
-        int badgeHeight = 12;
-        licenseBounds = licenseBounds.removeFromTop(badgeHeight).removeFromRight(badgeWidth);
-
-        if (licenseBounds.contains(event.getMouseDownPosition()))
-            return;
-    }
-
-    // If we get here, drag started in edge area - start swapping drag
-    if (event.getDistanceFromDragStart() > 10)
-    {
-        juce::DynamicObject::Ptr dragObject = new juce::DynamicObject();
-        dragObject->setProperty("type", "samplePad");
-        dragObject->setProperty("sourcePadIndex", padIndex);
-
-        var dragData(dragObject.get());
-
-        // Use the parent grid's drag container
-        if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-        {
-            gridComponent->startDragging(dragData, this);
-        }
-    }
 }
 
 // DragAndDropTarget implementation
@@ -2327,8 +2332,6 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     String licenseType = metadata.getProperty("license_type", "");
     String searchQuery = metadata.getProperty("search_query", "");
     String originalFileName = metadata.getProperty("file_name", "");
-
-    DBG("Enhanced drop: " + sampleName + " by " + authorName + " with query: " + searchQuery);
 
     // Copy the file to our samples directory if it's not already there
     File sourceFile(filePaths[0]);
