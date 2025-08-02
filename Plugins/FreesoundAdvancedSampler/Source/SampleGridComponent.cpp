@@ -305,8 +305,9 @@ void SamplePad::paint(Graphics& g)
             displayAuthor = displayAuthor.substring(0, 7) + "...";
         }
 
+
         // Create the full text string
-        String displayText = displayName + " by " + displayAuthor;
+        String displayText = displayName + " by " + displayAuthor + " (" + licenseType + ")";
 
         // Position at bottom of waveform area with dark background
         auto filenameBounds = waveformBounds.removeFromBottom(14);
