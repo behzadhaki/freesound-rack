@@ -147,7 +147,7 @@ void PresetListItem::paint(Graphics& g)
 
     g.setFont(Font(10.0f, hasData ? Font::plain : Font::italic));
     g.setColour(hasData ? Colours::white : Colours::grey);
-    g.drawText(hasData ? String(totalSamples) + " samples | " + presetInfo.createdDate
+    g.drawText(hasData ? "  " + presetInfo.createdDate
                        : "Empty bank",
                infoLine.reduced(6, 0), Justification::left, true);
 }
