@@ -17,9 +17,12 @@
 #include <random>
 #include "CustomButtonStyle.h"
 
+static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampler-data"; // for inter plugin drag and drop
+
 //==============================================================================
 // SamplePad Component (a single sample pad in the grid)
 //==============================================================================
+
 class SamplePad : public Component,
                   public DragAndDropContainer,
                   public DragAndDropTarget,
@@ -74,6 +77,7 @@ public:
     void clearSample();
     void handleDeleteClick();
 
+    void performEnhancedDragDrop();
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
@@ -121,6 +125,7 @@ private:
 class SampleGridComponent : public Component,
                            public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
                            public DragAndDropContainer,
+                           public DragAndDropTarget,
                            public Timer  // Keep only Timer - no AudioDownloadManager::Listener
 {
 public:
@@ -154,6 +159,13 @@ public:
 
     String getQueryForPad(int padIndex) const;
     void setQueryForPad(int padIndex, const String& query);
+
+    // Add DragAndDropTarget methods
+    bool isInterestedInDragSource(const SourceDetails& dragSourceDetails) override;
+    void itemDragEnter(const SourceDetails& dragSourceDetails) override;
+    void itemDragExit(const SourceDetails& dragSourceDetails) override;
+    void itemDropped(const SourceDetails& dragSourceDetails) override;
+
 private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;
@@ -184,6 +196,13 @@ private:
     StyledButton shuffleButton {"Shuffle", 10.0f, false};
     StyledButton clearAllButton {"Clear All", 10.0f, true};
     void clearAllPads();
+
+    bool isEnhancedDragHover = false;
+    int dragHoverPadIndex = -1;
+
+    void handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex);
+    void handleFileDrop(const StringArray& filePaths, int targetPadIndex);
+    int getPadIndexFromPosition(Point<int> position);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };

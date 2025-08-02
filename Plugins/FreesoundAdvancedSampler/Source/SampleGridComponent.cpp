@@ -541,6 +541,43 @@ void SamplePad::handleDeleteClick()
     );
 }
 
+void SamplePad::performEnhancedDragDrop()
+{
+    // Create a comprehensive data package
+    var dataPackage(new DynamicObject());
+
+    // Sample metadata
+    dataPackage.getDynamicObject()->setProperty("type", "freesound_sampler_data");
+    dataPackage.getDynamicObject()->setProperty("version", "1.0");
+    dataPackage.getDynamicObject()->setProperty("freesound_id", freesoundId);
+    dataPackage.getDynamicObject()->setProperty("sample_name", sampleName);
+    dataPackage.getDynamicObject()->setProperty("author_name", authorName);
+    dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
+    dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
+    dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
+    dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
+    dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
+
+    // Convert to JSON string
+    String jsonData = JSON::toString(dataPackage, false);
+
+    // Create a temporary data container
+    MemoryBlock dataBlock;
+    dataBlock.append(jsonData.toUTF8(), jsonData.getNumBytesAsUTF8());
+
+    // Create drag description with both file and metadata
+    var dragDescription(new DynamicObject());
+    dragDescription.getDynamicObject()->setProperty("files", var(StringArray(audioFile.getFullPathName())));
+    dragDescription.getDynamicObject()->setProperty("metadata", jsonData);
+    dragDescription.getDynamicObject()->setProperty("mime_type", FREESOUND_SAMPLER_MIME_TYPE);
+
+    // Start the enhanced drag operation
+    startDragging(dragDescription, this, ScaledImage(), true);
+
+    DBG("Started enhanced drag with metadata for: " + sampleName);
+}
+
+
 void SamplePad::mouseDrag(const MouseEvent& event)
 {
     if (!hasValidSample)
@@ -548,7 +585,7 @@ void SamplePad::mouseDrag(const MouseEvent& event)
 
     auto bounds = getLocalBounds();
 
-    // Check if drag started on the drag badge (bottom-left) - for file export
+    // Check if drag started on the drag badge (bottom-left)
     {
         auto dragBounds = bounds.reduced(3);
         int badgeWidth = 30;
@@ -557,12 +594,24 @@ void SamplePad::mouseDrag(const MouseEvent& event)
 
         if (dragBounds.contains(event.getMouseDownPosition()))
         {
-            // Start external drag operation for file export
+            // Start external drag operation
             if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
             {
-                StringArray filePaths;
-                filePaths.add(audioFile.getFullPathName());
-                performExternalDragDropOfFiles(filePaths, false);
+                // Check if Command key is pressed (Cmd on Mac, Ctrl on Windows/Linux)
+                bool isCommandPressed = event.mods.isCommandDown();
+
+                if (isCommandPressed)
+                {
+                    // Enhanced mode: drag both file and metadata
+                    performEnhancedDragDrop();
+                }
+                else
+                {
+                    // Normal mode: drag only audio file
+                    StringArray filePaths;
+                    filePaths.add(audioFile.getFullPathName());
+                    performExternalDragDropOfFiles(filePaths, false);
+                }
             }
             return;
         }
@@ -1060,6 +1109,32 @@ void SampleGridComponent::paint(Graphics& g)
     {
         int y = padding + row * (padHeight + padding) - (padding / 2);
         g.drawLine(bounds.getX(), y, bounds.getRight(), y, 1.0f);
+    }
+
+    // Add visual feedback for enhanced drag hover
+    if (isEnhancedDragHover && dragHoverPadIndex >= 0 && dragHoverPadIndex < TOTAL_PADS)
+    {
+        // Get pad bounds and draw special highlight
+        auto bounds = getLocalBounds();
+        int padding = 4;
+        int bottomControlsHeight = 30;
+        bounds.removeFromBottom(bottomControlsHeight + padding);
+
+        int totalPadding = padding * (GRID_SIZE + 1);
+        int padWidth = (bounds.getWidth() - totalPadding) / GRID_SIZE;
+        int padHeight = (bounds.getHeight() - totalPadding) / GRID_SIZE;
+
+        int row = (GRID_SIZE - 1) - (dragHoverPadIndex / GRID_SIZE);
+        int col = dragHoverPadIndex % GRID_SIZE;
+
+        int x = padding + col * (padWidth + padding);
+        int y = padding + row * (padHeight + padding);
+
+        Rectangle<int> padBounds(x, y, padWidth, padHeight);
+
+        // Draw enhanced drop highlight
+        g.setColour(Colour(0x8000FF00)); // Bright green for enhanced drops
+        g.drawRoundedRectangle(padBounds.toFloat().reduced(2), 6.0f, 3.0f);
     }
 }
 
@@ -2010,6 +2085,259 @@ void SampleGridComponent::setQueryForPad(int padIndex, const String& query)
     soundsData[padIndex].set(3, query);  // Set query in 4th position
 }
 
+bool SampleGridComponent::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
+{
+    // Accept enhanced sampler data
+    if (dragSourceDetails.description.hasProperty("mime_type") &&
+        dragSourceDetails.description.getProperty("mime_type", "") == FREESOUND_SAMPLER_MIME_TYPE)
+    {
+        return true;
+    }
+
+    // Accept regular file drops
+    if (dragSourceDetails.description.hasProperty("files"))
+    {
+        return true;
+    }
+
+    // Accept internal pad swaps (existing functionality)
+    if (dragSourceDetails.description.hasProperty("type") &&
+        dragSourceDetails.description.getProperty("type", "") == "samplePad")
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void SampleGridComponent::itemDragEnter(const SourceDetails& dragSourceDetails)
+{
+    isEnhancedDragHover = true;
+
+    // Determine which pad we're hovering over
+    dragHoverPadIndex = getPadIndexFromPosition(dragSourceDetails.localPosition);
+
+    // Visual feedback for enhanced drag
+    if (dragSourceDetails.description.hasProperty("mime_type") &&
+        dragSourceDetails.description.getProperty("mime_type", "") == FREESOUND_SAMPLER_MIME_TYPE)
+    {
+        // Special visual feedback for enhanced drops
+        if (dragHoverPadIndex >= 0 && dragHoverPadIndex < TOTAL_PADS)
+        {
+            // You could add special hover state here
+        }
+    }
+
+    repaint();
+}
+
+void SampleGridComponent::itemDragExit(const SourceDetails& dragSourceDetails)
+{
+    isEnhancedDragHover = false;
+    dragHoverPadIndex = -1;
+    repaint();
+}
+
+void SampleGridComponent::itemDropped(const SourceDetails& dragSourceDetails)
+{
+    isEnhancedDragHover = false;
+    int targetPadIndex = getPadIndexFromPosition(dragSourceDetails.localPosition);
+    dragHoverPadIndex = -1;
+
+    if (targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS)
+    {
+        repaint();
+        return;
+    }
+
+    // Handle enhanced sampler data drop
+    if (dragSourceDetails.description.hasProperty("mime_type") &&
+        dragSourceDetails.description.getProperty("mime_type", "") == FREESOUND_SAMPLER_MIME_TYPE)
+    {
+        String jsonMetadata = dragSourceDetails.description.getProperty("metadata", "");
+        var filesVar = dragSourceDetails.description.getProperty("files", var());
+
+        StringArray filePaths;
+        if (filesVar.isArray())
+        {
+            Array<var>* filesArray = filesVar.getArray();
+            for (const auto& fileVar : *filesArray)
+            {
+                filePaths.add(fileVar.toString());
+            }
+        }
+        else if (filesVar.isString())
+        {
+            filePaths.add(filesVar.toString());
+        }
+
+        handleEnhancedDrop(jsonMetadata, filePaths, targetPadIndex);
+        repaint();
+        return;
+    }
+
+    // Handle regular file drops
+    if (dragSourceDetails.description.hasProperty("files"))
+    {
+        var filesVar = dragSourceDetails.description.getProperty("files", var());
+        StringArray filePaths;
+
+        if (filesVar.isArray())
+        {
+            Array<var>* filesArray = filesVar.getArray();
+            for (const auto& fileVar : *filesArray)
+            {
+                filePaths.add(fileVar.toString());
+            }
+        }
+
+        handleFileDrop(filePaths, targetPadIndex);
+        repaint();
+        return;
+    }
+
+    // Handle internal pad swaps (existing functionality)
+    if (dragSourceDetails.description.hasProperty("type") &&
+        dragSourceDetails.description.getProperty("type", "") == "samplePad")
+    {
+        int sourcePadIndex = dragSourceDetails.description.getProperty("sourcePadIndex", -1);
+        swapSamples(sourcePadIndex, targetPadIndex);
+        repaint();
+        return;
+    }
+
+    repaint();
+}
+
+// Helper method to determine which pad is at a given position
+int SampleGridComponent::getPadIndexFromPosition(Point<int> position)
+{
+    auto bounds = getLocalBounds();
+    int padding = 4;
+    int bottomControlsHeight = 30;
+    bounds.removeFromBottom(bottomControlsHeight + padding);
+
+    int totalPadding = padding * (GRID_SIZE + 1);
+    int padWidth = (bounds.getWidth() - totalPadding) / GRID_SIZE;
+    int padHeight = (bounds.getHeight() - totalPadding) / GRID_SIZE;
+
+    // Calculate which pad this position corresponds to
+    int col = (position.x - padding) / (padWidth + padding);
+    int row = (position.y - padding) / (padHeight + padding);
+
+    if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE)
+    {
+        // Convert grid position to pad index (bottom-left is pad 0)
+        int padIndex = (GRID_SIZE - 1 - row) * GRID_SIZE + col;
+        return padIndex;
+    }
+
+    return -1;
+}
+
+// Handle enhanced drop with full metadata
+void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex)
+{
+    if (jsonMetadata.isEmpty() || filePaths.isEmpty() || targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS)
+        return;
+
+    // Parse the metadata
+    var metadata = JSON::parse(jsonMetadata);
+    if (!metadata.isObject())
+    {
+        DBG("Invalid metadata JSON");
+        return;
+    }
+
+    // Extract sample information
+    String freesoundId = metadata.getProperty("freesound_id", "");
+    String sampleName = metadata.getProperty("sample_name", "Unknown");
+    String authorName = metadata.getProperty("author_name", "Unknown");
+    String licenseType = metadata.getProperty("license_type", "");
+    String searchQuery = metadata.getProperty("search_query", "");
+    String originalFileName = metadata.getProperty("file_name", "");
+
+    DBG("Enhanced drop: " + sampleName + " by " + authorName + " with query: " + searchQuery);
+
+    // Copy the file to our samples directory if it's not already there
+    File sourceFile(filePaths[0]);
+    if (!sourceFile.existsAsFile())
+    {
+        DBG("Source file does not exist: " + sourceFile.getFullPathName());
+        return;
+    }
+
+    // Determine target file location
+    File samplesDir = processor->getCurrentDownloadLocation();
+    String targetFileName = "FS_ID_" + freesoundId + ".ogg";
+    File targetFile = samplesDir.getChildFile(targetFileName);
+
+    // Copy file if it doesn't exist
+    if (!targetFile.existsAsFile())
+    {
+        if (!sourceFile.copyFileTo(targetFile))
+        {
+            DBG("Failed to copy file to: " + targetFile.getFullPathName());
+            return;
+        }
+        DBG("Copied file to: " + targetFile.getFullPathName());
+    }
+
+    // Create FSSound object for processor
+    FSSound sound;
+    sound.id = freesoundId;
+    sound.name = sampleName;
+    sound.user = authorName;
+    sound.license = licenseType;
+    sound.duration = 0.5; // Default values
+    sound.filesize = (int)targetFile.getSize();
+
+    // Update the target pad with full metadata
+    samplePads[targetPadIndex]->setSample(targetFile, sampleName, authorName, freesoundId, licenseType, searchQuery);
+
+    // Update processor arrays
+    updateSinglePadInProcessor(targetPadIndex, sound);
+
+    // Update processor's soundsArray with query
+    auto& soundsData = processor->getDataReference();
+    while (soundsData.size() <= targetPadIndex)
+    {
+        StringArray emptyData;
+        emptyData.add(""); emptyData.add(""); emptyData.add(""); emptyData.add("");
+        soundsData.push_back(emptyData);
+    }
+
+    if (soundsData[targetPadIndex].size() < 4)
+    {
+        while (soundsData[targetPadIndex].size() < 4)
+            soundsData[targetPadIndex].add("");
+    }
+
+    soundsData[targetPadIndex].set(0, sampleName);
+    soundsData[targetPadIndex].set(1, authorName);
+    soundsData[targetPadIndex].set(2, licenseType);
+    soundsData[targetPadIndex].set(3, searchQuery);
+
+    // Reload sampler
+    if (processor)
+    {
+        processor->setSources();
+    }
+
+    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+        "Enhanced Drop Successful",
+        "Imported \"" + sampleName + "\" with all metadata to pad " + String(targetPadIndex + 1));
+}
+
+// Handle regular file drops (existing functionality)
+void SampleGridComponent::handleFileDrop(const StringArray& filePaths, int targetPadIndex)
+{
+    // This would handle regular audio file drops without metadata
+    // You can implement this if you want to support dropping regular audio files
+    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+        "Regular File Drop",
+        "Regular file drops not yet implemented. Use Command+Drag from another Freesound Sampler instance.");
+}
 
 //==============================================================================
 // SampleDragArea Implementation
