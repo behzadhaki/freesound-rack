@@ -735,8 +735,6 @@ void SamplePad::performEnhancedDragDrop()
     // Start the enhanced drag operation
     startDragging(dragDescription, this, ScaledImage(), true);
 
-    DBG("Started enhanced drag with metadata for: " + sampleName);
-
     // Visual feedback during drag
     setMouseCursor(MouseCursor::DraggingHandCursor);
 }
