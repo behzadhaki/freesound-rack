@@ -280,8 +280,8 @@ PresetBrowserComponent::PresetBrowserComponent()
     : processor(nullptr)
 {
     // Dark styling for title
-    titleLabel.setText("Preset Browser", dontSendNotification);
-    titleLabel.setFont(Font(10.0f, Font::bold));
+    titleLabel.setText("Presets", dontSendNotification);
+    titleLabel.setFont(Font(14.0f, Font::bold));
     titleLabel.setJustificationType(Justification::centred);
     titleLabel.setColour(Label::textColourId, Colours::grey);
     addAndMakeVisible(titleLabel);
@@ -324,19 +324,13 @@ void PresetBrowserComponent::paint(Graphics& g)
     // Modern border
     g.setColour(Colour(0xff404040));
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2), 6.0f, 1.5f);
-
-    // Add header separator line
-    auto bounds = getLocalBounds();
-    g.setColour(Colour(0xff2A2A2A));
-    g.drawLine(bounds.getX() + 10, bounds.getY() + 60,
-               bounds.getRight() - 10, bounds.getY() + 60, 1.0f);
 }
 
 void PresetBrowserComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(10);
 
-    titleLabel.setBounds(bounds.removeFromTop(25));
+    titleLabel.setBounds(bounds.removeFromTop(10));
     bounds.removeFromTop(10);
 
     // Preset viewport takes most space
@@ -344,6 +338,9 @@ void PresetBrowserComponent::resized()
 
     // Add button at bottom (full width)
     addBankButton.setBounds(bounds.withHeight(30));
+
+    // No need to call updatePresetList() or force resized() on items
+    // since we're using fixed widths now
 }
 
 void PresetBrowserComponent::createNewPresetBank()
@@ -393,13 +390,20 @@ void PresetBrowserComponent::refreshPresetList()
     Array<PresetInfo> presets = processor->getPresetManager().getAvailablePresets();
 
     int yPosition = 0;
-    const int itemHeight = 85; // Reduced from 125 to 85 for more compact layout
-    const int spacing = 3; // Reduced spacing
+    const int itemHeight = 85;
+    const int spacing = 3;
+
+    // FIXED: Calculate proper width that fits within bounds
+    // PresetBrowser width = 210px (from editor)
+    // PresetBrowser has 10px reduced on each side = 190px available
+    // Items have 5px left margin, so: 190 - 5 = 185px max width
+    const int fixedItemWidth = 180;  // Safe width that stays within bounds
 
     for (const auto& presetInfo : presets)
     {
         auto* item = new PresetListItem(presetInfo);
 
+        // ... existing callback setup code ...
         item->onItemClicked = [this](PresetListItem* clickedItem) {
             handleItemClicked(clickedItem);
         };
@@ -428,34 +432,41 @@ void PresetBrowserComponent::refreshPresetList()
             handleDeleteSlotClicked(info, slotIndex);
         };
 
-        item->setBounds(5, yPosition, getWidth() - 30, itemHeight);
+        // FIXED: Use width that stays within bounds
+        item->setBounds(5, yPosition, fixedItemWidth, itemHeight);
         presetListContainer.addAndMakeVisible(*item);
         presetItems.add(item);
 
         yPosition += itemHeight + spacing;
     }
 
-    presetListContainer.setSize(getWidth(), yPosition);
+    // FIXED: Container width accounts for item width + left margin
+    presetListContainer.setSize(fixedItemWidth + 10, yPosition);
     presetViewport.getViewedComponent()->repaint();
 }
 
 void PresetBrowserComponent::updatePresetList()
 {
-    int availableWidth = presetViewport.getWidth() - 30;
+    // FIXED: Use same width as refreshPresetList
+    const int fixedItemWidth = 180;
 
     for (int i = 0; i < presetItems.size(); ++i)
     {
         auto* item = presetItems[i];
-        auto bounds = item->getBounds();
-        bounds.setWidth(availableWidth);
-        item->setBounds(bounds);
+        if (item != nullptr)
+        {
+            auto bounds = item->getBounds();
+            bounds.setWidth(fixedItemWidth);
+            item->setBounds(bounds);
+        }
     }
 
     int totalHeight = 0;
-    if (presetItems.size() > 0)
+    if (presetItems.size() > 0 && presetItems.getLast() != nullptr)
         totalHeight = presetItems.getLast()->getBottom() + 5;
 
-    presetListContainer.setSize(availableWidth, totalHeight);
+    // FIXED: Container width matches
+    presetListContainer.setSize(fixedItemWidth + 10, totalHeight);
 }
 
 void PresetBrowserComponent::handleItemClicked(PresetListItem* item)

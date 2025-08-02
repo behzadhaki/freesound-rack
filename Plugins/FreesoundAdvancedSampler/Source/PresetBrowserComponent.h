@@ -39,6 +39,7 @@ public:
 
     void paint(Graphics& g) override;
     void resized() override;
+
     void mouseDown(const MouseEvent& event) override;
     void mouseDoubleClick(const MouseEvent& event) override;
 
@@ -67,7 +68,6 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetListItem)
 };
-
 
 //==============================================================================
 // Main Preset Browser Component

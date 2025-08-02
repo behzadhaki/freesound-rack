@@ -76,7 +76,19 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     setWantsKeyboardFocus(true);
 
     setSize (1000, 700);  // Increased width for preset browser
-    setResizable(false, false);
+    setResizable(true, true);  // Enable resizing
+
+    // Set size constraints (minimum and maximum sizes)
+    setResizeLimits(800, 500, 1600, 1200);
+
+    // Set fixed aspect ratio constraint
+    getConstrainer()->setFixedAspectRatio(1000.0 / 700.0);  // This enforces 10:7 ratio
+
+    // Restore saved window size
+    int savedWidth = processor.getSavedWindowWidth();
+    int savedHeight = processor.getSavedWindowHeight();
+
+    setSize(savedWidth, savedHeight);
 
     // FIXED: Use a WeakReference instead of Timer::callAfterDelay to prevent crashes
     // The WeakReference will become null if this component is destroyed
@@ -104,52 +116,49 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::paint(Graphics& g)
     g.fillAll();
 }
 
-// Update this method in PluginEditor.cpp
 void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
-    const int margin = 8;  // Reduced from 10 for tighter spacing
-    const int searchHeight = 90;  // Slightly reduced
-    const int progressHeight = 50;  // Reduced from 60
-    const int presetBrowserWidth = 210;
-    const int buttonHeight = 30;  // Matches "+ New Bank" height
-    const int spacing = 4;  // Tighter spacing
+    const int margin = 8;
+    const int progressHeight = 50;
+
+    // FIXED VALUES - Don't scale these with window size
+    const int presetBrowserWidth = 210;  // Keep this fixed at minimum size
+    const int buttonHeight = 30;         // Keep this fixed
+    const int spacing = 4;               // Keep this fixed
 
     bounds.removeFromTop(margin);
     bounds.removeFromRight(margin);
 
-    // Progress components at bottom (more compact)
-    auto progressBounds = bounds.removeFromBottom(progressHeight).reduced(margin, 0);  // No vertical margin
-    statusLabel.setBounds(progressBounds.removeFromTop(18));  // Slightly smaller
+    // Progress components at bottom (can scale height)
+    auto progressBounds = bounds.removeFromBottom(progressHeight).reduced(margin, 0);
+    statusLabel.setBounds(progressBounds.removeFromTop(18));
     progressBar.setBounds(progressBounds.removeFromTop(18));
     cancelButton.setBounds(progressBounds.removeFromTop(18));
 
-    // Main content area - no vertical margin to eliminate bottom gap
+    // Main content area
     bounds.removeFromLeft(margin);
-    auto contentBounds = bounds.withTrimmedBottom(margin);  // Only trim top
+    auto contentBounds = bounds.withTrimmedBottom(margin);
 
-    // Left area (preset browser + controls)
+    // Left area (preset browser + controls) - FIXED WIDTH
     auto leftArea = contentBounds.removeFromLeft(presetBrowserWidth);
 
-    // Preset browser takes most of left area
+    // Preset browser takes available height (this WILL scale)
     presetBrowserComponent.setBounds(leftArea.removeFromTop(leftArea.getHeight() - buttonHeight - spacing));
 
-    // Controls go below preset browser
+    // Controls go below preset browser - FIXED SIZES
     auto controlArea = leftArea.withTrimmedTop(spacing);
     controlArea.removeFromLeft(margin);
     controlArea.removeFromRight(margin);
+
     sampleDragArea.setBounds(controlArea.removeFromLeft(controlArea.getWidth()/3).reduced(0, 2));
     controlArea.removeFromTop(3);
     controlArea.removeFromBottom(3);
     directoryOpenButton.setBounds(controlArea.removeFromRight(int(controlArea.getWidth()*0.8f)));
 
-    // Sample grid - calculate square dimensions
-    contentBounds.removeFromLeft(spacing);  // Spacing between preset area and grid
-
-    // Center grid vertically (will automatically match preset area height)
-    sampleGridComponent.setBounds(
-        contentBounds
-    );
+    // Sample grid - takes ALL remaining space (both width and height scale)
+    contentBounds.removeFromLeft(spacing);
+    sampleGridComponent.setBounds(contentBounds);
 }
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress)

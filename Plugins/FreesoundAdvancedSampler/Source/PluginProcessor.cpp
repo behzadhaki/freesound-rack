@@ -234,6 +234,10 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
     xml.setAttribute("query", query);
     xml.setAttribute("lastDownloadLocation", currentSessionDownloadLocation.getFullPathName());
 
+    // Save window dimensions
+    xml.setAttribute("windowWidth", savedWindowWidth);
+    xml.setAttribute("windowHeight", savedWindowHeight);
+
     // Save current sounds and their positions
     auto* soundsXml = xml.createNewChildElement("Sounds");
     for (int i = 0; i < currentSoundsArray.size(); ++i)
@@ -268,6 +272,10 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
     query = xml.getStringAttribute("query", "");
     currentSessionDownloadLocation = File(xml.getStringAttribute("lastDownloadLocation",
         presetManager.getSamplesFolder().getFullPathName()));
+
+    // Load window dimensions
+    savedWindowWidth = xml.getIntAttribute("windowWidth", 1000);
+    savedWindowHeight = xml.getIntAttribute("windowHeight", 700);
 
     // Clear current state
     currentSoundsArray.clear();

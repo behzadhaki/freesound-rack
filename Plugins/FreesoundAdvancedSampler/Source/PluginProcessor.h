@@ -142,7 +142,21 @@ public:
 	Array<PadInfo> getCurrentPadInfos() const;
 	Array<PadInfo> getCurrentPadInfosFromGrid() const;
 
+	// Add these methods:
+	void setWindowSize(int width, int height)
+	{
+		savedWindowWidth = width;
+		savedWindowHeight = height;
+	}
+
+	int getSavedWindowWidth() const { return savedWindowWidth; }
+	int getSavedWindowHeight() const { return savedWindowHeight; }
+
 private:
+	// editor size
+	int savedWindowWidth = 1000;   // Default width
+	int savedWindowHeight = 700;   // Default height
+
     // Enhanced sampler voice class for playback tracking
     class TrackingSamplerVoice : public SamplerVoice
     {
