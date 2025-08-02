@@ -95,6 +95,7 @@ private:
     String freesoundId;
     String licenseType;
     String padQuery;
+    String getKeyboardKeyForPad(int padIndex) const;
 
     float playheadPosition;
     bool isPlaying;

@@ -101,11 +101,12 @@ void SamplePad::resized()
     }
 }
 
+
 void SamplePad::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Modern dark background with subtle gradients
+    // Modern dark background with subtle gradients (existing code stays the same)
     if (isDragHover)
     {
         g.setColour(Colour(0x8000D9FF).withAlpha(0.6f));
@@ -118,7 +119,6 @@ void SamplePad::paint(Graphics& g)
     }
     else if (isDownloading)
     {
-        // Special appearance during download
         g.setGradientFill(ColourGradient(
             Colour(0x8000D9FF).withAlpha(0.3f), bounds.getTopLeft().toFloat(),
             Colour(0x800099CC).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
@@ -136,7 +136,7 @@ void SamplePad::paint(Graphics& g)
 
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
 
-    // Modern border styling
+    // Modern border styling (existing code stays the same)
     if (isDragHover)
     {
         g.setColour(Colour(0x8000D9FF));
@@ -163,45 +163,31 @@ void SamplePad::paint(Graphics& g)
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
 
-    g.fillRoundedRectangle(bounds.toFloat(), 6.0f); // Slightly more rounded corners
+    // === TOP LINE: MIDI/Keyboard number + Web badge + License badge ===
 
-    // Modern border styling
-    if (isDragHover)
-    {
-        g.setColour(Colour(0x8000D9FF)); // Bright cyan border for drag hover
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.5f);
-    }
-    else if (isPlaying)
-    {
-        g.setColour(Colours::white);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
-    }
-    else if (hasValidSample)
-    {
-        g.setColour(Colour(0x80404040)); // Medium grey border
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
-    }
-    else
-    {
-        g.setColour(Colour(0x802A2A2A)); // Dark grey border for empty pads
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
-    }
-
-    // === TOP LINE: Pad number + Web badge + License badge ===
-
-    // Pad number with modern styling
+    // MIDI Note and Keyboard Key display (UPDATED)
     g.setColour(Colours::white);
-    g.setFont(Font(9.0f, Font::bold));
+    g.setFont(Font(8.0f, Font::bold));
     auto numberBounds = bounds.reduced(4);
-    auto numberRect = numberBounds.removeFromTop(14).removeFromLeft(18);
+    auto numberRect = numberBounds.removeFromTop(14).removeFromLeft(24); // Slightly wider for MIDI info
 
-    // Small dark background for pad number
+    // Small dark background for MIDI/keyboard info
     g.setColour(Colour(0x80000000).withAlpha(0.6f));
     g.fillRoundedRectangle(numberRect.toFloat(), 2.0f);
     g.setColour(Colours::white);
-    g.drawText(String(padIndex + 1), numberRect, Justification::centred);
 
-    // Web badge and License badge in top-right area
+    // Calculate MIDI note number (pad 0 = MIDI note 36, pad 1 = note 37, etc.)
+    int midiNote = padIndex + 36;
+
+    // Get keyboard key for this pad
+    String keyboardKey = getKeyboardKeyForPad(padIndex);
+
+    // Format display text: "MIDI/Key" format
+    String displayText = String(midiNote) + " | " + keyboardKey;
+
+    g.drawText(displayText, numberRect, Justification::centred);
+
+    // Web badge and License badge in top-right area (existing code stays the same)
     if (hasValidSample)
     {
         g.setFont(Font(8.0f, Font::bold));
@@ -216,17 +202,14 @@ void SamplePad::paint(Graphics& g)
             int delBadgeWidth = 28;
             auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
 
-            // Darker red gradient
             g.setGradientFill(ColourGradient(
-                Colour(0x80C62828), delBounds.getTopLeft().toFloat(),  // Darker red
-                Colour(0x808E0000), delBounds.getBottomRight().toFloat(), false));  // Deep red
+                Colour(0x80C62828), delBounds.getTopLeft().toFloat(),
+                Colour(0x808E0000), delBounds.getBottomRight().toFloat(), false));
             g.fillRoundedRectangle(delBounds.toFloat(), 3.0f);
 
-            // Soft white text
             g.setColour(Colours::white.withAlpha(0.9f));
             g.drawText("DEL", delBounds, Justification::centred);
 
-            // Add small spacing between badges
             topRightBounds.removeFromRight(3);
         }
 
@@ -237,17 +220,14 @@ void SamplePad::paint(Graphics& g)
             int licenseBadgeWidth = 32;
             auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
 
-            // Darker amber gradient
             g.setGradientFill(ColourGradient(
-                Colour(0x80EF6C00), licenseBounds.getTopLeft().toFloat(),  // Dark orange
-                Colour(0x80BF360C), licenseBounds.getBottomRight().toFloat(), false));  // Deep orange
+                Colour(0x80EF6C00), licenseBounds.getTopLeft().toFloat(),
+                Colour(0x80BF360C), licenseBounds.getBottomRight().toFloat(), false));
             g.fillRoundedRectangle(licenseBounds.toFloat(), 3.0f);
 
-            // Soft white text
             g.setColour(Colours::white.withAlpha(0.9f));
             g.drawText(shortLicense, licenseBounds, Justification::centred);
 
-            // Add small spacing between badges
             topRightBounds.removeFromRight(3);
         }
 
@@ -257,19 +237,17 @@ void SamplePad::paint(Graphics& g)
             int webBadgeWidth = 28;
             auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
 
-            // Darker blue gradient
             g.setGradientFill(ColourGradient(
-                Colour(0x800277BD), webBounds.getTopLeft().toFloat(),  // Dark blue
-                Colour(0x8001579B), webBounds.getBottomRight().toFloat(), false));  // Deep blue
+                Colour(0x800277BD), webBounds.getTopLeft().toFloat(),
+                Colour(0x8001579B), webBounds.getBottomRight().toFloat(), false));
             g.fillRoundedRectangle(webBounds.toFloat(), 3.0f);
 
-            // Soft white text
             g.setColour(Colours::white.withAlpha(0.9f));
             g.drawText("Web", webBounds, Justification::centred);
         }
     }
 
-    // === MIDDLE: Waveform and sample text ===
+    // === MIDDLE: Waveform and sample text === (existing code stays the same)
 
     if (hasValidSample)
     {
@@ -305,9 +283,8 @@ void SamplePad::paint(Graphics& g)
             displayAuthor = displayAuthor.substring(0, 7) + "...";
         }
 
-
         // Create the full text string
-        String displayText = displayName + " by " + displayAuthor + " (" + licenseType + ")";
+        String displayText = displayName + " by " + displayAuthor;
 
         // Position at bottom of waveform area with dark background
         auto filenameBounds = waveformBounds.removeFromBottom(14);
@@ -317,54 +294,32 @@ void SamplePad::paint(Graphics& g)
         g.drawText(displayText, filenameBounds, Justification::centred, true);
     }
 
-    // === BOTTOM LINE: Drag badge + Query text box + Search badge ===
+    // === BOTTOM LINE: Drag badge + Query text box + Search badge === (existing code stays the same)
 
     // Drag badge in bottom-left corner - Modern green styling
     if (hasValidSample)
     {
         g.setFont(Font(8.0f, Font::bold));
 
-        // Create drag badge in bottom-left corner
         auto dragBounds = bounds.reduced(4);
         int badgeWidth = 28;
         int badgeHeight = 14;
         dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
 
-        // Modern green gradient
         g.setGradientFill(ColourGradient(
             Colour(0x804ECDC4), dragBounds.getTopLeft().toFloat(),
             Colour(0x8026A69A), dragBounds.getBottomRight().toFloat(), false));
         g.fillRoundedRectangle(dragBounds.toFloat(), 3.0f);
 
-        // White text
         g.setColour(Colours::white);
         g.drawText("Drag", dragBounds, Justification::centred);
     }
 
-    // Search badge in bottom-right corner - Modern purple styling (always visible)
-    {
-        g.setFont(Font(8.0f, Font::bold));
-
-        // Create search badge in bottom-right corner
-        auto searchBounds = bounds.reduced(4);
-        int badgeWidth = 32;
-        int badgeHeight = 14;
-        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
-
-        // Modern purple gradient
-        g.setGradientFill(ColourGradient(
-            Colour(0x809C88FF), searchBounds.getTopLeft().toFloat(),
-            Colour(0x807B68EE), searchBounds.getBottomRight().toFloat(), false));
-        g.fillRoundedRectangle(searchBounds.toFloat(), 3.0f);
-
-        // White text
-        g.setColour(Colours::white);
-        g.drawText("Search", searchBounds, Justification::centred);
-    }
-
+    // Search badge in bottom-right corner (always visible when not downloading)
     if (!isDownloading)
     {
         g.setFont(Font(8.0f, Font::bold));
+
         auto searchBounds = bounds.reduced(4);
         int badgeWidth = 32;
         int badgeHeight = 14;
@@ -390,6 +345,46 @@ void SamplePad::paint(Graphics& g)
         g.drawText("Empty", emptyBounds, Justification::centred);
     }
 }
+
+String SamplePad::getKeyboardKeyForPad(int padIndex) const
+{
+    // Map pad indices to keyboard keys (matching the keyPressed mapping in PluginEditor)
+    // Grid layout (bottom row to top row):
+    // Bottom row (pads 0-3): z x c v
+    // Second row (pads 4-7): a s d f
+    // Third row (pads 8-11): q w e r
+    // Top row (pads 12-15): 1 2 3 4
+
+    switch (padIndex)
+    {
+        // Bottom row (pads 0-3)
+        case 0: return "Z";
+        case 1: return "X";
+        case 2: return "C";
+        case 3: return "V";
+
+        // Second row (pads 4-7)
+        case 4: return "A";
+        case 5: return "S";
+        case 6: return "D";
+        case 7: return "F";
+
+        // Third row (pads 8-11)
+        case 8: return "Q";
+        case 9: return "W";
+        case 10: return "E";
+        case 11: return "R";
+
+        // Top row (pads 12-15)
+        case 12: return "1";
+        case 13: return "2";
+        case 14: return "3";
+        case 15: return "4";
+
+        default: return "?";
+    }
+}
+
 
 void SamplePad::mouseDown(const MouseEvent& event)
 {
@@ -1571,7 +1566,7 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
 Array<FSSound> SampleGridComponent::searchSingleSound(const String& query)
 {
     FreesoundClient client(FREESOUND_API_KEY);
-    SoundList list = client.textSearch(query, "duration:[0 TO 0.5]", "score", 1, -1, 50, "id,name,username,license,previews");
+    SoundList list = client.textSearch(query, "duration:[0 TO 0.5]", "score", 1, 1, 10000, "id,name,username,license,previews");
     Array<FSSound> sounds = list.toArrayOfSounds();
 
     if (sounds.isEmpty())
