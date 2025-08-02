@@ -1139,25 +1139,10 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
     DBG("SampleGridComponent::updateSamples called with " + String(sounds.size()) + " sounds");
 
     // For preset loading, always use the provided arrays directly
-    // This ensures the visual grid matches exactly what the sampler loaded
     if (!sounds.isEmpty())
     {
         DBG("Using provided arrays for grid update");
         loadSamplesFromArrays(sounds, soundInfo, downloadDir);
-    }
-    else
-    {
-        // Only try JSON if no sounds were provided (fallback for edge cases)
-        File metadataFile = downloadDir.getChildFile("metadata.json");
-        if (metadataFile.existsAsFile())
-        {
-            DBG("No sounds provided, trying JSON metadata");
-            loadSamplesFromJson(metadataFile);
-        }
-        else
-        {
-            DBG("No sounds or metadata available");
-        }
     }
 
     // Force repaint all pads
@@ -1254,9 +1239,8 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
         samplePads[i]->clearSample();
     }
 
-    // FIXED: Use a member timer instead of Timer::callAfterDelay to ensure proper cleanup
-    // Start the delayed repaint timer
-    startTimer(200); // This will call timerCallback after 200ms
+    // Use member timer for delayed repaint
+    startTimer(200);
 
     DBG("Grid update complete");
 }
@@ -1358,15 +1342,14 @@ void SampleGridComponent::shuffleSamples()
                                 sample.authorName, sample.freesoundId, sample.licenseType);
     }
 
-    // Update processor arrays and metadata to match new order
+    // Update processor arrays to match new order
     updateProcessorArraysFromGrid();
-    updateJsonMetadata();
 
     // Reload the sampler with new pad order
     if (processor)
     {
         processor->setSources();
-        processor->updateReadmeFile();
+        // REMOVED: processor->updateReadmeFile();
     }
 
     DBG("Samples shuffled successfully");

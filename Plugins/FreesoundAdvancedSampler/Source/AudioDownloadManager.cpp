@@ -145,12 +145,6 @@ void AudioDownloadManager::run()
 
     stopTimer();
 
-    // Save JSON metadata file
-    if (!downloadedFiles.isEmpty())
-    {
-        saveMetadataJson(downloadedFiles);
-    }
-
     // Final progress update
     {
         juce::ScopedLock lock(progressLock);
@@ -160,49 +154,6 @@ void AudioDownloadManager::run()
     updateProgress();
 
     listeners.call([allSuccessful](Listener& l) { l.downloadCompleted(allSuccessful); });
-}
-
-void AudioDownloadManager::saveMetadataJson(const juce::Array<DownloadedFileInfo>& downloadedFiles)
-{
-    juce::File jsonFile = targetDirectory.getChildFile("metadata.json");
-
-    juce::DynamicObject::Ptr root = new juce::DynamicObject();
-
-    // Session metadata
-    root->setProperty("session_info", new juce::DynamicObject());
-    juce::DynamicObject::Ptr sessionInfo = root->getProperty("session_info").getDynamicObject();
-    sessionInfo->setProperty("download_date", juce::Time::getCurrentTime().toString(true, true));
-    sessionInfo->setProperty("search_query", currentSearchQuery);
-    sessionInfo->setProperty("total_samples", downloadedFiles.size());
-
-    // Samples array
-    juce::Array<juce::var> samplesArray;
-
-    for (const auto& fileInfo : downloadedFiles)
-    {
-        juce::DynamicObject::Ptr sample = new juce::DynamicObject();
-        sample->setProperty("file_name", fileInfo.fileName);
-        sample->setProperty("original_name", fileInfo.originalName);
-        sample->setProperty("freesound_id", fileInfo.freesoundId);
-        sample->setProperty("search_query", fileInfo.searchQuery);
-        sample->setProperty("author", fileInfo.author);
-        sample->setProperty("license", fileInfo.license);
-        sample->setProperty("duration", fileInfo.duration);
-        sample->setProperty("file_size", fileInfo.fileSize);
-        sample->setProperty("downloaded_at", fileInfo.downloadedAt);
-        sample->setProperty("original_pad_index", fileInfo.padIndex + 1); // 1-based for user display
-        sample->setProperty("freesound_url", "https://freesound.org/s/" + fileInfo.freesoundId + "/");
-
-        samplesArray.add(juce::var(sample.get()));
-    }
-
-    root->setProperty("samples", samplesArray);
-
-    // Convert to JSON string
-    juce::String jsonString = juce::JSON::toString(juce::var(root.get()), true); // true for pretty print
-
-    // Write to file
-    jsonFile.replaceWithText(jsonString);
 }
 
 void AudioDownloadManager::timerCallback()

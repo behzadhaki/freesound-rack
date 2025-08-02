@@ -50,7 +50,6 @@ private:
     void run() override;
     void timerCallback() override;
     void updateProgress();
-    void saveMetadataJson(const juce::Array<DownloadedFileInfo>& downloadedFiles);
 
     juce::Array<FSSound> soundsToDownload;
     juce::File targetDirectory;
