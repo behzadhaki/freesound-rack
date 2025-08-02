@@ -322,7 +322,7 @@ void PresetBrowserComponent::paint(Graphics& g)
     g.fillAll();
 
     // Modern border
-    g.setColour(Colour(0xff404040));
+    g.setColour(Colour(0xff404040).withAlpha(0.0f));
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2), 6.0f, 1.5f);
 }
 

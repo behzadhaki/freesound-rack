@@ -36,7 +36,16 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo, int slotIndex) {
         handlePresetLoadRequested(presetInfo, slotIndex);
     };
-    addAndMakeVisible(presetBrowserComponent);
+
+    // Set up expandable panel with preset browser inside
+    expandablePanelComponent.setOrientation(ExpandablePanel::Orientation::Right); // Right orientation = expands left
+    expandablePanelComponent.setContentComponent(&presetBrowserComponent);
+    expandablePanelComponent.setExpandedWidth(220); // Slightly wider for preset browser
+    expandablePanelComponent.onExpandedStateChanged = [this](bool expanded) {
+        // When panel expands/collapses, update window size constraints and current size
+        updateWindowSizeForPanelState();
+    };
+    addAndMakeVisible(expandablePanelComponent);
 
     // Set up progress components
     addAndMakeVisible(progressBar);
@@ -66,38 +75,16 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
         sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
     }
 
-    // Set up sample grid component
-    sampleGridComponent.setProcessor(&processor);
-    addAndMakeVisible(sampleGridComponent);
-
     // Make sure the grid can receive keyboard focus and starts with focus
     sampleGridComponent.setWantsKeyboardFocus(true);
-
     setWantsKeyboardFocus(true);
 
-    // Set up preset browser with multi-slot support
-    presetBrowserComponent.setProcessor(&processor);
-    presetBrowserComponent.refreshPresetList();
-    presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo, int slotIndex) {
-        handlePresetLoadRequested(presetInfo, slotIndex);
-    };
-    addAndMakeVisible(presetBrowserComponent);
-
-    // Set up expandable panel
-    expandablePanelComponent.setProcessor(&processor);
-    expandablePanelComponent.onExpandedStateChanged = [this](bool expanded) {
-        // When panel expands/collapses, update window size constraints and current size
-        updateWindowSizeForPanelState();
-    };
-    addAndMakeVisible(expandablePanelComponent);
-
-
-    setSize (1000, 700);  // Increased width for preset browser
+    setSize (800, 700);  // Reduced base width since preset browser is now in expandable panel
     setResizable(true, true);  // Enable resizing
 
     // Set size constraints (minimum and maximum sizes)
     // Base constraints without expandable panel
-    int baseMinWidth = 800;
+    int baseMinWidth = 600;  // Reduced since preset browser is collapsible
     int baseMaxWidth = 1600;
     setResizeLimits(baseMinWidth, 500, baseMaxWidth, 1200);
 
@@ -140,7 +127,6 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     const int progressHeight = 50;
 
     // FIXED VALUES - Don't scale these with window size
-    const int presetBrowserWidth = 210;  // Keep this fixed at minimum size
     const int buttonHeight = 30;         // Keep this fixed
     const int spacing = 4;               // Keep this fixed
 
@@ -157,31 +143,25 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     bounds.removeFromLeft(margin);
     auto contentBounds = bounds.withTrimmedBottom(margin);
 
-    // Expandable panel on the right - FIXED WIDTH when expanded
+    // Expandable panel (with preset browser) on the left - FIXED WIDTH when expanded
     int panelWidth = expandablePanelComponent.isExpanded() ?
                      expandablePanelComponent.getExpandedWidth() :
                      expandablePanelComponent.getCollapsedWidth();
 
-    auto rightPanelArea = contentBounds.removeFromRight(panelWidth);
+    auto leftPanelArea = contentBounds.removeFromLeft(panelWidth);
     if (expandablePanelComponent.isExpanded())
-        rightPanelArea.removeFromLeft(spacing); // Add spacing when expanded
-    expandablePanelComponent.setBounds(rightPanelArea);
+        leftPanelArea.removeFromRight(spacing); // Add spacing when expanded
+    expandablePanelComponent.setBounds(leftPanelArea);
 
-    // Left area (preset browser + controls) - FIXED WIDTH
-    auto leftArea = contentBounds.removeFromLeft(presetBrowserWidth);
+    // Control area below the expandable panel (or to the right when collapsed)
+    auto controlArea = contentBounds.removeFromLeft(200); // Fixed width for controls
+    controlArea = controlArea.removeFromBottom(buttonHeight + margin);
+    controlArea.removeFromLeft(spacing);
 
-    // Preset browser takes available height (this WILL scale)
-    presetBrowserComponent.setBounds(leftArea.removeFromTop(leftArea.getHeight() - buttonHeight - spacing));
-
-    // Controls go below preset browser - FIXED SIZES
-    auto controlArea = leftArea.withTrimmedTop(spacing);
-    controlArea.removeFromLeft(margin);
-    controlArea.removeFromRight(margin);
-
-    sampleDragArea.setBounds(controlArea.removeFromLeft(controlArea.getWidth()/3).reduced(0, 2));
-    controlArea.removeFromTop(3);
-    controlArea.removeFromBottom(3);
-    directoryOpenButton.setBounds(controlArea.removeFromRight(int(controlArea.getWidth()*0.8f)));
+    // Split control area between drag area and directory button
+    sampleDragArea.setBounds(controlArea.removeFromLeft(controlArea.getWidth()/2).reduced(2));
+    controlArea.removeFromLeft(spacing);
+    directoryOpenButton.setBounds(controlArea);
 
     // Sample grid - takes ALL remaining space (both width and height scale)
     contentBounds.removeFromLeft(spacing);
@@ -204,7 +184,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForPanelState
         setSize(newWidth, currentHeight);
 
         // Update constraints to allow for expanded panel
-        setResizeLimits(800 + panelWidthDifference + 4, 500, 1600 + panelWidthDifference + 4, 1200);
+        setResizeLimits(600 + panelWidthDifference + 4, 500, 1600 + panelWidthDifference + 4, 1200);
     }
     else
     {
@@ -213,7 +193,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForPanelState
         setSize(newWidth, currentHeight);
 
         // Update constraints back to base size
-        setResizeLimits(800, 500, 1600, 1200);
+        setResizeLimits(600, 500, 1600, 1200);
     }
 
     // Save the new window size

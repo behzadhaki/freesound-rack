@@ -15,7 +15,7 @@
 #include "SampleGridComponent.h"
 #include "PresetBrowserComponent.h"
 #include "PresetManager.h"
-#include "ExpandablePanelComponent.h"
+#include "ExpandablePanel.h"
 
 //==============================================================================
 /**
@@ -48,8 +48,10 @@ private:
     SampleGridComponent sampleGridComponent;
     SampleDragArea sampleDragArea;
     DirectoryOpenButton directoryOpenButton;
+
+    // Preset browser now inside expandable panel
     PresetBrowserComponent presetBrowserComponent;
-    ExpandablePanelComponent expandablePanelComponent;
+    ExpandablePanel expandablePanelComponent;
 
     // Store sounds for grid update
     Array<FSSound> currentSounds;

@@ -28,7 +28,7 @@ target_sources(${BaseTargetName} PRIVATE
         Source/SampleGridComponent.cpp
         Source/PresetBrowserComponent.cpp
         Source/PresetManager.cpp
-        Source/ExpandablePanelComponent.cpp
+        Source/ExpandablePanel.cpp
 )
 
 target_compile_definitions(${BaseTargetName}
