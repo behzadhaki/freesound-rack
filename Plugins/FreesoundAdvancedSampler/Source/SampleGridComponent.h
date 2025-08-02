@@ -22,16 +22,18 @@
 //==============================================================================
 class SamplePad : public Component,
                   public DragAndDropContainer,
-                  public DragAndDropTarget
+                  public DragAndDropTarget,
+                  public Timer  // Add Timer inheritance for cleanup
 {
 public:
-    SamplePad(int padIndex);
+    SamplePad(int index);
     ~SamplePad() override;
 
     void paint(Graphics& g) override;
     void resized() override;
     void mouseDown(const MouseEvent& event) override;
     void mouseDrag(const MouseEvent& event) override;
+    void timerCallback() override;  // Add timer callback
 
     // DragAndDropTarget implementation
     bool isInterestedInDragSource(const SourceDetails& dragSourceDetails) override;
@@ -40,7 +42,7 @@ public:
     void itemDropped(const SourceDetails& dragSourceDetails) override;
 
     void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String(), String query = String());
-    void setPlayheadPosition(float position); // 0.0 to 1.0
+    void setPlayheadPosition(float position);
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
 
@@ -49,26 +51,27 @@ public:
     String getQuery() const;
     bool hasQuery() const;
 
-    // Method to get sample info for drag operations
+    // Progress bar methods (thread-safe)
+    void startDownloadProgress();
+    void updateDownloadProgress(double progress, const String& status = String());
+    void finishDownloadProgress(bool success, const String& message = String());
+
+    // Sample info struct and method
     struct SampleInfo {
         File audioFile;
         String sampleName;
         String authorName;
         String freesoundId;
         String licenseType;
-        String query; // Add query to sample info
+        String query;
         bool hasValidSample;
-        int padIndex; // Index of the pad (1-based)
+        int padIndex;
     };
     SampleInfo getSampleInfo() const;
 
-    // Get pad index
     int getPadIndex() const { return padIndex; }
     int setPadIndex(int index) { padIndex = index; return padIndex; }
-
-    // Clear sample data
     void clearSample();
-
     void handleDeleteClick();
 
 private:
@@ -76,6 +79,7 @@ private:
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
     String getLicenseShortName(const String& license) const;
+    void cleanupProgressComponents();  // Safe cleanup method
 
     int padIndex;
     FreesoundAdvancedSamplerAudioProcessor* processor;
@@ -90,17 +94,22 @@ private:
     File audioFile;
     String freesoundId;
     String licenseType;
-    String padQuery; // Individual query for this pad
+    String padQuery;
 
     float playheadPosition;
     bool isPlaying;
     bool hasValidSample;
-    bool isDragHover; // Track drag hover state
+    bool isDragHover;
 
     Colour padColour;
-
-    // Individual query text box
     TextEditor queryTextBox;
+
+    // Progress bar components - use smart pointers for safety
+    std::unique_ptr<ProgressBar> progressBar;
+    std::unique_ptr<Label> progressLabel;
+    bool isDownloading = false;
+    bool pendingCleanup = false;
+    double currentDownloadProgress = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
@@ -111,7 +120,7 @@ private:
 class SampleGridComponent : public Component,
                            public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
                            public DragAndDropContainer,
-                           public Timer  // Add Timer inheritance for download checking
+                           public Timer  // Keep only Timer - no AudioDownloadManager::Listener
 {
 public:
     SampleGridComponent();
@@ -119,26 +128,20 @@ public:
 
     void paint(Graphics& g) override;
     void resized() override;
+    void timerCallback() override;
+    void mouseDown(const MouseEvent& event) override;
 
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
     void updateSamples(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo);
     void clearSamples();
     SamplePad::SampleInfo getPadInfo(int padIndex) const;
 
-    // Method to get all sample info for drag operations
     Array<SamplePad::SampleInfo> getAllSampleInfo() const;
-
-    // Swap samples between two pads
     void swapSamples(int sourcePadIndex, int targetPadIndex);
-
-    // Shuffle samples randomly
     void shuffleSamples();
 
-    // Master search that only affects pads with empty queries
     void handleMasterSearch(const Array<FSSound>& sounds,
         const std::vector<StringArray>& soundInfo, const String& masterQuery);
-
-    // Single pad search with specific query
     void searchForSinglePadWithQuery(int padIndex, const String& query);
 
     // PlaybackListener implementation
@@ -146,13 +149,6 @@ public:
     void noteStopped(int noteNumber) override;
     void playheadPositionChanged(int noteNumber, float position) override;
 
-    // Timer callback for download checking
-    void timerCallback() override;
-
-    // used for keyboard focus (playing samples with keyboard)
-    void mouseDown(const MouseEvent& event) override;
-
-    // Update JSON metadata after swap
     void updateJsonMetadata();
 
 private:
@@ -162,32 +158,26 @@ private:
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
-
-
-    // Single pad download management
+    // Single pad download management (simplified)
     std::unique_ptr<AudioDownloadManager> singlePadDownloadManager;
     int currentDownloadPadIndex = -1;
     FSSound currentDownloadSound;
     String currentDownloadQuery;
 
-    // Helper methods for loading samples
+    // Helper methods
     void loadSamplesFromJson(const File& metadataFile);
     void loadSamplesFromArrays(const Array<FSSound>& sounds,
         const std::vector<StringArray>& soundInfo, const File& downloadDir);
     void loadSingleSampleWithQuery(int padIndex,
         const FSSound& sound, const File& audioFile, const String& query);
     void downloadSingleSampleWithQuery(int padIndex, const FSSound& sound, const String& query);
-
-    // Update processor arrays from current grid state
     void updateProcessorArraysFromGrid();
-
-    // Single pad search helper methods
     Array<FSSound> searchSingleSound(const String& query);
     void loadSingleSample(int padIndex, const FSSound& sound, const File& audioFile);
     void downloadSingleSample(int padIndex, const FSSound& sound);
     void updateSinglePadInProcessor(int padIndex, const FSSound& sound);
+    void cleanupSingleDownload();  // Add cleanup method
 
-    // Shuffle and Clear all pads button and methods
     StyledButton shuffleButton {"Shuffle", 10.0f, false};
     StyledButton clearAllButton {"Clear All", 10.0f, true};
     void clearAllPads();

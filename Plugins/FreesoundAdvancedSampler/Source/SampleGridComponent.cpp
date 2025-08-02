@@ -15,6 +15,7 @@
 // SamplePad Implementation
 //==============================================================================
 
+// In SamplePad constructor:
 SamplePad::SamplePad(int index)
     : padIndex(index)
     , processor(nullptr)
@@ -27,6 +28,7 @@ SamplePad::SamplePad(int index)
     , isPlaying(false)
     , hasValidSample(false)
     , isDragHover(false)
+    , currentDownloadProgress(0.0)
 {
     formatManager.registerBasicFormats();
 
@@ -34,7 +36,7 @@ SamplePad::SamplePad(int index)
     float hue = (float)padIndex / 16.0f;
     padColour = Colour::fromHSV(hue, 0.3f, 0.8f, 1.0f);
 
-    // Set up query text box
+    // Set up query text box (existing code)
     queryTextBox.setMultiLine(false);
     queryTextBox.setReturnKeyStartsNewLine(false);
     queryTextBox.setReadOnly(false);
@@ -47,7 +49,6 @@ SamplePad::SamplePad(int index)
     queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
     queryTextBox.setFont(Font(9.0f));
     queryTextBox.onReturnKey = [this]() {
-        // When user presses enter, trigger search with this pad's query
         String query = queryTextBox.getText().trim();
         if (query.isNotEmpty())
         {
@@ -58,29 +59,46 @@ SamplePad::SamplePad(int index)
         }
     };
     addAndMakeVisible(queryTextBox);
+
+    // DON'T create progress components in constructor - create them on demand
 }
 
 SamplePad::~SamplePad()
 {
+    stopTimer(); // Stop any running timers
+    cleanupProgressComponents(); // Clean up progress components
 }
 
 void SamplePad::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Position query text box at the bottom, between drag and search badges
-    auto queryBounds = bounds.reduced(3);
-    int queryHeight = 14;
-    int dragBadgeWidth = 30; // Width of drag badge
-    int searchBadgeWidth = 35; // Width of search badge
-    int badgeSpacing = 3; // Small spacing between elements
+    // Position query text box or progress components at the bottom
+    auto bottomBounds = bounds.reduced(3);
+    int bottomHeight = 14;
+    int dragBadgeWidth = 30;
+    int searchBadgeWidth = 35;
+    int badgeSpacing = 3;
 
-    // Bottom line: Drag badge + Query text box + Search badge
-    queryBounds = queryBounds.removeFromBottom(queryHeight);
-    queryBounds.removeFromLeft(dragBadgeWidth + badgeSpacing); // Space for drag badge + spacing
-    queryBounds.removeFromRight(searchBadgeWidth + badgeSpacing); // Space for search badge + spacing
+    bottomBounds = bottomBounds.removeFromBottom(bottomHeight);
 
-    queryTextBox.setBounds(queryBounds);
+    if (isDownloading && progressBar && progressLabel)
+    {
+        // Show progress bar and label instead of query text box
+        auto progressArea = bottomBounds.reduced(2);
+
+        // Split area: progress bar on top, label below
+        auto labelBounds = progressArea.removeFromBottom(8);
+        progressLabel->setBounds(labelBounds);
+        progressBar->setBounds(progressArea);
+    }
+    else if (!isDownloading)
+    {
+        // Normal layout with query text box
+        bottomBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);
+        bottomBounds.removeFromRight(searchBadgeWidth + badgeSpacing);
+        queryTextBox.setBounds(bottomBounds);
+    }
 }
 
 void SamplePad::paint(Graphics& g)
@@ -90,27 +108,59 @@ void SamplePad::paint(Graphics& g)
     // Modern dark background with subtle gradients
     if (isDragHover)
     {
-        // Bright accent when dragging over
-        g.setColour(Colour(0x8000D9FF).withAlpha(0.6f)); // Bright cyan for drag hover
+        g.setColour(Colour(0x8000D9FF).withAlpha(0.6f));
     }
     else if (isPlaying)
     {
-        // Glowing effect when playing
         g.setGradientFill(ColourGradient(
             padColour.brighter(0.4f), bounds.getCentre().toFloat(),
             padColour.darker(0.2f), bounds.getBottomRight().toFloat(), false));
     }
+    else if (isDownloading)
+    {
+        // Special appearance during download
+        g.setGradientFill(ColourGradient(
+            Colour(0x8000D9FF).withAlpha(0.3f), bounds.getTopLeft().toFloat(),
+            Colour(0x800099CC).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
+    }
     else if (hasValidSample)
     {
-        // Subtle gradient for active pads
         g.setGradientFill(ColourGradient(
             padColour.withAlpha(0.3f), bounds.getTopLeft().toFloat(),
             padColour.darker(0.3f).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
-        // Dark grey for empty pads
-        g.setColour(Colour(0x801A1A1A)); // Very dark grey
+        g.setColour(Colour(0x801A1A1A));
+    }
+
+    g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
+
+    // Modern border styling
+    if (isDragHover)
+    {
+        g.setColour(Colour(0x8000D9FF));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.5f);
+    }
+    else if (isDownloading)
+    {
+        g.setColour(Colour(0x8000D9FF));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+    }
+    else if (isPlaying)
+    {
+        g.setColour(Colours::white);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+    }
+    else if (hasValidSample)
+    {
+        g.setColour(Colour(0x80404040));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
+    }
+    else
+    {
+        g.setColour(Colour(0x802A2A2A));
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
 
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f); // Slightly more rounded corners
@@ -311,56 +361,74 @@ void SamplePad::paint(Graphics& g)
         g.drawText("Search", searchBounds, Justification::centred);
     }
 
-    // Empty pad text (centered, avoiding all badges)
-    if (!hasValidSample)
+    if (!isDownloading)
     {
-        g.setColour(Colour(0x80666666)); // Medium grey for empty text
+        g.setFont(Font(8.0f, Font::bold));
+        auto searchBounds = bounds.reduced(4);
+        int badgeWidth = 32;
+        int badgeHeight = 14;
+        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+
+        g.setGradientFill(ColourGradient(
+            Colour(0x809C88FF), searchBounds.getTopLeft().toFloat(),
+            Colour(0x807B68EE), searchBounds.getBottomRight().toFloat(), false));
+        g.fillRoundedRectangle(searchBounds.toFloat(), 3.0f);
+
+        g.setColour(Colours::white);
+        g.drawText("Search", searchBounds, Justification::centred);
+    }
+
+    // Empty pad text (only show when not downloading and no sample)
+    if (!hasValidSample && !isDownloading)
+    {
+        g.setColour(Colour(0x80666666));
         g.setFont(Font(12.0f, Font::bold));
         auto emptyBounds = bounds.reduced(8);
-        emptyBounds.removeFromTop(18); // Space for top line
-        emptyBounds.removeFromBottom(18); // Space for bottom line
+        emptyBounds.removeFromTop(18);
+        emptyBounds.removeFromBottom(18);
         g.drawText("Empty", emptyBounds, Justification::centred);
     }
 }
 
 void SamplePad::mouseDown(const MouseEvent& event)
 {
-    // Check if clicked on search badge (bottom-right) - ALWAYS available
+    // Don't allow interaction while downloading
+    if (isDownloading)
+        return;
+
+    // Check if clicked on search badge (bottom-right) - ALWAYS available when not downloading
     {
-       auto bounds = getLocalBounds();
-       auto searchBounds = bounds.reduced(3);
-       int badgeWidth = 35;
-       int badgeHeight = 12;
-       searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
+        auto bounds = getLocalBounds();
+        auto searchBounds = bounds.reduced(3);
+        int badgeWidth = 35;
+        int badgeHeight = 12;
+        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
 
-       if (searchBounds.contains(event.getPosition()))
-       {
-           // Use the pad's individual query if it has one, otherwise use master query
-           String searchQuery = queryTextBox.getText().trim();
-           if (searchQuery.isEmpty() && processor)
-           {
-               searchQuery = processor->getQuery();
-           }
+        if (searchBounds.contains(event.getPosition()))
+        {
+            String searchQuery = queryTextBox.getText().trim();
+            if (searchQuery.isEmpty() && processor)
+            {
+                searchQuery = processor->getQuery();
+            }
 
-           if (searchQuery.isNotEmpty())
-           {
-               // Update the text box with the query being used
-               queryTextBox.setText(searchQuery);
+            if (searchQuery.isNotEmpty())
+            {
+                queryTextBox.setText(searchQuery);
 
-               // Trigger single pad search
-               if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-               {
-                   gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
-               }
-           }
-           else
-           {
-               AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                   "Empty Query",
-                   "Please enter a search term in the pad's text box or the main search box.");
-           }
-           return;
-       }
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                }
+            }
+            else
+            {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Empty Query",
+                    "Please enter a search term in the pad's text box or the main search box.");
+            }
+            return;
+        }
     }
 
     auto bounds = getLocalBounds();
@@ -759,6 +827,158 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     return info;
 }
 
+void SamplePad::startDownloadProgress()
+{
+    // Stop any existing timer first
+    stopTimer();
+
+    isDownloading = true;
+    pendingCleanup = false;
+    currentDownloadProgress = 0.0;
+
+    // Create progress components on demand
+    if (!progressBar)
+    {
+        progressBar = std::make_unique<ProgressBar>(currentDownloadProgress);
+        progressBar->setColour(ProgressBar::backgroundColourId, Colour(0x80404040));
+        progressBar->setColour(ProgressBar::foregroundColourId, Colour(0x8000D9FF));
+    }
+
+    if (!progressLabel)
+    {
+        progressLabel = std::make_unique<Label>();
+        progressLabel->setFont(Font(8.0f, Font::bold));
+        progressLabel->setColour(Label::textColourId, Colours::white);
+        progressLabel->setJustificationType(Justification::centred);
+    }
+
+    // Add components if not already added
+    if (!progressBar->getParentComponent())
+        addAndMakeVisible(*progressBar);
+    if (!progressLabel->getParentComponent())
+        addAndMakeVisible(*progressLabel);
+
+    // Hide query text box and show progress components
+    queryTextBox.setVisible(false);
+    progressBar->setVisible(true);
+    progressLabel->setVisible(true);
+
+    progressLabel->setText("Downloading...", dontSendNotification);
+    resized(); // Recalculate layout
+    repaint();
+}
+
+void SamplePad::updateDownloadProgress(double progress, const String& status)
+{
+    if (!isDownloading || !progressBar || !progressLabel)
+        return;
+
+    // Use WeakReference for safe async calls
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    MessageManager::callAsync([safeThis, progress, status]()
+    {
+        if (safeThis == nullptr || !safeThis->isDownloading)
+            return;
+
+        safeThis->currentDownloadProgress = jlimit(0.0, 1.0, progress);
+
+        String progressText = status.isEmpty() ?
+            "Downloading... " + String((int)(progress * 100)) + "%" :
+            status;
+
+        if (safeThis->progressLabel)
+        {
+            safeThis->progressLabel->setText(progressText, dontSendNotification);
+        }
+
+        if (safeThis->progressBar)
+        {
+            safeThis->progressBar->repaint();
+        }
+    });
+}
+
+void SamplePad::finishDownloadProgress(bool success, const String& message)
+{
+    if (!isDownloading || !progressBar || !progressLabel)
+        return;
+
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    MessageManager::callAsync([safeThis, success, message]()
+    {
+        if (safeThis == nullptr || !safeThis->isDownloading)
+            return;
+
+        if (success)
+        {
+            if (safeThis->progressLabel)
+                safeThis->progressLabel->setText("Complete!", dontSendNotification);
+            safeThis->currentDownloadProgress = 1.0;
+            if (safeThis->progressBar)
+                safeThis->progressBar->repaint();
+
+            // Use timer for cleanup instead of Timer::callAfterDelay
+            safeThis->pendingCleanup = true;
+            safeThis->startTimer(1000); // 1 second delay
+        }
+        else
+        {
+            if (safeThis->progressLabel)
+            {
+                safeThis->progressLabel->setText(message.isEmpty() ? "Failed!" : message, dontSendNotification);
+                safeThis->progressLabel->setColour(Label::textColourId, Colours::red);
+            }
+
+            // Use timer for cleanup instead of Timer::callAfterDelay
+            safeThis->pendingCleanup = true;
+            safeThis->startTimer(2000); // 2 second delay for errors
+        }
+    });
+}
+
+void SamplePad::timerCallback()
+{
+    if (pendingCleanup)
+    {
+        stopTimer();
+        cleanupProgressComponents();
+    }
+}
+
+void SamplePad::cleanupProgressComponents()
+{
+    isDownloading = false;
+    pendingCleanup = false;
+
+    // Hide and remove progress components
+    if (progressBar)
+    {
+        progressBar->setVisible(false);
+        removeChildComponent(progressBar.get());
+    }
+
+    if (progressLabel)
+    {
+        progressLabel->setVisible(false);
+        progressLabel->setColour(Label::textColourId, Colours::white); // Reset color
+        removeChildComponent(progressLabel.get());
+    }
+
+    // Show query text box
+    queryTextBox.setVisible(true);
+
+    // Clean up progress components completely
+    progressBar.reset();
+    progressLabel.reset();
+
+    resized();
+    repaint();
+}
+
+
+
 //==============================================================================
 // SampleGridComponent Implementation
 //==============================================================================
@@ -803,11 +1023,13 @@ SampleGridComponent::~SampleGridComponent()
 {
     stopTimer();
 
+    // Clean up any active downloads
+    cleanupSingleDownload();
+
     if (processor)
     {
         processor->removePlaybackListener(this);
     }
-
 }
 
 void SampleGridComponent::paint(Graphics& g)
@@ -1529,6 +1751,15 @@ void SampleGridComponent::searchForSinglePadWithQuery(int padIndex, const String
         return;
     }
 
+    // Check if this pad is already downloading
+    if (currentDownloadPadIndex == padIndex && singlePadDownloadManager && singlePadDownloadManager->isThreadRunning())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "Download In Progress",
+            "This pad is already downloading. Please wait for it to complete.");
+        return;
+    }
+
     // Search for a single sound with the specific query
     Array<FSSound> searchResults = searchSingleSound(query);
 
@@ -1585,68 +1816,122 @@ void SampleGridComponent::downloadSingleSampleWithQuery(int padIndex, const FSSo
     // Store the query for later use
     currentDownloadQuery = query;
 
+    // Clean up any existing download manager first
+    if (singlePadDownloadManager)
+    {
+        singlePadDownloadManager->stopThread(1000);
+        singlePadDownloadManager.reset();
+    }
+
     // Create a download manager for single file
     singlePadDownloadManager = std::make_unique<AudioDownloadManager>();
+    // DON'T add listener to avoid double-listening conflicts
+
     currentDownloadPadIndex = padIndex;
     currentDownloadSound = sound;
 
-    // Use a timer to check for completion
-    startTimer(500); // Check every 500ms
+    // Start progress display on the pad
+    if (padIndex >= 0 && padIndex < TOTAL_PADS)
+    {
+        samplePads[padIndex]->startDownloadProgress();
+    }
 
     // Start download
     Array<FSSound> singleSoundArray;
     singleSoundArray.add(sound);
 
     File samplesFolder = processor->getCurrentDownloadLocation();
-    singlePadDownloadManager->startDownloads(singleSoundArray, samplesFolder, query);
 
+    // Use timer-based checking instead of listener to avoid conflicts
+    startTimer(250); // Check every 250ms
+
+    singlePadDownloadManager->startDownloads(singleSoundArray, samplesFolder, query);
 }
+
+void SampleGridComponent::cleanupSingleDownload()
+{
+    // Clean up download manager safely
+    if (singlePadDownloadManager)
+    {
+        // Stop thread with timeout
+        if (singlePadDownloadManager->isThreadRunning())
+        {
+            singlePadDownloadManager->stopThread(2000);
+        }
+        singlePadDownloadManager.reset();
+    }
+
+    currentDownloadPadIndex = -1;
+    currentDownloadQuery = "";
+}
+
+
 
 void SampleGridComponent::timerCallback()
 {
     // Check if we're handling single pad downloads
     if (singlePadDownloadManager && currentDownloadPadIndex >= 0)
     {
-        // Existing single pad download logic...
         String fileName = "FS_ID_" + currentDownloadSound.id + ".ogg";
         File samplesFolder = processor->getCurrentDownloadLocation();
         File audioFile = samplesFolder.getChildFile(fileName);
+
+        // Check if download is still running
+        bool downloadRunning = singlePadDownloadManager->isThreadRunning();
 
         if (audioFile.existsAsFile())
         {
             // Download completed successfully
             stopTimer();
+
+            // Load the sample
             loadSingleSampleWithQuery(currentDownloadPadIndex, currentDownloadSound, audioFile, currentDownloadQuery);
 
-            // Clean up
-            singlePadDownloadManager.reset();
-            currentDownloadPadIndex = -1;
-            currentDownloadQuery = "";
+            // Finish progress with success - use SafePointer
+            if (currentDownloadPadIndex < TOTAL_PADS && samplePads[currentDownloadPadIndex])
+            {
+                samplePads[currentDownloadPadIndex]->finishDownloadProgress(true, "Complete!");
+            }
+
+            // Clean up safely
+            cleanupSingleDownload();
         }
-        else if (!singlePadDownloadManager->isThreadRunning())
+        else if (!downloadRunning)
         {
             // Download thread finished but no file - failed
             stopTimer();
 
-            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                "Download Failed",
-                "Failed to download sample for pad " + String(currentDownloadPadIndex + 1));
+            // Finish progress with error - use SafePointer
+            if (currentDownloadPadIndex < TOTAL_PADS && samplePads[currentDownloadPadIndex])
+            {
+                samplePads[currentDownloadPadIndex]->finishDownloadProgress(false, "Download failed!");
+            }
 
-            // Clean up
-            singlePadDownloadManager.reset();
-            currentDownloadPadIndex = -1;
-            currentDownloadQuery = "";
+            // Clean up safely
+            cleanupSingleDownload();
+        }
+        else
+        {
+            // Still downloading - update progress if possible
+            // Simple progress estimation based on time (fallback)
+            if (currentDownloadPadIndex < TOTAL_PADS && samplePads[currentDownloadPadIndex])
+            {
+                // You could implement a simple time-based progress here if needed
+                // For now, just ensure the progress bar is still showing
+            }
         }
     }
     else
     {
         // This is the delayed repaint from loadSamplesFromArrays
-        stopTimer(); // Stop the timer since this is a one-time repaint
+        stopTimer();
 
-        // Safely repaint all pads, checking if they're still valid
+        // Safely repaint all pads
         for (auto& pad : samplePads)
         {
-            if (pad && pad->isShowing() && pad->getLocalBounds().getWidth() > 0 && pad->getLocalBounds().getHeight() > 0)
+            if (pad && pad->isShowing() &&
+                pad->getLocalBounds().getWidth() > 0 &&
+                pad->getLocalBounds().getHeight() > 0)
             {
                 pad->repaint();
             }
