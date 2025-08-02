@@ -18,10 +18,6 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     // Register as download listener
     processor.addDownloadListener(this);
 
-    // Set up search component
-    freesoundSearchComponent.setProcessor(&processor);
-    addAndMakeVisible (freesoundSearchComponent);
-
     // Set up sample grid component
     sampleGridComponent.setProcessor(&processor);
     addAndMakeVisible(sampleGridComponent);
@@ -119,8 +115,8 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     const int buttonHeight = 30;  // Matches "+ New Bank" height
     const int spacing = 4;  // Tighter spacing
 
-    // Search component at top (slightly slimmer)
-    freesoundSearchComponent.setBounds(bounds.removeFromTop(searchHeight).reduced(margin, margin));
+    bounds.removeFromTop(margin);
+    bounds.removeFromRight(margin);
 
     // Progress components at bottom (more compact)
     auto progressBounds = bounds.removeFromBottom(progressHeight).reduced(margin, 0);  // No vertical margin
@@ -150,16 +146,9 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     // Sample grid - calculate square dimensions
     contentBounds.removeFromLeft(spacing);  // Spacing between preset area and grid
 
-    const int padSize = jmin(contentBounds.getWidth() / 4, contentBounds.getHeight() / 4);
-    const int gridWidth = padSize * 5.5;
-    const int gridHeight = padSize * 4;
-
     // Center grid vertically (will automatically match preset area height)
     sampleGridComponent.setBounds(
-        contentBounds.getX(),
-        contentBounds.getY() + (contentBounds.getHeight() - gridHeight) / 2,
-        gridWidth,
-        gridHeight
+        contentBounds
     );
 }
 

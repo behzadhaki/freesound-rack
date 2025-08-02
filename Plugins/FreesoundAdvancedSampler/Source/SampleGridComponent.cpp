@@ -766,6 +766,7 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
 SampleGridComponent::SampleGridComponent()
     : processor(nullptr)
 {
+
     // Create and add sample pads
     for (int i = 0; i < TOTAL_PADS; ++i)
     {
@@ -774,14 +775,12 @@ SampleGridComponent::SampleGridComponent()
     }
 
     // Set up shuffle button
-    shuffleButton.setButtonText("Shuffle");
     shuffleButton.onClick = [this]() {
         shuffleSamples();
     };
     addAndMakeVisible(shuffleButton);
 
     // Set up clear all button
-    clearAllButton.setButtonText("Clear All");
     clearAllButton.onClick = [this]() {
         // Confirm with user before clearing
         AlertWindow::showOkCancelBox(
@@ -1853,9 +1852,10 @@ void DirectoryOpenButton::paint(Graphics &g) {
     // highlight same as SampleDragArea when hovered
     if (isMouseOver())
     {
-        g.setGradientFill(ColourGradient(
-            Colour(0x8000D9FF).withAlpha(0.5f), bounds.getTopLeft().toFloat(),
-            Colour(0x800099CC).withAlpha(0.5f), bounds.getBottomRight().toFloat(), false));
+        // g.setGradientFill(ColourGradient(
+        //    Colour(0x8000D9FF).withAlpha(0.5f), bounds.getTopLeft().toFloat(),
+        //    Colour(0x800099CC).withAlpha(0.5f), bounds.getBottomRight().toFloat(), false));
+        g.setColour(Colour(0x8000D9FF).withAlpha(0.3f));
         g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
     }
     else
@@ -1864,11 +1864,6 @@ void DirectoryOpenButton::paint(Graphics &g) {
         g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
     }
 
-
-    g.setColour(Colour(0x802A2A2A).withAlpha(0.8f));
-    g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
-    g.setColour(Colour(0x80404040));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.5f);
     g.setColour(Colours::white);
     g.setFont(Font(10.0f, Font::bold));
     g.drawText("View Resources", bounds, Justification::centred);
@@ -1876,9 +1871,9 @@ void DirectoryOpenButton::paint(Graphics &g) {
 
 }
 
-
-
 void DirectoryOpenButton::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
 {
     processor = p;
 }
+
+

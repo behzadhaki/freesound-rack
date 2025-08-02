@@ -15,7 +15,11 @@
 #include "PluginProcessor.h"
 #include "FreesoundKeys.h"
 #include <random>
+#include "CustomButtonStyle.h"
 
+//==============================================================================
+// SamplePad Component (a single sample pad in the grid)
+//==============================================================================
 class SamplePad : public Component,
                   public DragAndDropContainer,
                   public DragAndDropTarget
@@ -95,12 +99,15 @@ private:
 
     Colour padColour;
 
-    // NEW: Individual query text box
+    // Individual query text box
     TextEditor queryTextBox;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
 
+//==============================================================================
+// SampleGridComponent (the grid of sample pads)
+//==============================================================================
 class SampleGridComponent : public Component,
                            public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
                            public DragAndDropContainer,
@@ -127,10 +134,11 @@ public:
     // Shuffle samples randomly
     void shuffleSamples();
 
-    // NEW: Master search that only affects pads with empty queries
-    void handleMasterSearch(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& masterQuery);
+    // Master search that only affects pads with empty queries
+    void handleMasterSearch(const Array<FSSound>& sounds,
+        const std::vector<StringArray>& soundInfo, const String& masterQuery);
 
-    // NEW: Single pad search with specific query
+    // Single pad search with specific query
     void searchForSinglePadWithQuery(int padIndex, const String& query);
 
     // PlaybackListener implementation
@@ -154,10 +162,9 @@ private:
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
-    // Shuffle button
-    TextButton shuffleButton;
 
-    // NEW: Single pad download management
+
+    // Single pad download management
     std::unique_ptr<AudioDownloadManager> singlePadDownloadManager;
     int currentDownloadPadIndex = -1;
     FSSound currentDownloadSound;
@@ -165,28 +172,31 @@ private:
 
     // Helper methods for loading samples
     void loadSamplesFromJson(const File& metadataFile);
-    void loadSamplesFromArrays(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const File& downloadDir);
-    void loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query);
+    void loadSamplesFromArrays(const Array<FSSound>& sounds,
+        const std::vector<StringArray>& soundInfo, const File& downloadDir);
+    void loadSingleSampleWithQuery(int padIndex,
+        const FSSound& sound, const File& audioFile, const String& query);
     void downloadSingleSampleWithQuery(int padIndex, const FSSound& sound, const String& query);
 
     // Update processor arrays from current grid state
     void updateProcessorArraysFromGrid();
 
-    // NEW: Single pad search helper methods
+    // Single pad search helper methods
     Array<FSSound> searchSingleSound(const String& query);
     void loadSingleSample(int padIndex, const FSSound& sound, const File& audioFile);
     void downloadSingleSample(int padIndex, const FSSound& sound);
     void updateSinglePadInProcessor(int padIndex, const FSSound& sound);
 
-    // clear all pads button and methods
-    TextButton clearAllButton;  // Add this line
+    // Shuffle and Clear all pads button and methods
+    StyledButton shuffleButton {"Shuffle", 10.0f, false};
+    StyledButton clearAllButton {"Clear All", 10.0f, true};
     void clearAllPads();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };
 
 //==============================================================================
-// Drag Export Component
+// Drag Export Component (button for exporting ALL samples via drag-and-drop)
 //==============================================================================
 
 class SampleDragArea : public Component,
@@ -211,7 +221,8 @@ private:
 };
 
 //==============================================================================
-// Directory Open Button
+// Directory Open Button (for opening the resources directory containing samples
+// and presets)
 //==============================================================================
 
 class DirectoryOpenButton : public TextButton
@@ -227,3 +238,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DirectoryOpenButton)
 };
+

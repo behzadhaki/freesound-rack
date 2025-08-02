@@ -3,6 +3,7 @@
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "PluginProcessor.h"
 #include "PresetManager.h"
+#include "CustomButtonStyle.h"
 
 //==============================================================================
 // Slot Button Component
@@ -57,7 +58,7 @@ private:
     PresetInfo presetInfo;
     bool isSelectedState = false;
 
-    TextButton deleteButton;
+    StyledButton deleteButton {"DEL", 8.0f, true};
     TextEditor renameEditor;
     std::array<std::unique_ptr<SlotButton>, 8> slotButtons;
 
@@ -94,7 +95,7 @@ private:
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
     Label titleLabel;
-    TextButton addBankButton;
+    StyledButton addBankButton { "+ New Bank", 10.0f };
     bool shouldHighlightFirstSlot = false;
 
     Viewport presetViewport;

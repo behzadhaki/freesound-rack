@@ -12,7 +12,6 @@
 
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "PluginProcessor.h"
-#include "FreesoundSearchComponent.h"
 #include "SampleGridComponent.h"
 #include "PresetBrowserComponent.h"
 #include "PresetManager.h"
@@ -45,7 +44,6 @@ public:
 private:
     FreesoundAdvancedSamplerAudioProcessor& processor;
 
-    FreesoundSearchComponent freesoundSearchComponent;
     SampleGridComponent sampleGridComponent;
     SampleDragArea sampleDragArea;
     DirectoryOpenButton directoryOpenButton;

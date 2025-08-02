@@ -84,13 +84,6 @@ PresetListItem::PresetListItem(const PresetInfo& info)
    setSize(200, 85); // Reduced height from 120 to 85
 
    // Delete Button - smaller size
-   deleteButton.setButtonText("-");
-    // smaller font
-   deleteButton.setSize(20, 8); // Reduced from 40x18 to 35x16
-   deleteButton.setColour(TextButton::buttonColourId, Colour(0xff404040));
-   deleteButton.setColour(TextButton::buttonOnColourId, Colour(0xffFF6B6B));
-   deleteButton.setColour(TextButton::textColourOffId, Colours::white);
-   deleteButton.setColour(TextButton::textColourOnId, Colours::black);
    deleteButton.onClick = [this]() {
        if (onDeleteClicked)
            onDeleteClicked(this);
@@ -99,12 +92,13 @@ PresetListItem::PresetListItem(const PresetInfo& info)
 
    // Rename Editor - more compact
    renameEditor.setText(presetInfo.name, dontSendNotification);
+    renameEditor.setJustification(Justification::centredLeft);
    renameEditor.setSelectAllWhenFocused(true);
-   renameEditor.setFont(Font(12.0f, Font::bold));
-   renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+   renameEditor.setFont(Font(10.0f, Font::bold));
+   renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
    renameEditor.setColour(TextEditor::textColourId, Colours::white);
-   renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));
-   renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
+   renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.1f));
+   renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff404040).withAlpha(0.1f));
    renameEditor.onReturnKey = [this]() { confirmRename(); };
    addAndMakeVisible(renameEditor);
 
@@ -133,13 +127,7 @@ void PresetListItem::paint(Graphics& g)
     const int lineHeight = bounds.getHeight() / 3;
 
     // Background
-    if (isSelectedState) {
-        g.setGradientFill(ColourGradient(
-            Colour(0xff00D9FF).withAlpha(0.4f), bounds.getTopLeft().toFloat(),
-            Colour(0xff0099CC).withAlpha(0.4f), bounds.getBottomRight().toFloat(), false));
-    } else {
-        g.setColour(Colour(0xff2A2A2A).withAlpha(0.6f));
-    }
+    g.setColour(Colour(0xff2A2A2A).withAlpha(0.0f)); // Slightly transparent dark background
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
     // Border
@@ -177,7 +165,7 @@ void PresetListItem::resized()
     renameEditor.setIndents(8, (renameEditor.getHeight() - renameEditor.getTextHeight()) / 2);
 
     // Delete button
-    deleteButton.setBounds(topLine.reduced(4, 2));
+    deleteButton.setBounds(topLine.reduced(8, 6));
 
     // Line 3: Centered slot buttons
     auto slotsBounds = bounds.withHeight(lineHeight).translated(0, lineHeight*2);
@@ -196,14 +184,14 @@ void PresetListItem::resized()
 
 void PresetListItem::mouseDown(const MouseEvent& event)
 {
-    if (onItemClicked)
-        onItemClicked(this);
+    // if (onItemClicked)
+    //     onItemClicked(this);
 }
 
 void PresetListItem::mouseDoubleClick(const MouseEvent& event)
 {
-    if (onItemDoubleClicked)
-        onItemDoubleClicked(this);
+    // if (onItemDoubleClicked)
+    //     onItemDoubleClicked(this);
 }
 
 void PresetListItem::setSelected(bool selected)
@@ -293,7 +281,7 @@ PresetBrowserComponent::PresetBrowserComponent()
 {
     // Dark styling for title
     titleLabel.setText("Preset Browser", dontSendNotification);
-    titleLabel.setFont(Font(12.0f, Font::bold));
+    titleLabel.setFont(Font(10.0f, Font::bold));
     titleLabel.setJustificationType(Justification::centred);
     titleLabel.setColour(Label::textColourId, Colours::grey);
     addAndMakeVisible(titleLabel);
@@ -317,11 +305,6 @@ PresetBrowserComponent::PresetBrowserComponent()
     addAndMakeVisible(renameEditor);
 
     // New add bank button at bottom
-    addBankButton.setButtonText("+ New Bank");
-    addBankButton.setColour(TextButton::buttonColourId, Colour(0xff2A2A2A));
-    addBankButton.setColour(TextButton::buttonOnColourId, Colour(0xff4ECDC4));
-    addBankButton.setColour(TextButton::textColourOffId, Colours::white.withAlpha(0.8f));
-    addBankButton.setColour(TextButton::textColourOnId, Colours::black);
     addBankButton.onClick = [this]() {
         createNewPresetBank();
         shouldHighlightFirstSlot = true;
