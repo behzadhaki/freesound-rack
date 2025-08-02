@@ -265,6 +265,9 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
             }
         }
     }
+
+    xml.setAttribute("presetPanelExpanded", presetPanelExpandedState);
+
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& xml)
@@ -350,6 +353,9 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
             editor->getSampleGridComponent().updateSamples(currentSoundsArray, soundsArray);
         }
     }
+
+    presetPanelExpandedState = xml.getBoolAttribute("presetPanelExpanded", false);
+
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)

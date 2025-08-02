@@ -151,11 +151,14 @@ public:
 
 	int getSavedWindowWidth() const { return savedWindowWidth; }
 	int getSavedWindowHeight() const { return savedWindowHeight; }
+	bool getPresetPanelExpandedState() const { return presetPanelExpandedState; }
+	void setPresetPanelExpandedState(bool state) { presetPanelExpandedState = state; }
 
 private:
 	// editor size
 	int savedWindowWidth = 1000;   // Default width
 	int savedWindowHeight = 700;   // Default height
+	bool presetPanelExpandedState = false;
 
     // Enhanced sampler voice class for playback tracking
     class TrackingSamplerVoice : public SamplerVoice

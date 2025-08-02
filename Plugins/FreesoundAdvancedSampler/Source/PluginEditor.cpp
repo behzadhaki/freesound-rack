@@ -41,11 +41,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     expandablePanelComponent.setOrientation(ExpandablePanel::Orientation::Right); // Right orientation = expands left
     expandablePanelComponent.setContentComponent(&presetBrowserComponent);
     expandablePanelComponent.setExpandedWidth(220); // Slightly wider for preset browser
+    expandablePanelComponent.setExpanded(processor.getPresetPanelExpandedState());
     expandablePanelComponent.onExpandedStateChanged = [this](bool expanded) {
-        // When panel expands/collapses, update window size constraints and current size
+        processor.setPresetPanelExpandedState(expanded);
         updateWindowSizeForPanelState();
     };
     addAndMakeVisible(expandablePanelComponent);
+
 
     // Set up progress components
     addAndMakeVisible(progressBar);
@@ -103,6 +105,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
             safeThis->grabKeyboardFocus();
         }
     });
+
 }
 
 FreesoundAdvancedSamplerAudioProcessorEditor::~FreesoundAdvancedSamplerAudioProcessorEditor()
