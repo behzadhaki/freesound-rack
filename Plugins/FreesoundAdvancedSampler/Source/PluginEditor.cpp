@@ -75,14 +75,31 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
 
     setWantsKeyboardFocus(true);
 
+    // Set up preset browser with multi-slot support
+    presetBrowserComponent.setProcessor(&processor);
+    presetBrowserComponent.refreshPresetList();
+    presetBrowserComponent.onPresetLoadRequested = [this](const PresetInfo& presetInfo, int slotIndex) {
+        handlePresetLoadRequested(presetInfo, slotIndex);
+    };
+    addAndMakeVisible(presetBrowserComponent);
+
+    // Set up expandable panel
+    expandablePanelComponent.setProcessor(&processor);
+    expandablePanelComponent.onExpandedStateChanged = [this](bool expanded) {
+        // When panel expands/collapses, update window size constraints and current size
+        updateWindowSizeForPanelState();
+    };
+    addAndMakeVisible(expandablePanelComponent);
+
+
     setSize (1000, 700);  // Increased width for preset browser
     setResizable(true, true);  // Enable resizing
 
     // Set size constraints (minimum and maximum sizes)
-    setResizeLimits(800, 500, 1600, 1200);
-
-    // Set fixed aspect ratio constraint
-    getConstrainer()->setFixedAspectRatio(1000.0 / 700.0);  // This enforces 10:7 ratio
+    // Base constraints without expandable panel
+    int baseMinWidth = 800;
+    int baseMaxWidth = 1600;
+    setResizeLimits(baseMinWidth, 500, baseMaxWidth, 1200);
 
     // Restore saved window size
     int savedWidth = processor.getSavedWindowWidth();
@@ -140,6 +157,16 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     bounds.removeFromLeft(margin);
     auto contentBounds = bounds.withTrimmedBottom(margin);
 
+    // Expandable panel on the right - FIXED WIDTH when expanded
+    int panelWidth = expandablePanelComponent.isExpanded() ?
+                     expandablePanelComponent.getExpandedWidth() :
+                     expandablePanelComponent.getCollapsedWidth();
+
+    auto rightPanelArea = contentBounds.removeFromRight(panelWidth);
+    if (expandablePanelComponent.isExpanded())
+        rightPanelArea.removeFromLeft(spacing); // Add spacing when expanded
+    expandablePanelComponent.setBounds(rightPanelArea);
+
     // Left area (preset browser + controls) - FIXED WIDTH
     auto leftArea = contentBounds.removeFromLeft(presetBrowserWidth);
 
@@ -159,6 +186,38 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     // Sample grid - takes ALL remaining space (both width and height scale)
     contentBounds.removeFromLeft(spacing);
     sampleGridComponent.setBounds(contentBounds);
+}
+
+void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForPanelState()
+{
+    int currentWidth = getWidth();
+    int currentHeight = getHeight();
+
+    // Calculate the width difference when panel expands/collapses
+    int panelWidthDifference = expandablePanelComponent.getExpandedWidth() -
+                               expandablePanelComponent.getCollapsedWidth();
+
+    if (expandablePanelComponent.isExpanded())
+    {
+        // Panel just expanded - increase window width
+        int newWidth = currentWidth + panelWidthDifference + 4; // +4 for spacing
+        setSize(newWidth, currentHeight);
+
+        // Update constraints to allow for expanded panel
+        setResizeLimits(800 + panelWidthDifference + 4, 500, 1600 + panelWidthDifference + 4, 1200);
+    }
+    else
+    {
+        // Panel just collapsed - decrease window width
+        int newWidth = currentWidth - panelWidthDifference - 4; // -4 for spacing
+        setSize(newWidth, currentHeight);
+
+        // Update constraints back to base size
+        setResizeLimits(800, 500, 1600, 1200);
+    }
+
+    // Save the new window size
+    processor.setWindowSize(getWidth(), getHeight());
 }
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress)

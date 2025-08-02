@@ -15,6 +15,7 @@
 #include "SampleGridComponent.h"
 #include "PresetBrowserComponent.h"
 #include "PresetManager.h"
+#include "ExpandablePanelComponent.h"
 
 //==============================================================================
 /**
@@ -48,6 +49,7 @@ private:
     SampleDragArea sampleDragArea;
     DirectoryOpenButton directoryOpenButton;
     PresetBrowserComponent presetBrowserComponent;
+    ExpandablePanelComponent expandablePanelComponent;
 
     // Store sounds for grid update
     Array<FSSound> currentSounds;
@@ -60,6 +62,9 @@ private:
 
     // Handle preset loading with slot support
     void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
+
+    // Method for expandable panel on the right side
+    void updateWindowSizeForPanelState();
 
     int getKeyboardPadIndex(const KeyPress& key) const;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)
