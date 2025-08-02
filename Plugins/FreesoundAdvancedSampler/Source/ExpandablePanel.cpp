@@ -28,7 +28,13 @@ ExpandablePanel::ExpandablePanel(Orientation orientation)
 
 ExpandablePanel::~ExpandablePanel()
 {
-    // Content component will be automatically cleaned up by unique_ptr
+    // Only clean up content if we own it
+    if (contentComponent && !ownsContent)
+    {
+        // Release the unique_ptr without deleting the component
+        contentComponent.release();
+    }
+    // If ownsContent is true, unique_ptr will automatically clean up
 }
 
 void ExpandablePanel::paint(Graphics& g)
