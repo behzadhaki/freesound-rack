@@ -759,7 +759,7 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
     licenseType = license;
     padQuery = query;
 
-    // Update query text box
+    // CRITICAL: Update query text box with the loaded query
     queryTextBox.setText(query, dontSendNotification);
 
     // Update audio file and waveform
@@ -777,6 +777,8 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
 
     resized(); // Recalculate layout
     repaint();
+
+    // DBG("SamplePad::setSample - Set query '" + query + "' on pad " + String(padIndex));
 }
 
 void SamplePad::clearSample()
@@ -1136,12 +1138,12 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
 
     File downloadDir = processor->getCurrentDownloadLocation();
 
-    DBG("SampleGridComponent::updateSamples called with " + String(sounds.size()) + " sounds");
+    // DBG("SampleGridComponent::updateSamples called with " + String(sounds.size()) + " sounds");
 
     // For preset loading, always use the provided arrays directly
     if (!sounds.isEmpty())
     {
-        DBG("Using provided arrays for grid update");
+        // DBG("Using provided arrays for grid update");
         loadSamplesFromArrays(sounds, soundInfo, downloadDir);
     }
 
@@ -1151,7 +1153,7 @@ void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std:
         pad->repaint();
     }
 
-    DBG("Grid visual update complete");
+    // DBG("Grid visual update complete");
 }
 
 void SampleGridComponent::loadSamplesFromJson(const File& metadataFile)
@@ -1200,36 +1202,42 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
 {
     int numSamples = jmin(TOTAL_PADS, sounds.size());
 
-    DBG("Loading " + String(numSamples) + " samples to grid from arrays");
+    // DBG("Loading " + String(numSamples) + " samples to grid from arrays");
 
     for (int i = 0; i < numSamples; ++i)
     {
         const FSSound& sound = sounds[i];
 
+        // Skip empty sounds
+        if (sound.id.isEmpty())
+        {
+            samplePads[i]->clearSample();
+            continue;
+        }
+
         String sampleName = (i < soundInfo.size() && soundInfo[i].size() > 0) ? soundInfo[i][0] : sound.name;
         String authorName = (i < soundInfo.size() && soundInfo[i].size() > 1) ? soundInfo[i][1] : sound.user;
         String license = (i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : sound.license;
+        String sampleQuery = (i < soundInfo.size() && soundInfo[i].size() > 3) ? soundInfo[i][3] : "";  // Get query from 4th element
         String freesoundId = sound.id;
 
-        // Create filename using ID-based naming scheme: FS_ID_XXXX.ogg
         String expectedFilename = "FS_ID_" + freesoundId + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
-        DBG("Pad " + String(i) + ": " + sampleName + " (ID: " + freesoundId + ")");
-        DBG("  Looking for file: " + audioFile.getFullPathName());
-        DBG("  File exists: " + String(audioFile.existsAsFile() ? "YES" : "NO"));
+        // DBG("Pad " + String(i) + ": " + sampleName + " (ID: " + freesoundId + ") with query: '" + sampleQuery + "'");
+        // DBG("  Looking for file: " + audioFile.getFullPathName());
+        // DBG("  File exists: " + String(audioFile.existsAsFile() ? "YES" : "NO"));
 
-        // Load the sample whether file exists or not (for consistent pad mapping)
         if (audioFile.existsAsFile())
         {
-            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
-            DBG("  Successfully set sample on pad " + String(i));
+            // IMPORTANT: Pass the query to setSample so it appears in the text box
+            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license, sampleQuery);
+            // DBG("  Successfully set sample on pad " + String(i) + " with query: '" + sampleQuery + "'");
         }
         else
         {
-            // Clear the pad if file doesn't exist
             samplePads[i]->clearSample();
-            DBG("  Cleared pad " + String(i) + " - file not found");
+            // DBG("  Cleared pad " + String(i) + " - file not found");
         }
     }
 
@@ -1239,10 +1247,8 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
         samplePads[i]->clearSample();
     }
 
-    // Use member timer for delayed repaint
     startTimer(200);
-
-    DBG("Grid update complete");
+    // DBG("Grid update complete");
 }
 
 void SampleGridComponent::clearSamples()
@@ -1352,7 +1358,7 @@ void SampleGridComponent::shuffleSamples()
         // REMOVED: processor->updateReadmeFile();
     }
 
-    DBG("Samples shuffled successfully");
+    // DBG("Samples shuffled successfully");
 }
 
 void SampleGridComponent::updateProcessorArraysFromGrid()
@@ -1374,16 +1380,17 @@ void SampleGridComponent::updateProcessorArraysFromGrid()
 
         if (padInfo.hasValidSample)
         {
-            // Create FSSound object from pad info
+            // Create FSSound object from pad info (no API changes)
             FSSound sound;
             sound.id = padInfo.freesoundId;
             sound.name = padInfo.sampleName;
             sound.user = padInfo.authorName;
             sound.license = padInfo.licenseType;
+            // Note: Can't store query in FSSound, so we rely on soundsData
 
             // Try to get duration and file size from existing data or set defaults
-            sound.duration = 0.5; // Default duration
-            sound.filesize = 50000; // Default file size
+            sound.duration = 0.5;
+            sound.filesize = 50000;
 
             // If we can find this sound in the existing arrays, preserve its metadata
             Array<FSSound> existingSounds = processor->getCurrentSounds();
@@ -1399,16 +1406,17 @@ void SampleGridComponent::updateProcessorArraysFromGrid()
 
             currentSounds.add(sound);
 
-            // Create sound info for legacy compatibility
+            // Create sound info including query as 4th element
             StringArray soundData;
             soundData.add(padInfo.sampleName);
             soundData.add(padInfo.authorName);
             soundData.add(padInfo.licenseType);
+            soundData.add(padInfo.query);  // Store query in 4th position
             soundsData.push_back(soundData);
         }
     }
 
-    DBG("Updated processor arrays from grid - now has " + String(currentSounds.size()) + " sounds");
+    // DBG("Updated processor arrays from grid - now has " + String(currentSounds.size()) + " sounds");
 }
 
 void SampleGridComponent::updateJsonMetadata()
@@ -1638,16 +1646,28 @@ void SampleGridComponent::updateSinglePadInProcessor(int padIndex, const FSSound
     while (soundsData.size() <= padIndex)
     {
         StringArray emptyData;
+        emptyData.add(""); // name
+        emptyData.add(""); // author
+        emptyData.add(""); // license
+        emptyData.add(""); // query - 4th element
         soundsData.push_back(emptyData);
     }
 
     // Update the specific pad
     currentSounds.set(padIndex, sound);
 
+    // Get the query from the pad's UI since we can't store it in FSSound
+    String query = "";
+    if (padIndex < TOTAL_PADS && samplePads[padIndex])
+    {
+        query = samplePads[padIndex]->getQuery();
+    }
+
     StringArray soundData;
     soundData.add(sound.name);
     soundData.add(sound.user);
     soundData.add(sound.license);
+    soundData.add(query);  // Store query in 4th position
     soundsData[padIndex] = soundData;
 }
 
@@ -1685,9 +1705,6 @@ void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const
 
         const FSSound& sound = sounds[soundIndex];
 
-        // Set the master query in the pad's text box
-        samplePads[padIndex]->setQuery(masterQuery);
-
         // Create filename using ID-based naming scheme
         String expectedFilename = "FS_ID_" + sound.id + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
@@ -1699,6 +1716,7 @@ void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const
 
         if (audioFile.existsAsFile())
         {
+            // Set the master query in the pad's text box
             samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, masterQuery);
         }
 
@@ -1708,17 +1726,13 @@ void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const
     // Update processor arrays to reflect the new state
     updateProcessorArraysFromGrid();
 
-    // Update JSON metadata
-    updateJsonMetadata();
-
     // Reload the sampler
     if (processor)
     {
         processor->setSources();
-        processor->updateReadmeFile();
     }
 
-    DBG("Master search applied to " + String(emptyQueryPads.size()) + " pads with empty queries");
+    // DBG("Master search applied to " + String(emptyQueryPads.size()) + " pads with master query: " + masterQuery);
 }
 
 void SampleGridComponent::searchForSinglePadWithQuery(int padIndex, const String& query)
@@ -1848,8 +1862,6 @@ void SampleGridComponent::cleanupSingleDownload()
     currentDownloadQuery = "";
 }
 
-
-
 void SampleGridComponent::timerCallback()
 {
     // Check if we're handling single pad downloads
@@ -1957,6 +1969,52 @@ void SampleGridComponent::clearAllPads()
     // Update any metadata
     updateJsonMetadata();
 }
+
+// Helper function to get query for a specific pad from soundsArray:
+String SampleGridComponent::getQueryForPad(int padIndex) const
+{
+    if (!processor || padIndex < 0 || padIndex >= TOTAL_PADS)
+        return "";
+
+    const auto& soundsData = processor->getDataReference();
+
+    if (padIndex < soundsData.size() && soundsData[padIndex].size() > 3)
+    {
+        return soundsData[padIndex][3];  // Query is in 4th position
+    }
+
+    return "";
+}
+
+// Helper function to set query for a specific pad in soundsArray:
+void SampleGridComponent::setQueryForPad(int padIndex, const String& query)
+{
+    if (!processor || padIndex < 0 || padIndex >= TOTAL_PADS)
+        return;
+
+    auto& soundsData = processor->getDataReference();
+
+    // Ensure array is large enough
+    while (soundsData.size() <= padIndex)
+    {
+        StringArray emptyData;
+        emptyData.add(""); // name
+        emptyData.add(""); // author
+        emptyData.add(""); // license
+        emptyData.add(""); // query
+        soundsData.push_back(emptyData);
+    }
+
+    // Ensure this entry has 4 elements
+    while (soundsData[padIndex].size() < 4)
+    {
+        soundsData[padIndex].add("");
+    }
+
+    soundsData[padIndex].set(3, query);  // Set query in 4th position
+}
+
+
 //==============================================================================
 // SampleDragArea Implementation
 //==============================================================================

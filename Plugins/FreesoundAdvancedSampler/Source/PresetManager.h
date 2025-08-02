@@ -48,6 +48,7 @@ struct PadInfo
     double duration;
     int fileSize;
     String downloadedAt;
+    String searchQuery;
 
     PadInfo() : padIndex(-1), duration(0.0), fileSize(0) {}
 };
@@ -98,9 +99,11 @@ private:
     // Active preset tracking
     File activePresetFile;
     int activeSlotIndex;
+    int MAX_SLOTS = 8; // Total slots per preset
 
     void ensureDirectoriesExist();
     String getSlotKey(int slotIndex) const;
 
+    int getUsedSlotsCount(const var& rootJson) const;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetManager)
 };

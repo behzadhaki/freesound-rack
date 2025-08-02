@@ -151,6 +151,8 @@ public:
 
     void updateJsonMetadata();
 
+    String getQueryForPad(int padIndex) const;
+    void setQueryForPad(int padIndex, const String& query);
 private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;
