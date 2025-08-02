@@ -74,10 +74,13 @@ public:
 
     int getPadIndex() const { return padIndex; }
     int setPadIndex(int index) { padIndex = index; return padIndex; }
+
+    // Callbacks for badges
     void clearSample();
     void handleDeleteClick();
-
     void performEnhancedDragDrop();
+    void handleCopyClick();
+
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
