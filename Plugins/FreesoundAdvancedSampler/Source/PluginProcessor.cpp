@@ -85,6 +85,7 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
     // Add download manager listener
     downloadManager.addListener(this);
 }
+
 FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor()
 {
 	// Remove download manager listener

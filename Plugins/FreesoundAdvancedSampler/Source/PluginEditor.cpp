@@ -128,6 +128,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 
     // FIXED VALUES - Don't scale these with window size
     const int buttonHeight = 30;         // Keep this fixed
+    const int buttonWidth = 80;        // Keep this fixed
     const int spacing = 4;               // Keep this fixed
 
     bounds.removeFromTop(margin);
@@ -153,18 +154,19 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
         leftPanelArea.removeFromRight(spacing); // Add spacing when expanded
     expandablePanelComponent.setBounds(leftPanelArea);
 
-    // Control area below the expandable panel (or to the right when collapsed)
-    auto controlArea = contentBounds.removeFromLeft(200); // Fixed width for controls
-    controlArea = controlArea.removeFromBottom(buttonHeight + margin);
-    controlArea.removeFromLeft(spacing);
+    // Remaining area for sample grid and controls
+    contentBounds.removeFromLeft(spacing);
+
+    // Control area above the sample grid (top-left)
+    auto controlArea = contentBounds.removeFromTop(buttonHeight);
+    controlArea = controlArea.removeFromBottom(buttonHeight);
 
     // Split control area between drag area and directory button
-    sampleDragArea.setBounds(controlArea.removeFromLeft(controlArea.getWidth()/2).reduced(2));
-    controlArea.removeFromLeft(spacing);
-    directoryOpenButton.setBounds(controlArea);
+    sampleDragArea.setBounds(controlArea.removeFromLeft(buttonWidth));
+    directoryOpenButton.setBounds(controlArea.removeFromRight(buttonWidth)); // Fixed width for directory button
 
-    // Sample grid - takes ALL remaining space (both width and height scale)
-    contentBounds.removeFromLeft(spacing);
+    // Sample grid - takes ALL remaining space below the controls
+    contentBounds.removeFromTop(spacing); // Small gap between controls and grid
     sampleGridComponent.setBounds(contentBounds);
 }
 
