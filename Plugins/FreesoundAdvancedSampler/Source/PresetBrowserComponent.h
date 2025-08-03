@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "PresetManager.h"
 #include "CustomButtonStyle.h"
+#include "FreesoundKeys.h"
 
 //==============================================================================
 // Slot Button Component
@@ -58,11 +59,15 @@ public:
     void updateActiveSlot(int slotIndex);
     void refreshSlotStates(const PresetInfo& updatedInfo);
 
+    std::function<void(PresetListItem*)> onSampleCheckClicked;
+
 private:
     PresetInfo presetInfo;
     bool isSelectedState = false;
 
     StyledButton deleteButton {"DEL", 8.0f, true};
+    StyledButton sampleCheckButton {"?", 8.0f, false};
+
     TextEditor renameEditor;
     std::array<std::unique_ptr<SlotButton>, 8> slotButtons;
 
@@ -136,6 +141,9 @@ private:
                            const String& newQuery,
                            const PresetInfo& presetInfo,
                            int slotIndex) const;
+
+    void handleSampleCheckClicked(PresetListItem* item);
+    void downloadMissingSamples(const Array<PadInfo>& missingPadInfos);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetBrowserComponent)
 };

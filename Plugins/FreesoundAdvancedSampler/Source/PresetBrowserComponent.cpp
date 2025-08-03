@@ -115,7 +115,14 @@ void SlotButton::setIsActive(bool isActive)
 PresetListItem::PresetListItem(const PresetInfo& info)
    : presetInfo(info)
 {
-    setSize(200, 85); // Reduced height from 120 to 85
+    setSize(200, 85);
+
+    // Sample Check Button
+    sampleCheckButton.onClick = [this]() {
+        if (onSampleCheckClicked)
+            onSampleCheckClicked(this);
+    };
+    addAndMakeVisible(sampleCheckButton);
 
     // Delete Button - smaller size
     deleteButton.onClick = [this]() {
@@ -191,24 +198,29 @@ void PresetListItem::resized()
     auto bounds = getLocalBounds();
     const int lineHeight = bounds.getHeight() / 3;
 
-    // Line 1: Name editor and delete button with more margin
+    // Line 1: Name editor, sample check button, and delete button with more margin
     auto topLine = bounds.withHeight(lineHeight);
 
-    // Text editor with more vertical margin and reduced height
+    // Sample Check button (leftmost)
+    auto sampleCheckBounds = topLine.removeFromRight(30).reduced(5, 8);
+    sampleCheckButton.setBounds(sampleCheckBounds);
+
+    // Delete button
+    auto deleteBounds = topLine.removeFromRight(30).reduced(5, 8);
+    deleteButton.setBounds(deleteBounds);
+
+    // Text editor with remaining space
     int editorHeight = 16;
     int verticalMargin = (lineHeight - editorHeight) / 2;
-    auto editorBounds = topLine.removeFromLeft(bounds.getWidth() - 45).reduced(6, verticalMargin);
+    auto editorBounds = topLine.reduced(6, verticalMargin);
     editorBounds.setHeight(editorHeight);
     renameEditor.setBounds(editorBounds);
 
     // Set font again in resized to ensure it takes effect
-    renameEditor.setFont(Font(10.0f, Font::bold)); // Try smaller size
+    renameEditor.setFont(Font(10.0f, Font::bold));
     renameEditor.setIndents(8, (renameEditor.getHeight() - renameEditor.getTextHeight()) / 2);
 
-    // Delete button with more margin
-    deleteButton.setBounds(topLine.reduced(10, 8));
-
-    // Line 3: Centered slot buttons
+    // Line 3: Centered slot buttons (unchanged)
     auto slotsBounds = bounds.withHeight(lineHeight).translated(0, lineHeight*2);
 
     const int slotSize = 16;
@@ -510,6 +522,10 @@ void PresetBrowserComponent::refreshPresetList()
 
         item->onDeleteSlotClicked = [this](const PresetInfo& info, int slotIndex) {
             handleDeleteSlotClicked(info, slotIndex);
+        };
+
+        item->onSampleCheckClicked = [this](PresetListItem* clickedItem) {
+            handleSampleCheckClicked(clickedItem);
         };
 
         // Check if this is the currently active preset and set active slot
@@ -941,4 +957,146 @@ void PresetBrowserComponent::restoreActiveState()
             break;
         }
     }
+}
+
+void PresetBrowserComponent::handleSampleCheckClicked(PresetListItem* item)
+{
+    if (!processor)
+        return;
+
+    const auto& presetInfo = item->getPresetInfo();
+
+    // Collect all unique sample IDs from all slots
+    StringArray allUniqueSampleIds;  // Track unique sample IDs
+    Array<PadInfo> allMissingPadInfos;
+    StringArray uniqueMissingSampleIds;  // Track unique missing IDs
+
+    for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
+    {
+        if (!presetInfo.slots[slotIndex].hasData)
+            continue;
+
+        Array<PadInfo> slotPadInfos;
+        if (processor->getPresetManager().loadPreset(presetInfo.presetFile, slotIndex, slotPadInfos))
+        {
+            for (const auto& padInfo : slotPadInfos)
+            {
+                // Add to unique samples list
+                allUniqueSampleIds.addIfNotAlreadyThere(padInfo.freesoundId);
+
+                File sampleFile = processor->getPresetManager().getSampleFile(padInfo.freesoundId);
+                if (!sampleFile.existsAsFile())
+                {
+                    // For missing samples, add unique IDs for download
+                    uniqueMissingSampleIds.addIfNotAlreadyThere(padInfo.freesoundId);
+                    allMissingPadInfos.add(padInfo);
+                }
+            }
+        }
+    }
+
+    int totalUniqueSamples = allUniqueSampleIds.size();
+
+    if (totalUniqueSamples == 0)
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "No Samples", "This preset bank contains no samples.");
+        return;
+    }
+
+    int totalMissingUniqueSamples = uniqueMissingSampleIds.size();
+
+    if (totalMissingUniqueSamples == 0)
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "All Samples Available",
+            "All " + String(totalUniqueSamples) + " samples are available in the resources folder.");
+        return;
+    }
+
+    // Some samples are missing
+    String message;
+    if (totalMissingUniqueSamples == totalUniqueSamples)
+    {
+        message = "All " + String(totalUniqueSamples) + " samples are missing from the resources folder.\n\n";
+    }
+    else
+    {
+        message = String(totalMissingUniqueSamples) + " of " + String(totalUniqueSamples) +
+                 " samples are missing from the resources folder.\n\n";
+    }
+
+    message += "Do you want to download the missing samples?";
+
+    AlertWindow::showOkCancelBox(
+        AlertWindow::QuestionIcon,
+        "Missing Samples",
+        message,
+        "Yes, Download", "No",
+        nullptr,
+        ModalCallbackFunction::create([this, allMissingPadInfos](int result) {
+            if (result == 1) { // User clicked "Yes, Download"
+                downloadMissingSamples(allMissingPadInfos);
+            }
+        })
+    );
+}
+
+void PresetBrowserComponent::downloadMissingSamples(const Array<PadInfo>& missingPadInfos)
+{
+    if (!processor || missingPadInfos.isEmpty())
+        return;
+
+    // Get unique sample IDs to avoid downloading the same sample multiple times
+    StringArray uniqueMissingIds;
+    for (const auto& padInfo : missingPadInfos)
+    {
+        uniqueMissingIds.addIfNotAlreadyThere(padInfo.freesoundId);
+    }
+
+    // We need to fetch the missing sounds from Freesound API to get complete data including previews
+    Array<FSSound> soundsToDownload;
+    FreesoundClient client(FREESOUND_API_KEY);
+
+    for (const String& freesoundId : uniqueMissingIds)
+    {
+        try
+        {
+            // Fetch the complete sound data from Freesound API including previews
+            FSSound sound = client.getSound(freesoundId, "id,name,username,license,previews,duration,filesize");
+
+            if (!sound.id.isEmpty())
+            {
+                soundsToDownload.add(sound);
+            }
+            else
+            {
+                DBG("Failed to fetch sound data for ID: " + freesoundId);
+            }
+        }
+        catch (const std::exception& e)
+        {
+            DBG("Error fetching sound " + freesoundId + ": " + String(e.what()));
+        }
+    }
+
+    if (soundsToDownload.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Download Failed",
+            "Could not retrieve sound information from Freesound. Please check your internet connection.");
+        return;
+    }
+
+    // Start download using processor's download system
+    processor->getDownloadManager().startDownloads(
+        soundsToDownload,
+        processor->getPresetManager().getSamplesFolder(),
+        "Missing samples download"
+    );
+
+    // Show progress notification
+    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+        "Download Started",
+        "Downloading " + String(soundsToDownload.size()) + " unique samples...");
 }
