@@ -190,6 +190,9 @@ public:
     void clearPendingMasterSearchState();
     bool hasPendingMasterSearch() const;
 
+    MasterSearchPanel& getMasterSearchPanel() { return masterSearchPanel; }
+    FreesoundAdvancedSamplerAudioProcessor* getProcessor() const { return processor; }
+
 private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;

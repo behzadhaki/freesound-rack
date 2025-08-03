@@ -206,6 +206,8 @@ MasterSearchPanel::MasterSearchPanel()
     , searchSelectedButton("Search Selected", 9.0f, false)
     , noneSelectionButton("Detach All", 9.0f, false)
     , allSelectionButton("Attach All", 9.0f, false)
+    , progressBar(currentProgress)
+
 {
     // Selection grid
     selectionGrid.onConnectionChanged = [this](int row, int col, bool connected) {
@@ -265,6 +267,8 @@ MasterSearchPanel::MasterSearchPanel()
     };
     addAndMakeVisible(allSelectionButton);
 
+    setupProgressComponents();
+
     updateSearchButtonState();
 }
 
@@ -303,22 +307,41 @@ void MasterSearchPanel::resized()
     // Buttons below text editor (horizontal layout)
     int buttonWidth = 80;
     int buttonSpacing = 6;
+    int smallButtonWidth = 60;  // Smaller buttons for Detach/Attach All
 
     // Text editor at top of controls area
-    auto LineHeight = contentArea.getHeight() / 3; // Adjust height for text editor
-    auto textArea = controlsArea.removeFromTop(LineHeight);
+    auto lineHeight = controlsArea.getHeight() / 3; // Adjust height for text editor
+    auto textArea = controlsArea.removeFromTop(lineHeight);
     searchSelectedButton.setBounds(textArea.removeFromRight(buttonWidth));
     textArea.removeFromRight(buttonSpacing); // spacing after search button
     masterQueryEditor.setBounds(textArea);
 
     controlsArea.removeFromTop(3); // spacing
 
-    controlsArea.removeFromTop(3); // spacing above buttons
-    auto buttonArea = controlsArea.removeFromLeft(buttonWidth);
-    noneSelectionButton.setBounds(buttonArea.removeFromTop(20));
-    allSelectionButton.setBounds(buttonArea.removeFromBottom(20));
-    // buttonArea.removeFromLeft(buttonSpacing);
+    // Bottom area: split between buttons and progress
+    auto bottomArea = controlsArea;
 
+    // Left side: Detach/Attach All buttons (stacked vertically)
+    auto buttonArea = bottomArea.removeFromLeft(smallButtonWidth);
+    int buttonHeight = 20;
+    noneSelectionButton.setBounds(buttonArea.removeFromTop(buttonHeight));
+    buttonArea.removeFromTop(3); // small spacing between buttons
+    allSelectionButton.setBounds(buttonArea.removeFromTop(buttonHeight));
+
+    bottomArea.removeFromLeft(buttonSpacing); // spacing after buttons
+
+    // Right side: Progress components (stacked vertically)
+    if (progressBar.isVisible())
+    {
+        auto progressArea = bottomArea;
+        int progressLineHeight = 14;
+
+        statusLabel.setBounds(progressArea.removeFromTop(progressLineHeight));
+        progressArea.removeFromTop(2); // small spacing
+        progressBar.setBounds(progressArea.removeFromTop(progressLineHeight));
+        progressArea.removeFromTop(2); // small spacing
+        cancelButton.setBounds(progressArea.removeFromTop(progressLineHeight));
+    }
 }
 
 void MasterSearchPanel::setSampleGridComponent(SampleGridComponent* gridComponent)
@@ -413,4 +436,99 @@ void MasterSearchPanel::handleActivateAll(bool activate_all)
     }
 
     updateSearchButtonState();
+}
+
+void MasterSearchPanel::setupProgressComponents()
+{
+    // Set up progress bar
+    progressBar.setColour(ProgressBar::backgroundColourId, Colour(0xff404040));
+    progressBar.setColour(ProgressBar::foregroundColourId, Colour(0xff00D9FF));
+    addAndMakeVisible(progressBar);
+
+    // Set up status label
+    statusLabel.setText("Ready", dontSendNotification);
+    statusLabel.setFont(Font(9.0f));
+    statusLabel.setColour(Label::textColourId, Colours::white);
+    statusLabel.setJustificationType(Justification::centred);
+    addAndMakeVisible(statusLabel);
+
+    // Set up cancel button
+    cancelButton.setButtonText("Cancel");
+    cancelButton.setEnabled(false);
+    cancelButton.onClick = [this]()
+    {
+        if (sampleGrid && sampleGrid->getProcessor())
+        {
+            sampleGrid->getProcessor()->cancelDownloads();
+            cancelButton.setEnabled(false);
+            statusLabel.setText("Download cancelled", dontSendNotification);
+        }
+    };
+    addAndMakeVisible(cancelButton);
+
+    // Initially hide progress components
+    updateProgressVisibility(false);
+}
+
+void MasterSearchPanel::updateProgressVisibility(bool visible)
+{
+    progressBar.setVisible(visible);
+    statusLabel.setVisible(visible);
+    cancelButton.setVisible(visible);
+}
+
+void MasterSearchPanel::showProgress(bool show)
+{
+    updateProgressVisibility(show);
+    resized(); // Trigger layout update
+}
+
+void MasterSearchPanel::updateDownloadProgress(const AudioDownloadManager::DownloadProgress& progress)
+{
+    MessageManager::callAsync([this, progress]()
+    {
+        currentProgress = progress.overallProgress;
+
+        String statusText = "Downloading " + progress.currentFileName +
+                           " (" + String(progress.completedFiles) +
+                           "/" + String(progress.totalFiles) + ") - " +
+                           String((int)(progress.overallProgress * 100)) + "%";
+
+        statusLabel.setText(statusText, dontSendNotification);
+        showProgress(true);
+        cancelButton.setEnabled(true);
+        progressBar.repaint();
+    });
+}
+
+void MasterSearchPanel::downloadCompleted(bool success)
+{
+    MessageManager::callAsync([this, success]()
+    {
+        cancelButton.setEnabled(false);
+
+        statusLabel.setText(success ? "Download complete!" :
+                          "Download failed",
+                          dontSendNotification);
+
+        currentProgress = success ? 1.0 : 0.0;
+        progressBar.repaint();
+
+        if (success && sampleGrid)
+        {
+            Timer::callAfterDelay(500, [this]()
+            {
+                if (sampleGrid->hasPendingMasterSearch())
+                {
+                    sampleGrid->populatePadsFromMasterSearch();
+                }
+            });
+        }
+
+        // Hide progress components after a delay
+        Timer::callAfterDelay(2000, [this]()
+        {
+            showProgress(false);
+        });
+    });
 }

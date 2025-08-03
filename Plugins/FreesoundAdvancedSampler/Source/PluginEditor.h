@@ -56,12 +56,6 @@ private:
     // Store sounds for grid update
     Array<FSSound> currentSounds;
 
-    // Progress bar components
-    ProgressBar progressBar;
-    Label statusLabel;
-    TextButton cancelButton;
-    double currentProgress = 0.0;
-
     // Handle preset loading with slot support
     void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
 

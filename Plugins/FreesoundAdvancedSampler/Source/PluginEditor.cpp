@@ -13,7 +13,7 @@
 
 //==============================================================================
 FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProcessorEditor (FreesoundAdvancedSamplerAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor (p), progressBar(currentProgress)
+    : AudioProcessorEditor (&p), processor (p)
 {
     // Register as download listener
     processor.addDownloadListener(this);
@@ -47,28 +47,6 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
         updateWindowSizeForPanelState();
     };
     addAndMakeVisible(expandablePanelComponent);
-
-
-    // Set up progress components
-    addAndMakeVisible(progressBar);
-    addAndMakeVisible(statusLabel);
-    addAndMakeVisible(cancelButton);
-
-    statusLabel.setText("Ready", dontSendNotification);
-    cancelButton.setButtonText("Cancel Download");
-    cancelButton.setEnabled(false);
-
-    cancelButton.onClick = [this]
-    {
-        processor.cancelDownloads();
-        cancelButton.setEnabled(false);
-        statusLabel.setText("Download cancelled", dontSendNotification);
-    };
-
-    // Initially hide progress components
-    progressBar.setVisible(false);
-    statusLabel.setVisible(false);
-    cancelButton.setVisible(false);
 
     // Restore samples if processor already has them loaded
     if (processor.isArrayNotEmpty())
@@ -137,12 +115,6 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     bounds.removeFromTop(margin);
     bounds.removeFromRight(margin);
 
-    // Progress components at bottom (can scale height)
-    auto progressBounds = bounds.removeFromBottom(progressHeight).reduced(margin, 0);
-    statusLabel.setBounds(progressBounds.removeFromTop(18));
-    progressBar.setBounds(progressBounds.removeFromTop(18));
-    cancelButton.setBounds(progressBounds.removeFromTop(18));
-
     // Main content area
     bounds.removeFromLeft(margin);
     auto contentBounds = bounds.withTrimmedBottom(margin);
@@ -207,68 +179,16 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForPanelState
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress)
 {
-    // This might be called from background thread, so ensure UI updates happen on message thread
-    MessageManager::callAsync([this, progress]()
-    {
-        currentProgress = progress.overallProgress;
-
-        String statusText = "Downloading " + progress.currentFileName +
-                           " (" + String(progress.completedFiles) +
-                           "/" + String(progress.totalFiles) + ") - " +
-                           String((int)(progress.overallProgress * 100)) + "%";
-
-        statusLabel.setText(statusText, dontSendNotification);
-        statusLabel.setVisible(true);
-        progressBar.setVisible(true);
-        cancelButton.setVisible(true);
-        cancelButton.setEnabled(true);
-        progressBar.repaint();
-    });
+    // Delegate to master search panel
+    sampleGridComponent.getMasterSearchPanel().updateDownloadProgress(progress);
 }
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool success)
 {
-    MessageManager::callAsync([this, success]()
-    {
-        cancelButton.setEnabled(false);
-
-        statusLabel.setText(success ? "All downloads completed!" :
-                          "Download completed with errors",
-                          dontSendNotification);
-
-        currentProgress = success ? 1.0 : 0.0;
-        progressBar.repaint();
-
-        if (success)
-        {
-            // Add a small delay to ensure all files are written to disk
-            Timer::callAfterDelay(500, [this]()
-            {
-                // Check if this was a master search operation and populate pads
-                if (sampleGridComponent.hasPendingMasterSearch())
-                {
-                    sampleGridComponent.populatePadsFromMasterSearch();
-                }
-                else
-                {
-                    // Regular updateSamples for other operations like preset loading
-                    sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
-                }
-
-                // Refresh preset browser to show if this creates a new preset opportunity
-                presetBrowserComponent.refreshPresetList();
-            });
-        }
-
-        // Hide progress components after a delay
-        Timer::callAfterDelay(2000, [this]()
-        {
-            progressBar.setVisible(false);
-            statusLabel.setVisible(false);
-            cancelButton.setVisible(false);
-        });
-    });
+    // Delegate to master search panel
+    sampleGridComponent.getMasterSearchPanel().downloadCompleted(success);
 }
+
 void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex)
 {
     if (processor.loadPreset(presetInfo.presetFile, slotIndex))

@@ -90,9 +90,15 @@ public:
     String getMasterQuery() const;
     void setMasterQuery(const String& query);
 
+    // Progress methods
+    void showProgress(bool show);
+    void updateDownloadProgress(const AudioDownloadManager::DownloadProgress& progress);
+    void downloadCompleted(bool success);
+
     std::function<void(const String&)> onMasterQueryChanged;
     std::function<void()> onSearchSelectedClicked;
 
+    // Add to private section:
 private:
     SampleGridComponent* sampleGrid;
 
@@ -102,11 +108,20 @@ private:
     StyledButton noneSelectionButton;
     StyledButton allSelectionButton;
 
+    // Add progress components
+    ProgressBar progressBar;
+    Label statusLabel;
+    TextButton cancelButton;
+    double currentProgress = 0.0;
 
     void updateSearchButtonState();
     void handleMasterQueryChanged();
     void handleSearchSelectedClicked();
     void handleActivateAll(bool activate_all);
+
+    // Add progress methods
+    void setupProgressComponents();
+    void updateProgressVisibility(bool visible);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MasterSearchPanel)
 };
