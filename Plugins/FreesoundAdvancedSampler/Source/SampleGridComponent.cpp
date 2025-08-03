@@ -40,14 +40,23 @@ SamplePad::SamplePad(int index, bool isSearchable)
     // Set up query text box with conditional behavior
     queryTextBox.setMultiLine(false);
     queryTextBox.setReturnKeyStartsNewLine(false);
-    queryTextBox.setReadOnly(!isSearchableMode);  // Read-only if not searchable
+    queryTextBox.setReadOnly(!isSearchableMode);
     queryTextBox.setScrollbarsShown(false);
-    queryTextBox.setCaretVisible(isSearchableMode);  // No caret if not searchable
-    queryTextBox.setPopupMenuEnabled(isSearchableMode);  // No popup menu if not searchable
-    queryTextBox.setColour(TextEditor::backgroundColourId,
-        isSearchableMode ? Colours::white.withAlpha(0.8f) : Colours::grey.withAlpha(0.6f));
-    queryTextBox.setColour(TextEditor::textColourId,
-        isSearchableMode ? Colours::black : Colours::white);  // White text for view-only mode
+    queryTextBox.setCaretVisible(isSearchableMode);
+    queryTextBox.setPopupMenuEnabled(isSearchableMode);
+
+    // FIX: Ensure correct colors for both modes
+    if (isSearchableMode)
+    {
+        queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.8f));
+        queryTextBox.setColour(TextEditor::textColourId, Colours::black); // Black text on white background
+    }
+    else
+    {
+        queryTextBox.setColour(TextEditor::backgroundColourId, Colours::grey.withAlpha(0.6f));
+        queryTextBox.setColour(TextEditor::textColourId, Colours::white); // White text for view-only mode
+    }
+
     queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
     queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
     queryTextBox.setFont(Font(9.0f));
@@ -876,10 +885,13 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
     authorName = author;
     freesoundId = fsId;
     licenseType = license;
-    padQuery = query;
+    padQuery = query; // CRITICAL: Store the query in padQuery field
 
-    // CRITICAL: Update query text box with the loaded query
-    queryTextBox.setText(query, dontSendNotification);
+    // Update query text box with the sample's query (but don't override if connected to master)
+    if (!connectedToMaster)
+    {
+        queryTextBox.setText(query, dontSendNotification);
+    }
 
     // Update audio file and waveform
     this->audioFile = audioFile;
@@ -897,7 +909,7 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
     resized(); // Recalculate layout
     repaint();
 
-    // DBG("SamplePad::setSample - Set query '" + query + "' on pad " + String(padIndex));
+    DBG("SamplePad::setSample - Pad " + String(padIndex) + " set with query: '" + query + "' (connected to master: " + String(connectedToMaster ? "YES" : "NO") + ")");
 }
 
 void SamplePad::clearSample()
@@ -907,12 +919,25 @@ void SamplePad::clearSample()
     authorName = "";
     freesoundId = String();
     licenseType = String();
-    padQuery = String();
+    padQuery = String(); // Clear the stored query when clearing sample
     hasValidSample = false;
     isPlaying = false;
     playheadPosition = 0.0f;
     audioThumbnail.clear();
-    queryTextBox.setText("", dontSendNotification);
+
+    // Only clear text box if not connected to master
+    if (!connectedToMaster)
+    {
+        queryTextBox.setText("", dontSendNotification);
+
+        // Ensure proper colors for empty independent slot
+        if (isSearchableMode)
+        {
+            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.9f));
+            queryTextBox.setColour(TextEditor::textColourId, Colours::black);
+            queryTextBox.repaint();
+        }
+    }
 
     resized();
     repaint();
@@ -926,7 +951,16 @@ void SamplePad::setQuery(const String& query)
 
 String SamplePad::getQuery() const
 {
-    return queryTextBox.getText().trim();
+    if (connectedToMaster)
+    {
+        // When connected to master, return what's currently in the text box (master query)
+        return queryTextBox.getText().trim();
+    }
+    else
+    {
+        // When independent, return the text box content (which should match padQuery)
+        return queryTextBox.getText().trim();
+    }
 }
 
 bool SamplePad::hasQuery() const
@@ -1113,9 +1147,43 @@ void SamplePad::setConnectedToMaster(bool connected)
         }
         else if (isSearchableMode)
         {
+            // When disconnecting from master, restore appropriate query
+            String queryToRestore;
+
+            if (hasValidSample)
+            {
+                // Has sample: use the sample's stored query (from padQuery field)
+                queryToRestore = padQuery;
+                DBG("Pad " + String(padIndex) + " disconnected - restoring sample query: '" + queryToRestore + "'");
+            }
+            else
+            {
+                // Empty slot: keep the current text (which was the master query)
+                queryToRestore = queryTextBox.getText().trim();
+                DBG("Pad " + String(padIndex) + " disconnected - keeping previous query: '" + queryToRestore + "'");
+            }
+
+            // ALWAYS restore normal styling for independent mode - regardless of empty/filled
             queryTextBox.setReadOnly(false);
-            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.8f));
+
+            // Set colors BEFORE setting text (for both empty and filled slots)
+            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.9f));
             queryTextBox.setColour(TextEditor::textColourId, Colours::black);
+            queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
+            queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
+            queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colours::blue);
+
+            // Force repaint of text editor BEFORE setting text
+            queryTextBox.repaint();
+
+            // Update the text box with the restored query AFTER color setting
+            queryTextBox.setText(queryToRestore, dontSendNotification);
+            padQuery = queryToRestore; // Update padQuery to match (even for empty slots)
+
+            // Force another repaint AFTER setting text
+            queryTextBox.repaint();
+
+            DBG("Pad " + String(padIndex) + " colors reset - background: white, text: black, query: '" + queryToRestore + "', hasValidSample: " + String(hasValidSample ? "YES" : "NO"));
         }
 
         repaint();
@@ -1126,8 +1194,13 @@ void SamplePad::syncMasterQuery(const String& masterQuery)
 {
     if (connectedToMaster)
     {
+        // Update the text box to show master query
         queryTextBox.setText(masterQuery, dontSendNotification);
-        padQuery = masterQuery;
+
+        // DON'T update padQuery here - it should preserve the sample's original query
+        // padQuery remains unchanged so we can restore it when disconnecting
+
+        DBG("Pad " + String(padIndex) + " synced master query: '" + masterQuery + "' (sample query preserved: '" + padQuery + "')");
     }
 }
 
@@ -2595,7 +2668,11 @@ void SampleGridComponent::syncMasterQueryToPosition(int row, int col, const Stri
 
             if (padVisualPosition == visualPosition)
             {
-                samplePads[i]->syncMasterQuery(masterQuery);
+                // Only sync if the pad is actually connected to master
+                if (samplePads[i]->isConnectedToMaster())
+                {
+                    samplePads[i]->syncMasterQuery(masterQuery);
+                }
                 break;
             }
         }

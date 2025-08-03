@@ -221,6 +221,7 @@ MasterSearchPanel::MasterSearchPanel()
             {
                 sampleGrid->syncMasterQueryToPosition(row, col, getMasterQuery());
             }
+            // IMPORTANT: Don't clear query when disconnecting - let pad keep its individual query
         }
     };
     addAndMakeVisible(selectionGrid);
@@ -400,6 +401,13 @@ void MasterSearchPanel::handleActivateAll(bool activate_all)
             for (int col = 0; col < 4; ++col)
             {
                 sampleGrid->setPositionConnectedToMaster(row, col, activate_all);
+
+                // Only sync master query when activating, not when deactivating
+                if (activate_all)
+                {
+                    sampleGrid->syncMasterQueryToPosition(row, col, getMasterQuery());
+                }
+                // When deactivating (activate_all = false), don't touch the queries
             }
         }
     }
