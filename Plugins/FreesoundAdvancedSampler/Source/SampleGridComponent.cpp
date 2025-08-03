@@ -1169,51 +1169,6 @@ void SamplePad::syncMasterQuery(const String& masterQuery)
     }
 }
 
-void SamplePad::resetTextEditorForIndependentMode(const String& textToSet)
-{
-    // Remove the current text editor
-    removeChildComponent(&queryTextBox);
-
-    // Completely reinitialize it
-    queryTextBox.setMultiLine(false);
-    queryTextBox.setReturnKeyStartsNewLine(false);
-    queryTextBox.setReadOnly(false);
-    queryTextBox.setScrollbarsShown(false);
-    queryTextBox.setCaretVisible(true);
-    queryTextBox.setPopupMenuEnabled(true);
-
-    // Set colors from scratch
-    queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.9f));
-    queryTextBox.setColour(TextEditor::textColourId, Colours::black);
-    queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
-    queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
-    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colours::blue);
-    queryTextBox.setFont(Font(9.0f));
-
-    // Set the text
-    queryTextBox.setText(textToSet, dontSendNotification);
-
-    // Re-add to component
-    addAndMakeVisible(queryTextBox);
-
-    // Restore the callback if searchable
-    if (isSearchableMode)
-    {
-        queryTextBox.onReturnKey = [this]() {
-            String query = queryTextBox.getText().trim();
-            if (query.isNotEmpty() && !connectedToMaster)
-            {
-                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-                {
-                    gridComponent->searchForSinglePadWithQuery(padIndex, query);
-                }
-            }
-        };
-    }
-
-    resized(); // Recalculate layout
-}
-
 //==============================================================================
 // SampleGridComponent Implementation
 //==============================================================================
