@@ -1,10 +1,24 @@
 # todo
 ---
 
+priority 1:
+- highlight active preset
+- shuffle same positions
+- underline selected preset
+- if file deleted, use json path to download it
 
-3. pitch shift and start point per pad
-4. remove pad
-5. better search population
-6. if file not downloaded, use json path to download it
-7. create an attribution text file
-8. implement a looper
+priority 2:
+- mute/solo
+- audio router
+- search settings tab (duration, ...)
+- drag as wav file
+
+priority 3:
+- bookmarker
+- download sample if not available
+- looper
+
+priority 4:
+- per pad controls
+- connect to user account
+- search by sound feature (similarity search)
