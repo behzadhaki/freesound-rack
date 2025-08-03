@@ -37,6 +37,7 @@ public:
     void resized() override;
     void mouseDown(const MouseEvent& event) override;
     void mouseDrag(const MouseEvent& event) override;
+    void mouseDoubleClick(const MouseEvent& event) override;
     void timerCallback() override;  // Add timer callback
 
     // DragAndDropTarget implementation
