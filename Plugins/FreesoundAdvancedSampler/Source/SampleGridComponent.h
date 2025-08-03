@@ -89,6 +89,9 @@ public:
     void handleCopyClick();
 
     bool isSearchable() const { return isSearchableMode; }
+
+    FreesoundAdvancedSamplerAudioProcessor* processor;
+
 private:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
@@ -99,7 +102,6 @@ private:
     bool isSearchableMode;
 
     int padIndex;
-    FreesoundAdvancedSamplerAudioProcessor* processor;
 
     AudioFormatManager formatManager;
     AudioThumbnailCache audioThumbnailCache;
@@ -200,11 +202,12 @@ public:
     MasterSearchPanel& getMasterSearchPanel() { return masterSearchPanel; }
     FreesoundAdvancedSamplerAudioProcessor* getProcessor() const { return processor; }
 
-private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;
-
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
+
+private:
+
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
     // Master search system (position-based, not pad-index based)

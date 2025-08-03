@@ -17,6 +17,7 @@
 #include "PresetManager.h"
 #include "ExpandablePanel.h"
 #include "CustomAlertWindowLookAndFeel.h"
+#include "BookmarkViewerComponent.h"
 
 //==============================================================================
 /**
@@ -43,6 +44,8 @@ public:
     SampleGridComponent& getSampleGridComponent() { return sampleGridComponent; }
     bool keyPressed(const KeyPress& key) override;
 
+    void updateWindowSizeForBookmarkPanel();
+
 private:
 
     FreesoundAdvancedSamplerAudioProcessor& processor;
@@ -66,6 +69,10 @@ private:
 
     // Method for expandable panel on the right side
     void updateWindowSizeForPanelState();
+
+    // Add to the private section after the existing expandable panel
+    ExpandablePanel bookmarkExpandablePanel;
+    BookmarkViewerComponent bookmarkViewerComponent;
 
     int getKeyboardPadIndex(const KeyPress& key) const;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)

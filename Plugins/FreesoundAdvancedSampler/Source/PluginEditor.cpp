@@ -52,6 +52,20 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     };
     addAndMakeVisible(expandablePanelComponent);
 
+    // Set up bookmark viewer with expandable panel
+    bookmarkExpandablePanel.setOrientation(ExpandablePanel::Orientation::Left); // Left orientation = expands right
+    bookmarkExpandablePanel.setContentComponent(&bookmarkViewerComponent);
+    bookmarkExpandablePanel.setExpandedWidth(200); // Width for bookmark viewer
+    bookmarkExpandablePanel.setExpanded(false); // Start collapsed
+    bookmarkExpandablePanel.onExpandedStateChanged = [this](bool expanded) {
+        // You can save the state if needed
+        updateWindowSizeForBookmarkPanel();
+    };
+    addAndMakeVisible(bookmarkExpandablePanel);
+
+    // Set processor for bookmark viewer
+    bookmarkViewerComponent.setProcessor(&processor);
+
     // Restore samples if processor already has them loaded
     if (processor.isArrayNotEmpty())
     {
@@ -116,12 +130,11 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
     const int margin = 8;
-    const int progressHeight = 50;
 
-    // FIXED VALUES - Don't scale these with window size
-    const int buttonHeight = 30;         // Keep this fixed
-    const int buttonWidth = 80;        // Keep this fixed
-    const int spacing = 4;               // Keep this fixed
+    // Fixed values
+    const int buttonHeight = 30;
+    const int buttonWidth = 80;
+    const int spacing = 4;
 
     bounds.removeFromTop(margin);
     bounds.removeFromRight(margin);
@@ -130,18 +143,29 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     bounds.removeFromLeft(margin);
     auto contentBounds = bounds.withTrimmedBottom(margin);
 
-    // Expandable panel (with preset browser) on the left - FIXED WIDTH when expanded
-    int panelWidth = expandablePanelComponent.isExpanded() ?
-                     expandablePanelComponent.getExpandedWidth() :
-                     expandablePanelComponent.getCollapsedWidth();
+    // LEFT: Preset expandable panel
+    int presetPanelWidth = expandablePanelComponent.isExpanded() ?
+                          expandablePanelComponent.getExpandedWidth() :
+                          expandablePanelComponent.getCollapsedWidth();
 
-    auto leftPanelArea = contentBounds.removeFromLeft(panelWidth);
+    auto leftPanelArea = contentBounds.removeFromLeft(presetPanelWidth);
     if (expandablePanelComponent.isExpanded())
-        leftPanelArea.removeFromRight(spacing); // Add spacing when expanded
+        leftPanelArea.removeFromRight(spacing);
     expandablePanelComponent.setBounds(leftPanelArea);
 
-    // Remaining area for sample grid and controls
+    // RIGHT: Bookmark expandable panel
+    int bookmarkPanelWidth = bookmarkExpandablePanel.isExpanded() ?
+                            bookmarkExpandablePanel.getExpandedWidth() :
+                            bookmarkExpandablePanel.getCollapsedWidth();
+
+    auto rightPanelArea = contentBounds.removeFromRight(bookmarkPanelWidth);
+    if (bookmarkExpandablePanel.isExpanded())
+        rightPanelArea.removeFromLeft(spacing);
+    bookmarkExpandablePanel.setBounds(rightPanelArea);
+
+    // CENTER: Sample grid and controls
     contentBounds.removeFromLeft(spacing);
+    contentBounds.removeFromRight(spacing);
 
     // Control area above the sample grid (top-left)
     auto controlArea = contentBounds.removeFromTop(buttonHeight);
@@ -149,10 +173,10 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 
     // Split control area between drag area and directory button
     sampleDragArea.setBounds(controlArea.removeFromLeft(buttonWidth));
-    directoryOpenButton.setBounds(controlArea.removeFromRight(buttonWidth)); // Fixed width for directory button
+    directoryOpenButton.setBounds(controlArea.removeFromRight(buttonWidth));
 
     // Sample grid - takes ALL remaining space below the controls
-    contentBounds.removeFromTop(spacing); // Small gap between controls and grid
+    contentBounds.removeFromTop(spacing);
     sampleGridComponent.setBounds(contentBounds);
 }
 
@@ -182,6 +206,32 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForPanelState
 
         // Update constraints back to base size
         setResizeLimits(600, 500, 1600, 1200);
+    }
+
+    // Save the new window size
+    processor.setWindowSize(getWidth(), getHeight());
+}
+
+void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForBookmarkPanel()
+{
+    int currentWidth = getWidth();
+    int currentHeight = getHeight();
+
+    // Calculate the width difference when panel expands/collapses
+    int panelWidthDifference = bookmarkExpandablePanel.getExpandedWidth() -
+                               bookmarkExpandablePanel.getCollapsedWidth();
+
+    if (bookmarkExpandablePanel.isExpanded())
+    {
+        // Panel just expanded - increase window width
+        int newWidth = currentWidth + panelWidthDifference + 4; // +4 for spacing
+        setSize(newWidth, currentHeight);
+    }
+    else
+    {
+        // Panel just collapsed - decrease window width
+        int newWidth = currentWidth - panelWidthDifference - 4; // -4 for spacing
+        setSize(newWidth, currentHeight);
     }
 
     // Save the new window size
