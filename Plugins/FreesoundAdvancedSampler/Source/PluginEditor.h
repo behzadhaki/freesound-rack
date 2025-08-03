@@ -16,6 +16,7 @@
 #include "PresetBrowserComponent.h"
 #include "PresetManager.h"
 #include "ExpandablePanel.h"
+#include "CustomAlertWindowLookAndFeel.h"
 
 //==============================================================================
 /**
@@ -44,6 +45,8 @@ public:
 
 private:
     FreesoundAdvancedSamplerAudioProcessor& processor;
+
+    std::unique_ptr<CustomAlertWindowLookAndFeel> customAlertLookAndFeel;
 
     SampleGridComponent sampleGridComponent;
     SampleDragArea sampleDragArea;

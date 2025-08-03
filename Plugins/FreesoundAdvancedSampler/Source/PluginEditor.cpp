@@ -15,6 +15,10 @@
 FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProcessorEditor (FreesoundAdvancedSamplerAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
+    // Set up custom look and feel for AlertWindows
+    customAlertLookAndFeel = std::make_unique<CustomAlertWindowLookAndFeel>();
+    LookAndFeel::setDefaultLookAndFeel(customAlertLookAndFeel.get());
+
     // Register as download listener
     processor.addDownloadListener(this);
 
@@ -95,9 +99,9 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
 
 FreesoundAdvancedSamplerAudioProcessorEditor::~FreesoundAdvancedSamplerAudioProcessorEditor()
 {
+    LookAndFeel::setDefaultLookAndFeel(nullptr);
     processor.removeDownloadListener(this);
 }
-
 //==============================================================================
 void FreesoundAdvancedSamplerAudioProcessorEditor::paint(Graphics& g)
 {
