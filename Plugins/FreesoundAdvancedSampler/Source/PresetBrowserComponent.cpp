@@ -20,39 +20,72 @@ void SlotButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted, bo
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // Background color based on state
+    // Background color based on state with dramatic alpha variation
     Colour bgColour;
     if (hasDataFlag)
     {
-        bgColour = Colours::darkgoldenrod; // Mustard gold for slots with data
+        if (isActiveFlag)
+        {
+            // Selected slot: full opacity bright mustard gold
+            bgColour = Colours::darkgoldenrod.brighter(0.2f).withAlpha(1.0f);
+            // DBG("Drawing slot " + String(slotIndex) + " as ACTIVE (bright mustard)");
+        }
+        else
+        {
+            // Non-selected slots with data: very low alpha mustard gold
+            bgColour = Colours::darkgoldenrod.withAlpha(0.25f);
+            // DBG("Drawing slot " + String(slotIndex) + " as INACTIVE (dim mustard)");
+        }
     }
     else
     {
-        bgColour = Colours::grey; // Grey for empty slots
+        // Empty slots remain grey with low alpha
+        bgColour = Colours::grey.withAlpha(0.2f);
+        // DBG("Drawing slot " + String(slotIndex) + " as EMPTY (grey)");
     }
 
     if (shouldDrawButtonAsHighlighted)
-        bgColour = bgColour.brighter(0.2f);
+        bgColour = bgColour.brighter(0.15f);
     if (shouldDrawButtonAsDown)
-        bgColour = bgColour.darker(0.2f);
+        bgColour = bgColour.darker(0.15f);
 
     g.setColour(bgColour);
     g.fillRoundedRectangle(bounds, 3.0f);
 
-    // Border
-    g.setColour(Colours::white.withAlpha(0.6f));
-    g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f);
-
-    // Underline if active
-    if (isActiveFlag)
+    // Border intensity based on selection
+    if (isActiveFlag && hasDataFlag)
     {
-        g.setColour(Colours::white);
-        g.fillRect(bounds.getX() + 2, bounds.getBottom() - 2, bounds.getWidth() - 4, 2.0f);
+        g.setColour(Colours::white.withAlpha(1.0f));
+        g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 2.0f); // Thick bright border
+    }
+    else if (hasDataFlag)
+    {
+        g.setColour(Colours::white.withAlpha(0.4f));
+        g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Normal border
+    }
+    else
+    {
+        g.setColour(Colours::white.withAlpha(0.2f));
+        g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Dim border
     }
 
-    // Text
-    g.setColour(hasDataFlag ? Colours::white : Colours::darkgrey);
-    g.setFont(12.0f);
+    // Text contrast based on selection
+    if (isActiveFlag && hasDataFlag)
+    {
+        g.setColour(Colours::black.withAlpha(0.9f)); // Dark text on bright background
+        g.setFont(Font(12.0f, Font::bold)); // Bold for selected
+    }
+    else if (hasDataFlag)
+    {
+        g.setColour(Colours::white.withAlpha(0.7f)); // Light text on dim background
+        g.setFont(12.0f);
+    }
+    else
+    {
+        g.setColour(Colours::darkgrey.withAlpha(0.5f)); // Very dim for empty
+        g.setFont(12.0f);
+    }
+
     g.drawText(getButtonText(), bounds.toNearestInt(), Justification::centred);
 }
 
@@ -70,6 +103,7 @@ void SlotButton::setIsActive(bool isActive)
     if (isActiveFlag != isActive)
     {
         isActiveFlag = isActive;
+        // DBG("SlotButton " + String(slotIndex) + " setIsActive: " + String(isActive ? "TRUE" : "FALSE"));
         repaint();
     }
 }
@@ -130,9 +164,9 @@ void PresetListItem::paint(Graphics& g)
     g.setColour(Colour(0xff2A2A2A).withAlpha(0.0f)); // Slightly transparent dark background
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
-    // Border
-    g.setColour(isSelectedState ? Colour(0xff00D9FF) : Colour(0xff404040));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 1.5f : 1.0f);
+    // Border - use same color but different thickness for selection
+    g.setColour(Colour(0xff404040)); // Same color for both selected and unselected
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 2.0f : 1.0f); // Thicker when selected
 
     // Line 2: Info
     auto infoLine = bounds.withHeight(lineHeight).translated(0, lineHeight);
@@ -219,12 +253,13 @@ void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifi
 {
     bool hasData = presetInfo.slots[slotIndex].hasData;
 
+    // DBG("Slot " + String(slotIndex) + " clicked, hasData: " + String(hasData ? "YES" : "NO"));
+
     if (modifiers.isShiftDown() && !modifiers.isCommandDown())
     {
         // Shift+click: Save to slot
         if (hasData)
         {
-            // Ask if overwrite
             AlertWindow::showOkCancelBox(
                 AlertWindow::QuestionIcon,
                 "Overwrite Slot",
@@ -239,7 +274,6 @@ void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifi
         }
         else
         {
-            // Save directly
             if (onSaveSlotClicked)
                 onSaveSlotClicked(presetInfo, slotIndex);
         }
@@ -264,12 +298,70 @@ void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifi
     }
     else
     {
-        // Regular click: Load slot
-        if (hasData && onLoadSlotClicked)
+        // Regular click: Load slot - let the browser handle the visual update
+        // DBG("Regular click on slot " + String(slotIndex));
+
+        if (hasData)
         {
-            onLoadSlotClicked(presetInfo, slotIndex);
+            // DON'T call updateActiveSlot here - let handleLoadSlotClicked do it
+            // updateActiveSlot(slotIndex);  // REMOVE THIS LINE
+
+            if (onLoadSlotClicked)
+                onLoadSlotClicked(presetInfo, slotIndex);
+        }
+        else
+        {
+            // DBG("Slot has no data, not loading");
         }
     }
+}
+
+void PresetListItem::updateActiveSlot(int slotIndex)
+{
+    // DBG("PresetListItem::updateActiveSlot called with slotIndex: " + String(slotIndex));
+
+    // Update the stored preset info
+    presetInfo.activeSlot = slotIndex;
+
+    // Update all slot button states
+    for (int i = 0; i < 8; ++i)
+    {
+        if (slotButtons[i])
+        {
+            bool shouldBeActive = (i == slotIndex);
+            // DBG("Setting slot " + String(i) + " active state to: " + String(shouldBeActive ? "TRUE" : "FALSE"));
+            slotButtons[i]->setIsActive(shouldBeActive);
+        }
+    }
+
+    // Force a complete repaint
+    repaint();
+
+    // Also force repaint of each slot button individually
+    for (int i = 0; i < 8; ++i)
+    {
+        if (slotButtons[i])
+        {
+            slotButtons[i]->repaint();
+        }
+    }
+}
+
+void PresetListItem::refreshSlotStates(const PresetInfo& updatedInfo)
+{
+    presetInfo = updatedInfo;
+
+    // Update all slot buttons with new info
+    for (int i = 0; i < 8; ++i)
+    {
+        if (slotButtons[i])
+        {
+            slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
+            slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
+        }
+    }
+
+    repaint();
 }
 
 //==============================================================================
@@ -389,21 +481,20 @@ void PresetBrowserComponent::refreshPresetList()
 
     Array<PresetInfo> presets = processor->getPresetManager().getAvailablePresets();
 
+    // Get current active preset info
+    File activePresetFile = processor->getPresetManager().getActivePresetFile();
+    int activeSlotIndex = processor->getPresetManager().getActiveSlotIndex();
+
     int yPosition = 0;
     const int itemHeight = 85;
     const int spacing = 3;
-
-    // FIXED: Calculate proper width that fits within bounds
-    // PresetBrowser width = 210px (from editor)
-    // PresetBrowser has 10px reduced on each side = 190px available
-    // Items have 5px left margin, so: 190 - 5 = 185px max width
-    const int fixedItemWidth = 180;  // Safe width that stays within bounds
+    const int fixedItemWidth = 180;
 
     for (const auto& presetInfo : presets)
     {
         auto* item = new PresetListItem(presetInfo);
 
-        // ... existing callback setup code ...
+        // Set up callbacks...
         item->onItemClicked = [this](PresetListItem* clickedItem) {
             handleItemClicked(clickedItem);
         };
@@ -432,7 +523,14 @@ void PresetBrowserComponent::refreshPresetList()
             handleDeleteSlotClicked(info, slotIndex);
         };
 
-        // FIXED: Use width that stays within bounds
+        // Check if this is the currently active preset and set active slot
+        if (presetInfo.presetFile == activePresetFile && activeSlotIndex >= 0)
+        {
+            item->updateActiveSlot(activeSlotIndex);
+            selectedItem = item;
+            item->setSelected(true);
+        }
+
         item->setBounds(5, yPosition, fixedItemWidth, itemHeight);
         presetListContainer.addAndMakeVisible(*item);
         presetItems.add(item);
@@ -440,7 +538,6 @@ void PresetBrowserComponent::refreshPresetList()
         yPosition += itemHeight + spacing;
     }
 
-    // FIXED: Container width accounts for item width + left margin
     presetListContainer.setSize(fixedItemWidth + 10, yPosition);
     presetViewport.getViewedComponent()->repaint();
 }
@@ -494,8 +591,28 @@ void PresetBrowserComponent::handleItemDoubleClicked(PresetListItem* item)
 
 void PresetBrowserComponent::handleLoadSlotClicked(const PresetInfo& presetInfo, int slotIndex)
 {
+    // Update active slot tracking across all presets
+    updateActiveSlotAcrossPresets(presetInfo, slotIndex);
+
     if (onPresetLoadRequested)
         onPresetLoadRequested(presetInfo, slotIndex);
+}
+
+void PresetBrowserComponent::updateActiveSlotAcrossPresets(const PresetInfo& activePresetInfo, int activeSlotIndex)
+{
+    // DBG("updateActiveSlotAcrossPresets called for slot " + String(activeSlotIndex));
+
+    // Find and update only the target preset
+    for (auto* item : presetItems)
+    {
+        if (item && item->getPresetInfo().presetFile == activePresetInfo.presetFile)
+        {
+            // DBG("Found matching preset, setting active slot to " + String(activeSlotIndex));
+            item->updateActiveSlot(activeSlotIndex);
+            handleItemClicked(item); // Also select the preset item
+            break;
+        }
+    }
 }
 
 void PresetBrowserComponent::handleSaveSlotClicked(const PresetInfo& presetInfo, int slotIndex)

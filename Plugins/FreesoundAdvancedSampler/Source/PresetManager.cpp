@@ -413,6 +413,10 @@ bool PresetManager::loadPreset(const File& presetFile, int slotIndex, Array<PadI
         return false;
     }
 
+    // ADD THIS: Set the active preset and slot when loading succeeds
+    setActivePreset(presetFile, slotIndex);
+    DBG("PresetManager: Set active preset to " + presetFile.getFileName() + ", slot " + String(slotIndex));
+
     // DBG("Successfully loaded " + String(padInfos.size()) + " samples from slot " + String(slotIndex));
     return true;
 }

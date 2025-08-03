@@ -55,6 +55,9 @@ public:
     std::function<void(const PresetInfo&, int)> onSaveSlotClicked;
     std::function<void(const PresetInfo&, int)> onDeleteSlotClicked;
 
+    void updateActiveSlot(int slotIndex);
+    void refreshSlotStates(const PresetInfo& updatedInfo);
+
 private:
     PresetInfo presetInfo;
     bool isSelectedState = false;
@@ -121,6 +124,8 @@ private:
     void performRename(const PresetInfo& presetInfo, const String& newName);
     void saveCurrentPreset();
     void updatePresetList();
+
+    void updateActiveSlotAcrossPresets(const PresetInfo& activePresetInfo, int activeSlotIndex);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetBrowserComponent)
 };

@@ -901,7 +901,7 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
     resized(); // Recalculate layout
     repaint();
 
-    DBG("SamplePad::setSample - Pad " + String(padIndex) + " set with query: '" + query + "' (connected to master: " + String(connectedToMaster ? "YES" : "NO") + ")");
+    // DBG("SamplePad::setSample - Pad " + String(padIndex) + " set with query: '" + query + "' (connected to master: " + String(connectedToMaster ? "YES" : "NO") + ")");
 }
 
 void SamplePad::clearSample()
@@ -1136,12 +1136,12 @@ void SamplePad::setConnectedToMaster(bool connected)
             if (hasValidSample)
             {
                 queryToRestore = padQuery;
-                DBG("Pad " + String(padIndex) + " disconnected - restoring sample query: '" + queryToRestore + "'");
+                // DBG("Pad " + String(padIndex) + " disconnected - restoring sample query: '" + queryToRestore + "'");
             }
             else
             {
                 queryToRestore = queryTextBox.getText().trim();
-                DBG("Pad " + String(padIndex) + " disconnected - keeping previous query: '" + queryToRestore + "'");
+                // DBG("Pad " + String(padIndex) + " disconnected - keeping previous query: '" + queryToRestore + "'");
             }
 
             queryTextBox.setText(queryToRestore, dontSendNotification);
@@ -1162,7 +1162,7 @@ void SamplePad::syncMasterQuery(const String& masterQuery)
         queryTextBox.setText(masterQuery, dontSendNotification);
 
         // DON'T update padQuery here - it should preserve the sample's original query
-        DBG("Pad " + String(padIndex) + " synced master query: '" + masterQuery + "' (sample query preserved: '" + padQuery + "')");
+        // DBG("Pad " + String(padIndex) + " synced master query: '" + masterQuery + "' (sample query preserved: '" + padQuery + "')");
     }
 }
 
@@ -1660,11 +1660,11 @@ void SampleGridComponent::updateProcessorArraysFromGrid()
             soundData.add(padInfo.query);
             soundsData[padIndex] = soundData;
 
-            DBG("Updated processor arrays - pad " + String(padIndex) + ": " + padInfo.sampleName + " (ID: " + padInfo.freesoundId + ")");
+            // DBG("Updated processor arrays - pad " + String(padIndex) + ": " + padInfo.sampleName + " (ID: " + padInfo.freesoundId + ")");
         }
     }
 
-    DBG("Processor arrays updated - total pads with samples: " + String(currentSounds.size()));
+    // DBG("Processor arrays updated - total pads with samples: " + String(currentSounds.size()));
 }
 
 void SampleGridComponent::updateJsonMetadata()
@@ -1942,7 +1942,7 @@ void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const
         }
     }
 
-    DBG("Master search data stored - waiting for download completion to populate " + String(pendingMasterSearchPads.size()) + " pads");
+    // DBG("Master search data stored - waiting for download completion to populate " + String(pendingMasterSearchPads.size()) + " pads");
 }
 
 void SampleGridComponent::populatePadsFromMasterSearch()
@@ -1952,7 +1952,7 @@ void SampleGridComponent::populatePadsFromMasterSearch()
 
     File downloadDir = processor->getCurrentDownloadLocation();
 
-    DBG("Populating pads from master search - " + String(pendingMasterSearchPads.size()) + " target pads, " + String(pendingMasterSearchSounds.size()) + " sounds");
+    // DBG("Populating pads from master search - " + String(pendingMasterSearchPads.size()) + " target pads, " + String(pendingMasterSearchSounds.size()) + " sounds");
 
     // First, get current processor arrays to preserve existing samples
     auto& currentSounds = processor->getCurrentSoundsArrayReference();
@@ -1981,7 +1981,7 @@ void SampleGridComponent::populatePadsFromMasterSearch()
         String expectedFilename = "FS_ID_" + sound.id + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
-        DBG("Looking for file: " + audioFile.getFullPathName() + " (exists: " + String(audioFile.existsAsFile() ? "YES" : "NO") + ")");
+        // DBG("Looking for file: " + audioFile.getFullPathName() + " (exists: " + String(audioFile.existsAsFile() ? "YES" : "NO") + ")");
 
         if (audioFile.existsAsFile())
         {
@@ -2009,11 +2009,11 @@ void SampleGridComponent::populatePadsFromMasterSearch()
             soundData.add(pendingMasterSearchQuery);
             soundsData[padIndex] = soundData;
 
-            DBG("Successfully populated pad " + String(padIndex) + " with " + sampleName + " (MIDI note: " + String(36 + padIndex) + ")");
+            // DBG("Successfully populated pad " + String(padIndex) + " with " + sampleName + " (MIDI note: " + String(36 + padIndex) + ")");
         }
         else
         {
-            DBG("File not found for pad " + String(padIndex) + ": " + expectedFilename);
+            // DBG("File not found for pad " + String(padIndex) + ": " + expectedFilename);
         }
 
         soundIndex++;
@@ -2025,7 +2025,7 @@ void SampleGridComponent::populatePadsFromMasterSearch()
     // Clear pending state
     clearPendingMasterSearchState();
 
-    DBG("Master search population complete - sampler rebuilt");
+    // DBG("Master search population complete - sampler rebuilt");
 }
 
 void SampleGridComponent::clearPendingMasterSearchState()
@@ -2517,7 +2517,7 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     var metadata = JSON::parse(jsonMetadata);
     if (!metadata.isObject())
     {
-        DBG("Invalid metadata JSON");
+        // DBG("Invalid metadata JSON");
         return;
     }
 
@@ -2533,7 +2533,7 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     File sourceFile(filePaths[0]);
     if (!sourceFile.existsAsFile())
     {
-        DBG("Source file does not exist: " + sourceFile.getFullPathName());
+        // DBG("Source file does not exist: " + sourceFile.getFullPathName());
         return;
     }
 
@@ -2547,10 +2547,10 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     {
         if (!sourceFile.copyFileTo(targetFile))
         {
-            DBG("Failed to copy file to: " + targetFile.getFullPathName());
+            // DBG("Failed to copy file to: " + targetFile.getFullPathName());
             return;
         }
-        DBG("Copied file to: " + targetFile.getFullPathName());
+        // DBG("Copied file to: " + targetFile.getFullPathName());
     }
 
     // Create FSSound object for processor
@@ -2771,7 +2771,7 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
             std::random_device rd;
             std::mt19937 g(rd());
             std::shuffle(sounds.begin(), sounds.end(), g);
-            DBG("Shuffled " + String(sounds.size()) + " search results");
+            // DBG("Shuffled " + String(sounds.size()) + " search results");
         }
 
         // 2. Handle insufficient results by repeating them
@@ -2780,7 +2780,7 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
 
         if (sounds.size() < numSoundsNeeded)
         {
-            DBG("Not enough results (" + String(sounds.size()) + "), repeating to fill " + String(numSoundsNeeded) + " pads");
+            // DBG("Not enough results (" + String(sounds.size()) + "), repeating to fill " + String(numSoundsNeeded) + " pads");
 
             // Repeat sounds in a cycling manner to fill all target pads
             for (int i = 0; i < numSoundsNeeded; ++i)
@@ -2813,18 +2813,18 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
             }
         }
 
-        DBG("Final sound selection: " + String(finalSounds.size()) + " sounds for " + String(numSoundsNeeded) + " pads");
+        // DBG("Final sound selection: " + String(finalSounds.size()) + " sounds for " + String(numSoundsNeeded) + " pads");
 
         // Log which sounds will be used (helpful for debugging repeats)
         for (int i = 0; i < finalSounds.size(); ++i)
         {
-            DBG("  Pad " + String(i) + ": " + finalSounds[i].name + " (ID: " + finalSounds[i].id + ")");
+            // DBG("  Pad " + String(i) + ": " + finalSounds[i].name + " (ID: " + finalSounds[i].id + ")");
         }
 
         // This will trigger the existing download system
         processor->newSoundsReady(finalSounds, masterQuery, soundInfo);
 
-        DBG("Master search initiated for " + String(targetPadIndices.size()) + " pads with query: " + masterQuery);
+        // DBG("Master search initiated for " + String(targetPadIndices.size()) + " pads with query: " + masterQuery);
     }
     catch (const std::exception& e)
     {
@@ -2960,6 +2960,7 @@ void SampleGridComponent::searchSelectedPositions(const String& masterQuery)
         performMasterSearch(masterQuery);
     }
 }
+
 
 //==============================================================================
 // SampleDragArea Implementation
