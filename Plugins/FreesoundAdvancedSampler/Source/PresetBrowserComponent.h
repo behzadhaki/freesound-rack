@@ -128,6 +128,14 @@ private:
     void updatePresetList();
 
     void updateActiveSlotAcrossPresets(const PresetInfo& activePresetInfo, int activeSlotIndex);
+    void performSaveToSlot(const PresetInfo& presetInfo, int slotIndex,
+                              const Array<PadInfo>& padInfos, const String& description,
+                              const String& query);
+    bool isContentDifferent(const Array<PadInfo>& newPadInfos,
+                           const Array<PadInfo>& existingPadInfos,
+                           const String& newQuery,
+                           const PresetInfo& presetInfo,
+                           int slotIndex) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetBrowserComponent)
 };

@@ -264,26 +264,8 @@ void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifi
 
     if (modifiers.isShiftDown() && !modifiers.isCommandDown())
     {
-        // Shift+click: Save to slot
-        if (hasData)
-        {
-            AlertWindow::showOkCancelBox(
-                AlertWindow::QuestionIcon,
-                "Overwrite Slot",
-                "Slot " + String(slotIndex + 1) + " already has data. Overwrite?",
-                "Yes", "No",
-                nullptr,
-                ModalCallbackFunction::create([this, slotIndex](int result) {
-                    if (result == 1 && onSaveSlotClicked)
-                        onSaveSlotClicked(presetInfo, slotIndex);
-                })
-            );
-        }
-        else
-        {
-            if (onSaveSlotClicked)
-                onSaveSlotClicked(presetInfo, slotIndex);
-        }
+        if (onSaveSlotClicked)
+            onSaveSlotClicked(presetInfo, slotIndex);
     }
     else if (modifiers.isCommandDown() && modifiers.isShiftDown())
     {
@@ -622,25 +604,150 @@ void PresetBrowserComponent::updateActiveSlotAcrossPresets(const PresetInfo& act
     }
 }
 
-void PresetBrowserComponent::handleSaveSlotClicked(const PresetInfo& presetInfo, int slotIndex)
+void PresetBrowserComponent::performSaveToSlot(const PresetInfo& presetInfo, int slotIndex,
+                                              const Array<PadInfo>& padInfos, const String& description,
+                                              const String& query)
 {
-    if (!processor)
-        return;
-
-    Array<PadInfo> padInfos = processor->getCurrentPadInfos();
-    String description = "Saved to slot " + String(slotIndex + 1);
-
-    if (processor->getPresetManager().saveToSlot(presetInfo.presetFile, slotIndex, description, padInfos, processor->getQuery()))
+    if (processor->getPresetManager().saveToSlot(presetInfo.presetFile, slotIndex, description, padInfos, query))
     {
         refreshPresetList();
-        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "Slot Saved", "Saved to slot " + String(slotIndex + 1));
     }
     else
     {
         AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
             "Save Failed", "Failed to save to slot " + String(slotIndex + 1));
     }
+}
+
+bool PresetBrowserComponent::isContentDifferent(const Array<PadInfo>& newPadInfos,
+                                               const Array<PadInfo>& existingPadInfos,
+                                               const String& newQuery,
+                                               const PresetInfo& presetInfo,
+                                               int slotIndex) const
+{
+    // First check if queries are different
+    String existingQuery = presetInfo.slots[slotIndex].searchQuery;
+    if (newQuery != existingQuery)
+    {
+        // DBG("Query different: '" + newQuery + "' vs '" + existingQuery + "'");
+        return true;
+    }
+
+    // Check if number of samples is different
+    if (newPadInfos.size() != existingPadInfos.size())
+    {
+        // DBG("Sample count different: " + String(newPadInfos.size()) + " vs " + String(existingPadInfos.size()));
+        return true;
+    }
+
+    // Create maps for easy lookup by pad index
+    std::map<int, const PadInfo*> newPadMap;
+    std::map<int, const PadInfo*> existingPadMap;
+
+    // Fill the maps
+    for (const auto& pad : newPadInfos)
+    {
+        newPadMap[pad.padIndex] = &pad;
+    }
+
+    for (const auto& pad : existingPadInfos)
+    {
+        existingPadMap[pad.padIndex] = &pad;
+    }
+
+    // Compare all 16 possible pad positions (0-15)
+    for (int padIndex = 0; padIndex < 16; ++padIndex)
+    {
+        bool newHasPad = newPadMap.find(padIndex) != newPadMap.end();
+        bool existingHasPad = existingPadMap.find(padIndex) != existingPadMap.end();
+
+        // Check if one has a sample at this position and the other doesn't
+        if (newHasPad != existingHasPad)
+        {
+            return true;
+        }
+
+        // If both have samples at this position, compare them
+        if (newHasPad && existingHasPad)
+        {
+            const PadInfo* newPad = newPadMap[padIndex];
+            const PadInfo* existingPad = existingPadMap[padIndex];
+
+            if (newPad->freesoundId != existingPad->freesoundId)
+            {
+                // DBG("Freesound ID different at pad " + String(padIndex) + ": '" + newPad->freesoundId + "' vs '" + existingPad->freesoundId + "'");
+                return true;
+            }
+
+            if (newPad->originalName != existingPad->originalName)
+            {
+                // DBG("Sample name different at pad " + String(padIndex) + ": '" + newPad->originalName + "' vs '" + existingPad->originalName + "'");
+                return true;
+            }
+
+            if (newPad->author != existingPad->author)
+            {
+                // DBG("Author different at pad " + String(padIndex) + ": '" + newPad->author + "' vs '" + existingPad->author + "'");
+                return true;
+            }
+
+            if (newPad->searchQuery != existingPad->searchQuery)
+            {
+                // DBG("Search query different at pad " + String(padIndex) + ": '" + newPad->searchQuery + "' vs '" + existingPad->searchQuery + "'");
+                return true;
+            }
+        }
+    }
+
+    // DBG("Content is identical - no overwrite warning needed");
+    return false; // Content is identical
+}
+
+void PresetBrowserComponent::handleSaveSlotClicked(const PresetInfo& presetInfo, int slotIndex)
+{
+    if (!processor)
+        return;
+
+    // Get current pad infos that we want to save
+    Array<PadInfo> newPadInfos = processor->getCurrentPadInfos();
+    String newDescription = "Saved to slot " + String(slotIndex + 1);
+    String newQuery = processor->getQuery();
+
+    // Check if slot already has data
+    if (presetInfo.slots[slotIndex].hasData)
+    {
+        // Load existing data from the slot to compare
+        Array<PadInfo> existingPadInfos;
+        if (processor->getPresetManager().loadPreset(presetInfo.presetFile, slotIndex, existingPadInfos))
+        {
+            // Compare the content
+            bool contentIsDifferent = isContentDifferent(newPadInfos, existingPadInfos, newQuery, presetInfo, slotIndex);
+
+            if (contentIsDifferent)
+            {
+                // Show warning dialog
+                AlertWindow::showOkCancelBox(
+                    AlertWindow::QuestionIcon,
+                    "Overwrite Slot",
+                    "Slot " + String(slotIndex + 1) + " contains different content. Do you want to overwrite it?",
+                    "Yes, Overwrite", "No, Cancel",
+                    nullptr,
+                    ModalCallbackFunction::create([this, presetInfo, slotIndex, newPadInfos, newDescription, newQuery](int result) {
+                        if (result == 1) // User clicked "Yes, Overwrite"
+                        {
+                            performSaveToSlot(presetInfo, slotIndex, newPadInfos, newDescription, newQuery);
+                        }
+                        // If result == 0, user clicked "No, Cancel" - do nothing
+                    })
+                );
+                return; // Exit early, let the callback handle the save
+            }
+            // If content is the same, fall through to save without warning
+        }
+    }
+
+    // Save directly (either slot is empty or content is identical)
+    performSaveToSlot(presetInfo, slotIndex, newPadInfos, newDescription, newQuery);
 }
 
 void PresetBrowserComponent::handleDeleteSlotClicked(const PresetInfo& presetInfo, int slotIndex)
@@ -822,7 +929,7 @@ void PresetBrowserComponent::restoreActiveState()
     if (!activePresetFile.existsAsFile() || activeSlotIndex < 0)
         return;
 
-    DBG("Restoring active state: " + activePresetFile.getFileName() + ", slot " + String(activeSlotIndex));
+    // DBG("Restoring active state: " + activePresetFile.getFileName() + ", slot " + String(activeSlotIndex));
 
     // Find the matching preset item and update its active slot
     for (auto* item : presetItems)
