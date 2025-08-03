@@ -16,6 +16,7 @@
 #include "FreesoundKeys.h"
 #include <random>
 #include "CustomButtonStyle.h"
+#include "MasterSearchPanel.h"
 
 static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampler-data"; // for inter plugin drag and drop
 
@@ -53,6 +54,11 @@ public:
     void setQuery(const String& query);
     String getQuery() const;
     bool hasQuery() const;
+
+    // Master search connection
+    void setConnectedToMaster(bool connected);
+    bool isConnectedToMaster() const { return connectedToMaster; }
+    void syncMasterQuery(const String& masterQuery);
 
     // Progress bar methods (thread-safe)
     void startDownloadProgress();
@@ -111,6 +117,7 @@ private:
     bool isPlaying;
     bool hasValidSample;
     bool isDragHover;
+    bool connectedToMaster = false; // NEW: Master search connection state
 
     Colour padColour;
     TextEditor queryTextBox;
@@ -156,6 +163,12 @@ public:
         const std::vector<StringArray>& soundInfo, const String& masterQuery);
     void searchForSinglePadWithQuery(int padIndex, const String& query);
 
+    // Master search integration
+    void setPositionConnectedToMaster(int row, int col, bool connected);
+    bool isPositionConnectedToMaster(int row, int col) const;
+    void syncMasterQueryToPosition(int row, int col, const String& masterQuery);
+    void searchSelectedPositions(const String& masterQuery);
+
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
     void noteStopped(int noteNumber) override;
@@ -179,6 +192,10 @@ private:
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
+    // Master search system (position-based, not pad-index based)
+    std::array<bool, TOTAL_PADS> masterSearchConnections; // tracks visual positions (0-15)
+    MasterSearchPanel masterSearchPanel;
+
     // Single pad download management (simplified)
     std::unique_ptr<AudioDownloadManager> singlePadDownloadManager;
     int currentDownloadPadIndex = -1;
@@ -198,6 +215,17 @@ private:
     void downloadSingleSample(int padIndex, const FSSound& sound);
     void updateSinglePadInProcessor(int padIndex, const FSSound& sound);
     void cleanupSingleDownload();  // Add cleanup method
+
+    // Position conversion helpers
+    int getVisualPositionFromRowCol(int row, int col) const;
+    void getRowColFromVisualPosition(int position, int& row, int& col) const;
+    void getRowColFromPadIndex(int padIndex, int& row, int& col) const;
+
+    // Master search helpers
+    void updatePadConnectionStates();
+    bool hasAnySamplesInConnectedPositions() const;
+    void handleMasterSearchSelected();
+    void performMasterSearch(const String& masterQuery);
 
     StyledButton shuffleButton {"Shuffle", 10.0f, false};
     StyledButton clearAllButton {"Clear All", 10.0f, true};
@@ -256,4 +284,3 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DirectoryOpenButton)
 };
-

@@ -29,6 +29,7 @@ target_sources(${BaseTargetName} PRIVATE
         Source/PresetBrowserComponent.cpp
         Source/PresetManager.cpp
         Source/ExpandablePanel.cpp
+        Source/MasterSearchPanel.cpp
 )
 
 target_compile_definitions(${BaseTargetName}

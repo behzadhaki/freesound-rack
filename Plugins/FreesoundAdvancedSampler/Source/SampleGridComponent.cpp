@@ -57,7 +57,7 @@ SamplePad::SamplePad(int index, bool isSearchable)
     {
         queryTextBox.onReturnKey = [this]() {
             String query = queryTextBox.getText().trim();
-            if (query.isNotEmpty())
+            if (query.isNotEmpty() && !connectedToMaster) // Don't search if connected to master
             {
                 if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
                 {
@@ -115,8 +115,7 @@ void SamplePad::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // === EXISTING BACKGROUND AND BORDER CODE STAYS THE SAME ===
-    // Modern dark background with subtle gradients (existing code stays the same)
+    // === BACKGROUND WITH MASTER CONNECTION STYLING ===
     if (isDragHover)
     {
         g.setColour(Colour(0x8000D9FF).withAlpha(0.6f));
@@ -133,11 +132,12 @@ void SamplePad::paint(Graphics& g)
             Colour(0x8000D9FF).withAlpha(0.3f), bounds.getTopLeft().toFloat(),
             Colour(0x800099CC).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
     }
-    else if (hasValidSample)
+    else if (connectedToMaster)
     {
+        // Special styling for master-connected pads
         g.setGradientFill(ColourGradient(
-            padColour.withAlpha(0.3f), bounds.getTopLeft().toFloat(),
-            padColour.darker(0.3f).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
+            Colour(0xff00D9FF).withAlpha(0.05f), bounds.getTopLeft().toFloat(),
+            Colour(0xff0099CC).withAlpha(0.05f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
@@ -1098,7 +1098,38 @@ void SamplePad::cleanupProgressComponents()
     repaint();
 }
 
+void SamplePad::setConnectedToMaster(bool connected)
+{
+    if (connectedToMaster != connected)
+    {
+        connectedToMaster = connected;
 
+        // Update text editor state
+        if (connectedToMaster)
+        {
+            queryTextBox.setReadOnly(true);
+            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::grey.withAlpha(0.4f));
+            queryTextBox.setColour(TextEditor::textColourId, Colours::lightblue);
+        }
+        else if (isSearchableMode)
+        {
+            queryTextBox.setReadOnly(false);
+            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.8f));
+            queryTextBox.setColour(TextEditor::textColourId, Colours::black);
+        }
+
+        repaint();
+    }
+}
+
+void SamplePad::syncMasterQuery(const String& masterQuery)
+{
+    if (connectedToMaster)
+    {
+        queryTextBox.setText(masterQuery, dontSendNotification);
+        padQuery = masterQuery;
+    }
+}
 
 //==============================================================================
 // SampleGridComponent Implementation
@@ -1107,6 +1138,22 @@ void SamplePad::cleanupProgressComponents()
 SampleGridComponent::SampleGridComponent()
     : processor(nullptr)
 {
+    // Initialize master search connections (all false initially)
+    masterSearchConnections.fill(false);
+
+    // Create and add sample pads
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        samplePads[i] = std::make_unique<SamplePad>(i);
+        addAndMakeVisible(*samplePads[i]);
+    }
+
+    // Set up master search panel
+    masterSearchPanel.setSampleGridComponent(this);
+    masterSearchPanel.onSearchSelectedClicked = [this]() {
+        handleMasterSearchSelected();
+    };
+    addAndMakeVisible(masterSearchPanel);
 
     // Create and add sample pads
     for (int i = 0; i < TOTAL_PADS; ++i)
@@ -1216,7 +1263,7 @@ void SampleGridComponent::resized()
 {
     auto bounds = getLocalBounds();
     int padding = 4;
-    int bottomControlsHeight = 30;
+    int bottomControlsHeight = 90; // Increased for master search panel
     int buttonWidth = 60;
     int spacing = 5;
 
@@ -1225,10 +1272,21 @@ void SampleGridComponent::resized()
 
     // Position controls in bottom area
     auto controlsBounds = bottomArea.reduced(padding);
-    shuffleButton.setBounds(controlsBounds.removeFromLeft(buttonWidth));
-    controlsBounds.removeFromLeft(spacing);
 
-    clearAllButton.setBounds(controlsBounds.removeFromRight(buttonWidth));
+    // Right side: stacked buttons (shuffle above clear all)
+    auto rightButtonArea = controlsBounds.removeFromRight(buttonWidth);
+    int buttonHeight = 20;
+    controlsBounds.removeFromRight(spacing);
+    rightButtonArea.removeFromTop(8);
+    shuffleButton.setBounds(rightButtonArea.removeFromTop(buttonHeight));
+    rightButtonArea.removeFromBottom(8); // small spacing
+    clearAllButton.setBounds(rightButtonArea.removeFromBottom(buttonHeight));
+
+    controlsBounds.removeFromRight(spacing);
+
+    // Left side: master search panel
+    masterSearchPanel.setBounds(controlsBounds);
+
     // controlsBounds.removeFromLeft(spacing);
 
     // Calculate grid layout in remaining space
@@ -2406,6 +2464,188 @@ void SampleGridComponent::handleFileDrop(const StringArray& filePaths, int targe
     AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
         "Regular File Drop",
         "Regular file drops not yet implemented. Use Command+Drag from another Freesound Sampler instance.");
+}
+
+void SampleGridComponent::setPositionConnectedToMaster(int row, int col, bool connected)
+{
+    int visualPosition = getVisualPositionFromRowCol(row, col);
+    if (visualPosition >= 0 && visualPosition < TOTAL_PADS)
+    {
+        masterSearchConnections[visualPosition] = connected;
+        updatePadConnectionStates();
+    }
+}
+
+void SampleGridComponent::syncMasterQueryToPosition(int row, int col, const String& masterQuery)
+{
+    int visualPosition = getVisualPositionFromRowCol(row, col);
+    if (visualPosition >= 0 && visualPosition < TOTAL_PADS)
+    {
+        // Find which pad is currently at this visual position
+        for (int i = 0; i < TOTAL_PADS; ++i)
+        {
+            int padRow, padCol;
+            getRowColFromPadIndex(i, padRow, padCol);
+            int padVisualPosition = getVisualPositionFromRowCol(padRow, padCol);
+
+            if (padVisualPosition == visualPosition)
+            {
+                samplePads[i]->syncMasterQuery(masterQuery);
+                break;
+            }
+        }
+    }
+}
+
+void SampleGridComponent::handleMasterSearchSelected()
+{
+    String masterQuery = masterSearchPanel.getMasterQuery();
+    searchSelectedPositions(masterQuery);
+}
+
+void SampleGridComponent::performMasterSearch(const String& masterQuery)
+{
+    // Get all connected pad indices
+    Array<int> connectedPadIndices;
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        if (samplePads[i]->isConnectedToMaster())
+        {
+            connectedPadIndices.add(i);
+        }
+    }
+
+    if (connectedPadIndices.isEmpty())
+        return;
+
+    // Search for samples for each connected pad
+    for (int padIndex : connectedPadIndices)
+    {
+        searchForSinglePadWithQuery(padIndex, masterQuery);
+    }
+}
+
+int SampleGridComponent::getVisualPositionFromRowCol(int row, int col) const
+{
+    if (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE)
+    {
+        return (GRID_SIZE - 1 - row) * GRID_SIZE + col; // Bottom-left = 0
+    }
+    return -1;
+}
+
+void SampleGridComponent::getRowColFromVisualPosition(int position, int& row, int& col) const
+{
+    if (position >= 0 && position < TOTAL_PADS)
+    {
+        row = GRID_SIZE - 1 - (position / GRID_SIZE);
+        col = position % GRID_SIZE;
+    }
+    else
+    {
+        row = col = -1;
+    }
+}
+
+void SampleGridComponent::getRowColFromPadIndex(int padIndex, int& row, int& col) const
+{
+    // Since pads maintain their visual position regardless of swapping,
+    // we need to find where this pad currently sits in the grid
+    if (padIndex >= 0 && padIndex < TOTAL_PADS)
+    {
+        auto bounds = samplePads[padIndex]->getBounds();
+
+        // Calculate row/col based on bounds position
+        auto gridBounds = getLocalBounds();
+        int padding = 4;
+        int bottomControlsHeight = 90;
+        gridBounds.removeFromBottom(bottomControlsHeight + padding);
+
+        int totalPadding = padding * (GRID_SIZE + 1);
+        int padWidth = (gridBounds.getWidth() - totalPadding) / GRID_SIZE;
+        int padHeight = (gridBounds.getHeight() - totalPadding) / GRID_SIZE;
+
+        col = (bounds.getX() - padding) / (padWidth + padding);
+        row = (bounds.getY() - padding) / (padHeight + padding);
+
+        // Clamp values
+        row = jlimit(0, GRID_SIZE - 1, row);
+        col = jlimit(0, GRID_SIZE - 1, col);
+    }
+    else
+    {
+        row = col = -1;
+    }
+}
+
+void SampleGridComponent::updatePadConnectionStates()
+{
+    // Update each pad's connection state based on its current visual position
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        int row, col;
+        getRowColFromPadIndex(i, row, col);
+        int visualPosition = getVisualPositionFromRowCol(row, col);
+
+        if (visualPosition >= 0 && visualPosition < TOTAL_PADS)
+        {
+            bool connected = masterSearchConnections[visualPosition];
+            samplePads[i]->setConnectedToMaster(connected);
+
+            // Sync current master query if connected
+            if (connected)
+            {
+                String masterQuery = masterSearchPanel.getMasterQuery();
+                if (masterQuery.isNotEmpty())
+                {
+                    samplePads[i]->syncMasterQuery(masterQuery);
+                }
+            }
+        }
+    }
+}
+
+bool SampleGridComponent::hasAnySamplesInConnectedPositions() const
+{
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        if (samplePads[i]->isConnectedToMaster() && samplePads[i]->getSampleInfo().hasValidSample)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void SampleGridComponent::searchSelectedPositions(const String& masterQuery)
+{
+    if (masterQuery.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Empty Query", "Please enter a search term in the master search box.");
+        return;
+    }
+
+    // Check if any connected positions have samples and warn user
+    if (hasAnySamplesInConnectedPositions())
+    {
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Replace Existing Samples",
+            "Some connected pads already have samples loaded. This will replace them with new search results. Continue?",
+            "Yes", "No",
+            nullptr,
+            ModalCallbackFunction::create([this, masterQuery](int result) {
+                if (result == 1) { // User clicked "Yes"
+                    performMasterSearch(masterQuery);
+                }
+            })
+        );
+    }
+    else
+    {
+        performMasterSearch(masterQuery);
+    }
 }
 
 //==============================================================================

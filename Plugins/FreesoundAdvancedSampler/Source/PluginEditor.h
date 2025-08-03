@@ -32,7 +32,7 @@ public:
     void resized() override;
 
     // Download listener methods
-    void downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress) override {};
+    void downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress) override;
     void downloadCompleted(bool success) override;
 
     bool saveCurrentAsPreset(const String& name, const String& description = "", int slotIndex = 0);
@@ -55,6 +55,12 @@ private:
 
     // Store sounds for grid update
     Array<FSSound> currentSounds;
+
+    // Progress bar components
+    ProgressBar progressBar;
+    Label statusLabel;
+    TextButton cancelButton;
+    double currentProgress = 0.0;
 
     // Handle preset loading with slot support
     void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
