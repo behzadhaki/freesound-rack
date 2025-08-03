@@ -65,8 +65,8 @@ private:
     PresetInfo presetInfo;
     bool isSelectedState = false;
 
-    StyledButton deleteButton {"DEL", 8.0f, true};
-    StyledButton sampleCheckButton {"?", 8.0f, false};
+    StyledButton deleteButton {String(CharPointer_UTF8("\xF0\x9F\x97\x91")), 8.0f, true};
+    StyledButton sampleCheckButton {String(CharPointer_UTF8("\xE2\xAC\x87")), 8.0f, false}; // U+2B07 HEAVY BLACK DOWNWARDS ARROW
 
     TextEditor renameEditor;
     std::array<std::unique_ptr<SlotButton>, 8> slotButtons;

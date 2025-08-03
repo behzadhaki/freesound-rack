@@ -205,7 +205,6 @@ void SamplePad::paint(Graphics& g)
     // Top-right badges - CONDITIONAL RENDERING BASED ON MODE
     if (hasValidSample)
     {
-        g.setFont(Font(8.0f, Font::bold));
 
         // Start from top-right and work leftward
         auto topRightBounds = bounds.reduced(4);
@@ -222,11 +221,14 @@ void SamplePad::paint(Graphics& g)
                 Colour(0x808E0000), delBounds.getBottomRight().toFloat(), false));
             g.fillRoundedRectangle(delBounds.toFloat(), 3.0f);
 
-            g.setColour(Colours::white.withAlpha(0.9f));
-            g.drawText("DEL", delBounds, Justification::centred);
+            g.setColour(Colours::white);
+            g.setFont(Font(11.0f, Font::bold)); // Increase from current size and add bold
+            g.drawText(String(CharPointer_UTF8("\xF0\x9F\x97\x91")), delBounds, Justification::centred);
+            g.setFont(Font(8.0f, Font::bold));
 
             topRightBounds.removeFromRight(3);
         }
+
 
         // License badge (middle) - Always show if license exists
         if (licenseType.isNotEmpty())
@@ -257,8 +259,11 @@ void SamplePad::paint(Graphics& g)
                 Colour(0x8001579B), webBounds.getBottomRight().toFloat(), false));
             g.fillRoundedRectangle(webBounds.toFloat(), 3.0f);
 
-            g.setColour(Colours::white.withAlpha(0.9f));
-            g.drawText("Web", webBounds, Justification::centred);
+            g.setColour(Colours::white);
+            g.setFont(Font(11.0f, Font::bold)); // Increase from current size and add bold
+            g.drawText(String(CharPointer_UTF8("\xF0\x9F\x94\x97")), webBounds, Justification::centred);
+            g.setFont(Font(8.0f, Font::bold));
+
         }
     }
 

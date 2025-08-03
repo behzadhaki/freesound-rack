@@ -201,13 +201,14 @@ void PresetListItem::resized()
     // Line 1: Name editor, sample check button, and delete button with more margin
     auto topLine = bounds.withHeight(lineHeight);
 
-    // Sample Check button (leftmost)
-    auto sampleCheckBounds = topLine.removeFromRight(30).reduced(5, 8);
-    sampleCheckButton.setBounds(sampleCheckBounds);
-
     // Delete button
     auto deleteBounds = topLine.removeFromRight(30).reduced(5, 8);
     deleteButton.setBounds(deleteBounds);
+
+    // Sample Check button (leftmost)
+    topLine.removeFromRight(15); // Leave space for delete button
+    auto sampleCheckBounds = topLine.removeFromRight(30).reduced(5, 8);
+    sampleCheckButton.setBounds(sampleCheckBounds);
 
     // Text editor with remaining space
     int editorHeight = 16;
