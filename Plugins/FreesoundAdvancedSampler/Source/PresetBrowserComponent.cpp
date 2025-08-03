@@ -115,20 +115,20 @@ void SlotButton::setIsActive(bool isActive)
 PresetListItem::PresetListItem(const PresetInfo& info)
    : presetInfo(info)
 {
-   setSize(200, 85); // Reduced height from 120 to 85
+    setSize(200, 85); // Reduced height from 120 to 85
 
-   // Delete Button - smaller size
-   deleteButton.onClick = [this]() {
-       if (onDeleteClicked)
-           onDeleteClicked(this);
-   };
-   addAndMakeVisible(deleteButton);
+    // Delete Button - smaller size
+    deleteButton.onClick = [this]() {
+        if (onDeleteClicked)
+            onDeleteClicked(this);
+    };
+    addAndMakeVisible(deleteButton);
 
-    // Rename Editor - consistent styling
+    // Rename Editor - consistent styling with smaller font
     renameEditor.setText(presetInfo.name, dontSendNotification);
     renameEditor.setJustification(Justification::centredLeft);
     renameEditor.setSelectAllWhenFocused(true);
-    renameEditor.setFont(Font(10.0f, Font::bold));
+    renameEditor.setFont(Font(20.0f, Font::bold)); // Reduced from 10.0f to 9.0f
     renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
     renameEditor.setColour(TextEditor::textColourId, Colours::white);
     renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
@@ -136,21 +136,21 @@ PresetListItem::PresetListItem(const PresetInfo& info)
     renameEditor.onReturnKey = [this]() { confirmRename(); };
     addAndMakeVisible(renameEditor);
 
-   // Create slot buttons - smaller size
-   for (int i = 0; i < 8; ++i)
-   {
-       slotButtons[i] = std::make_unique<SlotButton>(i);
-       slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
-       slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
-       slotButtons[i]->setSize(16, 16); // Reduced from 20x20 to 16x16
+    // Create slot buttons - smaller size
+    for (int i = 0; i < 8; ++i)
+    {
+        slotButtons[i] = std::make_unique<SlotButton>(i);
+        slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
+        slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
+        slotButtons[i]->setSize(16, 16); // Reduced from 20x20 to 16x16
 
-       slotButtons[i]->onClick = [this, i]() {
-           ModifierKeys modifiers = ModifierKeys::getCurrentModifiers();
-           handleSlotClicked(i, modifiers);
-       };
+        slotButtons[i]->onClick = [this, i]() {
+            ModifierKeys modifiers = ModifierKeys::getCurrentModifiers();
+            handleSlotClicked(i, modifiers);
+        };
 
-       addAndMakeVisible(*slotButtons[i]);
-   }
+        addAndMakeVisible(*slotButtons[i]);
+    }
 }
 
 PresetListItem::~PresetListItem() {}
@@ -166,7 +166,7 @@ void PresetListItem::paint(Graphics& g)
 
     // Border - use same color but different thickness for selection
     g.setColour(Colour(0xff404040)); // Same color for both selected and unselected
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 2.0f : 1.0f); // Thicker when selected
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 4.0f : 1.0f); // Thicker when selected
 
     // Line 2: Info
     auto infoLine = bounds.withHeight(lineHeight).translated(0, lineHeight);
@@ -191,21 +191,28 @@ void PresetListItem::resized()
     auto bounds = getLocalBounds();
     const int lineHeight = bounds.getHeight() / 3;
 
-    // Line 1: Name editor and delete button
+    // Line 1: Name editor and delete button with more margin
     auto topLine = bounds.withHeight(lineHeight);
 
-    // Text editor with rounded corners
-    renameEditor.setBounds(topLine.removeFromLeft(bounds.getWidth() - 45).reduced(4, 2));
+    // Text editor with more vertical margin and reduced height
+    int editorHeight = 16;
+    int verticalMargin = (lineHeight - editorHeight) / 2;
+    auto editorBounds = topLine.removeFromLeft(bounds.getWidth() - 45).reduced(6, verticalMargin);
+    editorBounds.setHeight(editorHeight);
+    renameEditor.setBounds(editorBounds);
+
+    // Set font again in resized to ensure it takes effect
+    renameEditor.setFont(Font(10.0f, Font::bold)); // Try smaller size
     renameEditor.setIndents(8, (renameEditor.getHeight() - renameEditor.getTextHeight()) / 2);
 
-    // Delete button
-    deleteButton.setBounds(topLine.reduced(8, 6));
+    // Delete button with more margin
+    deleteButton.setBounds(topLine.reduced(10, 8));
 
     // Line 3: Centered slot buttons
     auto slotsBounds = bounds.withHeight(lineHeight).translated(0, lineHeight*2);
 
     const int slotSize = 16;
-    const int totalSlotsWidth = (slotSize * 8) + (2 * 7); // 8 slots with 2px spacing
+    const int totalSlotsWidth = (slotSize * 8) + (2 * 7);
     const int startX = (bounds.getWidth() - totalSlotsWidth) / 2;
 
     for (size_t i = 0; i < slotButtons.size(); ++i) {
