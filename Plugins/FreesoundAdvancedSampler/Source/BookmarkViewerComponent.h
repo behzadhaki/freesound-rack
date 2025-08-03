@@ -28,8 +28,6 @@ public:
     BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo);
     ~BookmarkSamplePad() override;
 
-    void mouseDown(const MouseEvent& event) override;
-
     std::function<void(const BookmarkInfo&)> onBookmarkClicked;
 
 private:
@@ -58,15 +56,11 @@ public:
     void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
 
 private:
-    static constexpr int MAX_VISIBLE_PADS = 8;
-    static constexpr int PADS_PER_ROW = 2;
-    static constexpr int MAX_ROWS = MAX_VISIBLE_PADS / PADS_PER_ROW;
-
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
     // UI Components
     Label titleLabel;
-    StyledButton refreshButton { String(CharPointer_UTF8("\xE2\x86\xBB")), 10.0f, false }; // ↻ refresh symbol
+    StyledButton refreshButton { "Refresh", 10.0f, false }; // ↻ refresh symbol
     Viewport bookmarkViewport;
     Component bookmarkContainer;
 

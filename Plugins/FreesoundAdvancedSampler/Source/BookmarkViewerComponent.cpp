@@ -24,26 +24,6 @@ BookmarkSamplePad::~BookmarkSamplePad()
 {
 }
 
-void BookmarkSamplePad::mouseDown(const MouseEvent& event)
-{
-    // Check if this is a click on the waveform area (not on badges)
-    auto bounds = getLocalBounds();
-    auto waveformBounds = bounds.reduced(8);
-    waveformBounds.removeFromTop(16); // Space for top line badges
-    waveformBounds.removeFromBottom(16); // Space for bottom line
-
-    if (waveformBounds.contains(event.getPosition()))
-    {
-        // This is a click on the waveform - trigger the bookmark load
-        if (onBookmarkClicked)
-            onBookmarkClicked(bookmark);
-        return;
-    }
-
-    // For other areas, call the parent implementation (handles badges, etc.)
-    SamplePad::mouseDown(event);
-}
-
 //==============================================================================
 // BookmarkViewerComponent Implementation
 //==============================================================================
@@ -92,16 +72,11 @@ void BookmarkViewerComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(8);
 
-    // Top header area
-    auto headerBounds = bounds.removeFromTop(30);
-
     // Title takes most of the header
-    auto titleBounds = headerBounds.removeFromLeft(headerBounds.getWidth() - 35);
-    titleLabel.setBounds(titleBounds);
+    titleLabel.setBounds(bounds.removeFromTop(35));
 
     // Refresh button on the right
-    headerBounds.removeFromLeft(5); // Small spacing
-    refreshButton.setBounds(headerBounds.withWidth(30).withHeight(24));
+    refreshButton.setBounds(bounds.removeFromTop(35)); // 30px for button width
 
     bounds.removeFromTop(8); // Spacing after header
 
@@ -147,7 +122,7 @@ void BookmarkViewerComponent::updateBookmarkPads()
     clearBookmarkPads();
 
     // Calculate total rows needed
-    totalRows = (currentBookmarks.size() + PADS_PER_ROW - 1) / PADS_PER_ROW;
+    totalRows = (currentBookmarks.size());
 
     // Create pads for bookmarks
     createBookmarkPads();
@@ -161,8 +136,8 @@ void BookmarkViewerComponent::createBookmarkPads()
     if (currentBookmarks.isEmpty())
         return;
 
-    const int padWidth = 80;
-    const int padHeight = 80;
+    const int padWidth = 150;
+    const int padHeight = 100;
     const int padSpacing = 4;
 
     int currentRow = 0;
@@ -190,21 +165,11 @@ void BookmarkViewerComponent::createBookmarkPads()
 
         pad->setBounds(x, y, padWidth, padHeight);
 
-        // Set up the click callback
-        pad->onBookmarkClicked = [this](const BookmarkInfo& clickedBookmark) {
-            loadBookmarkIntoSampleGrid(clickedBookmark);
-        };
-
         bookmarkContainer.addAndMakeVisible(pad);
         bookmarkPads.add(pad);
 
         // Move to next position
-        currentCol++;
-        if (currentCol >= PADS_PER_ROW)
-        {
-            currentCol = 0;
-            currentRow++;
-        }
+        currentRow++;
     }
 }
 
