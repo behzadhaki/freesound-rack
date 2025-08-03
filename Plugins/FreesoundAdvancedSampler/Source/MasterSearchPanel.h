@@ -56,6 +56,7 @@ public:
     bool isPositionConnected(int row, int col) const;
 
     void clearAllConnections();
+    void activateAllConnections();
     int getConnectedCount() const;
 
     std::function<void(int, int, bool)> onConnectionChanged;

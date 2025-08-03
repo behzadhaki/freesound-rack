@@ -2679,7 +2679,6 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
     }
 
     // Use the existing Freesound search system
-    // This will trigger a search, download, and eventually call newSoundsReady
     FreesoundClient client(FREESOUND_API_KEY);
 
     // Calculate how many sounds we need
@@ -2687,6 +2686,21 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
 
     try
     {
+        // Request more results than we need to have variety for shuffling
+        // Use page_size parameter (5th parameter) to get multiple results
+        int requestedResults = jmax(numSoundsNeeded * 2, 50); // Request at least 50 or 2x what we need
+
+        /*
+        * SoundList list = client.textSearch(
+            masterQuery, <--- this is the master query
+            "duration:[0 TO 0.5]", <--- filter for short sounds
+            "score", <--- sort by score
+            1,      <--- group by pack
+            1,     <--- page number
+            10000,  <--- page size (max results per page)
+            "id,name,username,license,previews" <--- fields to return
+        );
+         */
         SoundList list = client.textSearch(
             masterQuery,
             "duration:[0 TO 0.5]",
@@ -2699,43 +2713,77 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
 
         Array<FSSound> sounds = list.toArrayOfSounds();
 
+        // 1. Handle no results case
         if (sounds.isEmpty())
         {
             AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
                 "No Results",
                 "No sounds found for the query: " + masterQuery);
 
-            // Clear pending state
+            // Clear pending state and do nothing else
             pendingMasterSearchPads.clear();
             pendingMasterSearchQuery = "";
             return;
         }
 
-        // Randomize the results to get variety
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::shuffle(sounds.begin(), sounds.end(), g);
-
-        // Limit to the number of target pads
-        if (sounds.size() > numSoundsNeeded)
+        // 3. Shuffle results if more than one sound found
+        if (sounds.size() > 1)
         {
-            sounds.removeRange(numSoundsNeeded, sounds.size() - numSoundsNeeded);
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(sounds.begin(), sounds.end(), g);
+            DBG("Shuffled " + String(sounds.size()) + " search results");
         }
 
-        // Create sound info for the processor
+        // 2. Handle insufficient results by repeating them
+        Array<FSSound> finalSounds;
         std::vector<juce::StringArray> soundInfo;
-        for (const auto& sound : sounds)
+
+        if (sounds.size() < numSoundsNeeded)
         {
-            StringArray info;
-            info.add(sound.name);
-            info.add(sound.user);
-            info.add(sound.license);
-            info.add(masterQuery); // Store the master query
-            soundInfo.push_back(info);
+            DBG("Not enough results (" + String(sounds.size()) + "), repeating to fill " + String(numSoundsNeeded) + " pads");
+
+            // Repeat sounds in a cycling manner to fill all target pads
+            for (int i = 0; i < numSoundsNeeded; ++i)
+            {
+                int sourceIndex = i % sounds.size(); // Cycle through available sounds
+                finalSounds.add(sounds[sourceIndex]);
+
+                // Create sound info for each repeated sound
+                StringArray info;
+                info.add(sounds[sourceIndex].name);
+                info.add(sounds[sourceIndex].user);
+                info.add(sounds[sourceIndex].license);
+                info.add(masterQuery); // Store the master query
+                soundInfo.push_back(info);
+            }
+        }
+        else
+        {
+            // We have enough results, just take what we need
+            for (int i = 0; i < numSoundsNeeded; ++i)
+            {
+                finalSounds.add(sounds[i]);
+
+                StringArray info;
+                info.add(sounds[i].name);
+                info.add(sounds[i].user);
+                info.add(sounds[i].license);
+                info.add(masterQuery); // Store the master query
+                soundInfo.push_back(info);
+            }
+        }
+
+        DBG("Final sound selection: " + String(finalSounds.size()) + " sounds for " + String(numSoundsNeeded) + " pads");
+
+        // Log which sounds will be used (helpful for debugging repeats)
+        for (int i = 0; i < finalSounds.size(); ++i)
+        {
+            DBG("  Pad " + String(i) + ": " + finalSounds[i].name + " (ID: " + finalSounds[i].id + ")");
         }
 
         // This will trigger the existing download system
-        processor->newSoundsReady(sounds, masterQuery, soundInfo);
+        processor->newSoundsReady(finalSounds, masterQuery, soundInfo);
 
         DBG("Master search initiated for " + String(targetPadIndices.size()) + " pads with query: " + masterQuery);
     }

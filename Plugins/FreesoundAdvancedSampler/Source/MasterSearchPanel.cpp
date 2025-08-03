@@ -163,6 +163,17 @@ void PadSelectionGrid::clearAllConnections()
     }
 }
 
+void PadSelectionGrid::activateAllConnections()
+{
+    for (int row = 0; row < GRID_SIZE; ++row)
+    {
+        for (int col = 0; col < GRID_SIZE; ++col)
+        {
+            setPositionConnected(row, col, true);
+        }
+    }
+}
+
 int PadSelectionGrid::getConnectedCount() const
 {
     int count = 0;
@@ -376,7 +387,10 @@ void MasterSearchPanel::handleSearchSelectedClicked()
 
 void MasterSearchPanel::handleActivateAll(bool activate_all)
 {
-    selectionGrid.clearAllConnections();
+    if (activate_all)
+        selectionGrid.activateAllConnections();
+    else
+        selectionGrid.clearAllConnections();
 
     // Update the main grid
     if (sampleGrid)
