@@ -94,6 +94,8 @@ public:
 
     void createNewPresetBank();
 
+    void restoreActiveState();
+
 private:
     FreesoundAdvancedSamplerAudioProcessor* processor;
 

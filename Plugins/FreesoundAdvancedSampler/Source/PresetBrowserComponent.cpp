@@ -810,3 +810,28 @@ void PresetBrowserComponent::saveCurrentPreset()
 }
 
 void PresetBrowserComponent::scrollBarMoved(ScrollBar*, double) {}
+
+void PresetBrowserComponent::restoreActiveState()
+{
+    if (!processor)
+        return;
+
+    File activePresetFile = processor->getPresetManager().getActivePresetFile();
+    int activeSlotIndex = processor->getPresetManager().getActiveSlotIndex();
+
+    if (!activePresetFile.existsAsFile() || activeSlotIndex < 0)
+        return;
+
+    DBG("Restoring active state: " + activePresetFile.getFileName() + ", slot " + String(activeSlotIndex));
+
+    // Find the matching preset item and update its active slot
+    for (auto* item : presetItems)
+    {
+        if (item && item->getPresetInfo().presetFile == activePresetFile)
+        {
+            item->updateActiveSlot(activeSlotIndex);
+            handleItemClicked(item); // Also select the preset item
+            break;
+        }
+    }
+}

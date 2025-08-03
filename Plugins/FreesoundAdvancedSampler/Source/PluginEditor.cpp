@@ -84,6 +84,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
         }
     });
 
+    Timer::callAfterDelay(100, [this]() {
+    if (auto* safeThis = this; safeThis != nullptr)
+    {
+        presetBrowserComponent.restoreActiveState();
+    }
+});
+
 }
 
 FreesoundAdvancedSamplerAudioProcessorEditor::~FreesoundAdvancedSamplerAudioProcessorEditor()
