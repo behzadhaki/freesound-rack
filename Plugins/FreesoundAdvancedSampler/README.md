@@ -2,8 +2,6 @@
 ---
 
 priority 1:
-- highlight active preset
-- shuffle same positions
 - underline selected preset
 - if file deleted, use json path to download it
 

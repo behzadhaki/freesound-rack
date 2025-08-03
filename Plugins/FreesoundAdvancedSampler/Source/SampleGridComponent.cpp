@@ -1549,41 +1549,59 @@ void SampleGridComponent::shuffleSamples()
     if (!processor)
         return;
 
-    // Collect all current sample info
-    Array<SamplePad::SampleInfo> allSamples;
+    // Collect samples WITH their current pad indices
+    Array<std::pair<int, SamplePad::SampleInfo>> samplesWithIndices;
+    Array<int> occupiedPadIndices;
+
     for (int i = 0; i < TOTAL_PADS; ++i)
     {
         auto sampleInfo = samplePads[i]->getSampleInfo();
         if (sampleInfo.hasValidSample)
         {
-            allSamples.add(sampleInfo);
+            samplesWithIndices.add({i, sampleInfo});
+            occupiedPadIndices.add(i);
         }
     }
 
     // If we have no samples or only one sample, nothing to shuffle
-    if (allSamples.size() <= 1)
+    if (samplesWithIndices.size() <= 1)
         return;
 
-    // Clear all pads first
-    for (auto& pad : samplePads)
+    // Extract just the sample info for shuffling
+    Array<SamplePad::SampleInfo> samplesToShuffle;
+    for (const auto& pair : samplesWithIndices)
     {
-        pad->clearSample();
+        samplesToShuffle.add(pair.second);
     }
 
     // Shuffle the samples array using JUCE's Random class
     Random random;
-    for (int i = allSamples.size() - 1; i > 0; --i)
+    for (int i = samplesToShuffle.size() - 1; i > 0; --i)
     {
         int j = random.nextInt(i + 1);
-        allSamples.swap(i, j);
+        samplesToShuffle.swap(i, j);
     }
 
-    // Redistribute shuffled samples to pads
-    for (int i = 0; i < allSamples.size() && i < TOTAL_PADS; ++i)
+    // Clear only the occupied pads
+    for (int padIndex : occupiedPadIndices)
     {
-        const auto& sample = allSamples[i];
-        samplePads[i]->setSample(sample.audioFile, sample.sampleName,
-                                sample.authorName, sample.freesoundId, sample.licenseType);
+        samplePads[padIndex]->clearSample();
+    }
+
+    // Redistribute shuffled samples back to the SAME occupied positions
+    for (int i = 0; i < samplesToShuffle.size() && i < occupiedPadIndices.size(); ++i)
+    {
+        const auto& sample = samplesToShuffle[i];
+        int targetPadIndex = occupiedPadIndices[i];
+
+        samplePads[targetPadIndex]->setSample(
+            sample.audioFile,
+            sample.sampleName,
+            sample.authorName,
+            sample.freesoundId,
+            sample.licenseType,
+            sample.query  // Preserve the query
+        );
     }
 
     // Update processor arrays to match new order
@@ -1593,10 +1611,7 @@ void SampleGridComponent::shuffleSamples()
     if (processor)
     {
         processor->setSources();
-        // REMOVED: processor->updateReadmeFile();
     }
-
-    // DBG("Samples shuffled successfully");
 }
 
 void SampleGridComponent::updateProcessorArraysFromGrid()
