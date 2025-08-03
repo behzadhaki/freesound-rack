@@ -14,6 +14,7 @@
 #include "FreesoundAPI/FreesoundAPI.h"
 #include "AudioDownloadManager.h"
 #include "PresetManager.h"
+#include "BookmarkManager.h"
 
 using namespace juce;
 
@@ -154,6 +155,8 @@ public:
 	bool getPresetPanelExpandedState() const { return presetPanelExpandedState; }
 	void setPresetPanelExpandedState(bool state) { presetPanelExpandedState = state; }
 
+	BookmarkManager& getBookmarkManager() { return bookmarkManager; } // Add this method
+
 private:
 	// editor size
 	int savedWindowWidth = 1000;   // Default width
@@ -196,6 +199,8 @@ private:
     void notifyPlayheadPositionChanged(int noteNumber, float position);
 
 	PresetManager presetManager;
+
+	BookmarkManager bookmarkManager; // Add this
 
 	void savePluginState(XmlElement& xml);
 	void loadPluginState(const XmlElement& xml);

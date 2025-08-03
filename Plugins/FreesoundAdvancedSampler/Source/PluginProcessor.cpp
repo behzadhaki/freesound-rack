@@ -74,6 +74,7 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
                        .withOutput ("Output", AudioChannelSet::stereo(), true)
                      #endif
                        ), presetManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler"))
+                        , bookmarkManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler")) // Add this
 #endif
 {
     tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");

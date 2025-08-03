@@ -133,7 +133,9 @@ private:
     File getWavFile() const;  // Get corresponding WAV file path
     bool convertOggToWav(const File& oggFile, const File& wavFile);  // Convert OGG to WAV
     void handleWavCopyClick();  // Handle WAV drag
-    
+
+    void handleBookmarkClick();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
 

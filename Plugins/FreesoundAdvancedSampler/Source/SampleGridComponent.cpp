@@ -220,6 +220,41 @@ void SamplePad::paint(Graphics& g)
         g.drawText("Copy", copyBounds, Justification::centred);
     }
 
+    // Bookmark badge (next to Copy) - Always show if sample exists
+    if (hasValidSample)
+    {
+        topLeftLine.removeFromLeft(3); // Small spacing after copy
+        int bookmarkBadgeWidth = 28;
+        auto bookmarkBounds = topLeftLine.removeFromLeft(bookmarkBadgeWidth);
+
+        // Check if this sample is bookmarked
+        bool isBookmarked = false;
+        if (processor)
+        {
+            isBookmarked = processor->getBookmarkManager().isBookmarked(freesoundId);
+        }
+
+        // Different colors for bookmarked vs unbookmarked
+        if (isBookmarked)
+        {
+            g.setGradientFill(ColourGradient(
+                Colour(0x80FFD700), bookmarkBounds.getTopLeft().toFloat(),  // Gold for bookmarked
+                Colour(0x80FFA500), bookmarkBounds.getBottomRight().toFloat(), false));
+        }
+        else
+        {
+            g.setGradientFill(ColourGradient(
+                Colour(0x80808080), bookmarkBounds.getTopLeft().toFloat(),  // Gray for not bookmarked
+                Colour(0x80606060), bookmarkBounds.getBottomRight().toFloat(), false));
+        }
+
+        g.fillRoundedRectangle(bookmarkBounds.toFloat(), 3.0f);
+
+        g.setColour(Colours::white);
+        g.setFont(Font(10.0f, Font::bold));
+        g.drawText(String(CharPointer_UTF8("\xE2\x98\x85")), bookmarkBounds, Justification::centred); // ★ star
+    }
+
     // Top-right badges - CONDITIONAL RENDERING BASED ON MODE
     if (hasValidSample)
     {
@@ -498,6 +533,19 @@ void SamplePad::mouseDown(const MouseEvent& event)
         if (copyBounds.contains(event.getPosition()))
         {
             handleCopyClick();
+            return;
+        }
+    }
+
+    if (hasValidSample)
+    {
+        topLeftBounds.removeFromLeft(3); // Spacing after copy
+        int bookmarkBadgeWidth = 28;
+        auto bookmarkBounds = topLeftBounds.removeFromLeft(bookmarkBadgeWidth);
+
+        if (bookmarkBounds.contains(event.getPosition()))
+        {
+            handleBookmarkClick();
             return;
         }
     }
@@ -1401,6 +1449,43 @@ void SamplePad::handleWavCopyClick()
     });
 }
 
+void SamplePad::handleBookmarkClick()
+{
+    if (!hasValidSample || !processor)
+        return;
+
+    BookmarkManager& bookmarkManager = processor->getBookmarkManager();
+
+    if (bookmarkManager.isBookmarked(freesoundId))
+    {
+        // Remove bookmark
+        if (bookmarkManager.removeBookmark(freesoundId))
+        {
+            repaint(); // Update visual state
+        }
+    }
+    else
+    {
+        // Add bookmark
+        BookmarkInfo bookmark;
+        bookmark.freesoundId = freesoundId;
+        bookmark.sampleName = sampleName;
+        bookmark.authorName = authorName;
+        bookmark.licenseType = licenseType;
+        bookmark.searchQuery = getQuery();
+        bookmark.fileName = audioFile.getFileName();
+        bookmark.duration = 0.5; // Default, could get from FSSound if available
+        bookmark.fileSize = (int)audioFile.getSize();
+        bookmark.bookmarkedAt = Time::getCurrentTime().toString(true, true);
+        bookmark.freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+
+        if (bookmarkManager.addBookmark(bookmark))
+        {
+            repaint(); // Update visual state
+        }
+    }
+}
+
 //==============================================================================
 // SampleGridComponent Implementation
 //==============================================================================
@@ -1524,6 +1609,7 @@ void SampleGridComponent::paint(Graphics& g)
         Rectangle<int> padBounds(x, y, padWidth, padHeight);
 
     }
+
 }
 
 void SampleGridComponent::resized()

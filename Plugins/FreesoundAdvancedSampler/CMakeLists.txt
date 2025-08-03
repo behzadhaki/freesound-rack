@@ -30,6 +30,7 @@ target_sources(${BaseTargetName} PRIVATE
         Source/PresetManager.cpp
         Source/ExpandablePanel.cpp
         Source/MasterSearchPanel.cpp
+        Source/BookmarkManager.cpp
 )
 
 target_compile_definitions(${BaseTargetName}

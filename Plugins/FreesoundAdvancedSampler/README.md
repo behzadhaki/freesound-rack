@@ -2,9 +2,10 @@
 ---
 
 priority 1:
-- bookmarker
+- create a multi-tab sample pad 
 
 priority 2:
+- bookmarker
 - audio router
 - mute/solo
 
