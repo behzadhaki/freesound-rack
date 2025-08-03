@@ -84,9 +84,10 @@ void SamplePad::resized()
     // Position query text box or progress components at the bottom
     auto bottomBounds = bounds.reduced(3);
     int bottomHeight = 14;
-    int dragBadgeWidth = 28;
-    int copyBadgeWidth = 28;   // NEW: Copy badge width
-    int searchBadgeWidth = 32;
+    int oggBadgeWidth = 28;     //  .ogg badge
+    int wavBadgeWidth = 28;     //  .wav badge
+    int copyBadgeWidth = 28;    // Copy badge
+    int searchBadgeWidth = 32;  // Search badge
     int badgeSpacing = 3;
 
     bottomBounds = bottomBounds.removeFromBottom(bottomHeight);
@@ -95,8 +96,6 @@ void SamplePad::resized()
     {
         // Show progress bar and label instead of query text box
         auto progressArea = bottomBounds.reduced(2);
-
-        // Split area: progress bar on top, label below
         auto labelBounds = progressArea.removeFromBottom(8);
         progressLabel->setBounds(labelBounds);
         progressBar->setBounds(progressArea);
@@ -104,9 +103,10 @@ void SamplePad::resized()
     else if (!isDownloading)
     {
         // Normal layout with query text box
-        // Remove space for: Drag badge + Copy badge + Search badge + spacing
-        bottomBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);
-        bottomBounds.removeFromLeft(copyBadgeWidth + badgeSpacing);  // NEW: Space for copy badge
+        // Remove space for: .ogg + .wav + Copy + Search badges + spacing
+        bottomBounds.removeFromLeft(oggBadgeWidth + badgeSpacing);
+        bottomBounds.removeFromLeft(wavBadgeWidth + badgeSpacing);
+        bottomBounds.removeFromLeft(copyBadgeWidth + badgeSpacing);
         bottomBounds.removeFromRight(searchBadgeWidth + badgeSpacing);
         queryTextBox.setBounds(bottomBounds);
     }
@@ -320,28 +320,44 @@ void SamplePad::paint(Graphics& g)
     {
         g.setFont(Font(8.0f, Font::bold));
 
-        // Drag badge - Always show if sample exists
-        auto dragBounds = bounds.reduced(4);
-        int badgeWidth = 28;
+        // .ogg badge (leftmost)
+        auto oggBounds = bounds.reduced(4);
+        int oggBadgeWidth = 28;
         int badgeHeight = 14;
-        dragBounds = dragBounds.removeFromBottom(badgeHeight).removeFromLeft(badgeWidth);
+        oggBounds = oggBounds.removeFromBottom(badgeHeight).removeFromLeft(oggBadgeWidth);
 
         g.setGradientFill(ColourGradient(
-            Colour(0x804ECDC4), dragBounds.getTopLeft().toFloat(),
-            Colour(0x8026A69A), dragBounds.getBottomRight().toFloat(), false));
-        g.fillRoundedRectangle(dragBounds.toFloat(), 3.0f);
+            Colour(0x804ECDC4), oggBounds.getTopLeft().toFloat(),
+            Colour(0x8026A69A), oggBounds.getBottomRight().toFloat(), false));
+        g.fillRoundedRectangle(oggBounds.toFloat(), 3.0f);
 
         g.setColour(Colours::white);
-        g.drawText("Drag", dragBounds, Justification::centred);
+        g.drawText(".ogg", oggBounds, Justification::centred);
 
-        // Copy badge - Always show if sample exists
-        auto copyBounds = bounds.reduced(4);
-        int dragBadgeWidth = 26;
-        int copyBadgeWidth = 26;
+        // .wav badge (second)
+        auto wavBounds = bounds.reduced(4);
+        int wavBadgeWidth = 28;
         int badgeSpacing = 3;
 
+        wavBounds = wavBounds.removeFromBottom(badgeHeight);
+        wavBounds.removeFromLeft(oggBadgeWidth + badgeSpacing);  // Skip .ogg badge
+        wavBounds = wavBounds.removeFromLeft(wavBadgeWidth);
+
+        g.setGradientFill(ColourGradient(
+            Colour(0x806A5ACD), wavBounds.getTopLeft().toFloat(),      // Purple/slate blue color
+            Colour(0x804B0082), wavBounds.getBottomRight().toFloat(), false));
+        g.fillRoundedRectangle(wavBounds.toFloat(), 3.0f);
+
+        g.setColour(Colours::white);
+        g.drawText(".wav", wavBounds, Justification::centred);
+
+        // Copy badge (third)
+        auto copyBounds = bounds.reduced(4);
+        int copyBadgeWidth = 28;
+
         copyBounds = copyBounds.removeFromBottom(badgeHeight);
-        copyBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);
+        copyBounds.removeFromLeft(oggBadgeWidth + badgeSpacing);  // Skip .ogg badge
+        copyBounds.removeFromLeft(wavBadgeWidth + badgeSpacing);  // Skip .wav badge
         copyBounds = copyBounds.removeFromLeft(copyBadgeWidth);
 
         g.setGradientFill(ColourGradient(
@@ -381,6 +397,7 @@ void SamplePad::paint(Graphics& g)
         emptyBounds.removeFromBottom(18);
         g.drawText("Empty", emptyBounds, Justification::centred);
     }
+
 }
 
 String SamplePad::getKeyboardKeyForPad(int padIndex) const
@@ -518,15 +535,40 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (hasValidSample)
     {
         auto bottomBounds = bounds.reduced(3);
-        int dragBadgeWidth = 26;
-        int copyBadgeWidth = 26;
+        int oggBadgeWidth = 28;
+        int wavBadgeWidth = 28;
+        int copyBadgeWidth = 28;
         int badgeHeight = 12;
         int badgeSpacing = 3;
 
         bottomBounds = bottomBounds.removeFromBottom(badgeHeight);
-        bottomBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);  // Skip drag badge
-        auto copyBounds = bottomBounds.removeFromLeft(copyBadgeWidth);
 
+        // Check .ogg badge (leftmost)
+        auto oggBounds = bottomBounds.removeFromLeft(oggBadgeWidth);
+        if (oggBounds.contains(event.getPosition()))
+        {
+            // Handle .ogg drag preparation (visual feedback only)
+            setMouseCursor(MouseCursor::DraggingHandCursor);
+            Timer::callAfterDelay(3000, [this]() {
+                setMouseCursor(MouseCursor::NormalCursor);
+            });
+            return;
+        }
+
+        bottomBounds.removeFromLeft(badgeSpacing);
+
+        // Check .wav badge (second)
+        auto wavBounds = bottomBounds.removeFromLeft(wavBadgeWidth);
+        if (wavBounds.contains(event.getPosition()))
+        {
+            handleWavCopyClick();
+            return;
+        }
+
+        bottomBounds.removeFromLeft(badgeSpacing);
+
+        // Check Copy badge (third)
+        auto copyBounds = bottomBounds.removeFromLeft(copyBadgeWidth);
         if (copyBounds.contains(event.getPosition()))
         {
             handleCopyClick();
@@ -583,18 +625,65 @@ void SamplePad::mouseDrag(const MouseEvent& event)
         }
     }
 
-    // Check if drag started on the COPY badge - Always available
+    // Check drag from bottom badges: .ogg, .wav, Copy
     {
-        auto copyBounds = bounds.reduced(3);
-        int dragBadgeWidth = 26;
-        int copyBadgeWidth = 26;
+        auto bottomBounds = bounds.reduced(3);
+        int oggBadgeWidth = 28;
+        int wavBadgeWidth = 28;
+        int copyBadgeWidth = 28;
         int badgeHeight = 12;
         int badgeSpacing = 3;
 
-        copyBounds = copyBounds.removeFromBottom(badgeHeight);
-        copyBounds.removeFromLeft(dragBadgeWidth + badgeSpacing);  // Skip drag badge
-        copyBounds = copyBounds.removeFromLeft(copyBadgeWidth);
+        bottomBounds = bottomBounds.removeFromBottom(badgeHeight);
 
+        // Check if drag started on .ogg badge (leftmost)
+        auto oggBounds = bottomBounds.removeFromLeft(oggBadgeWidth);
+        if (oggBounds.contains(event.getMouseDownPosition()))
+        {
+            // Start regular OGG file drag operation
+            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
+            {
+                StringArray filePaths;
+                filePaths.add(audioFile.getFullPathName());
+                performExternalDragDropOfFiles(filePaths, false);
+            }
+            return;
+        }
+
+        bottomBounds.removeFromLeft(badgeSpacing);
+
+        // Check if drag started on .wav badge (second)
+        auto wavBounds = bottomBounds.removeFromLeft(wavBadgeWidth);
+        if (wavBounds.contains(event.getMouseDownPosition()))
+        {
+            // Start WAV file drag operation
+            if (event.getDistanceFromDragStart() > 10)
+            {
+                File wavFile = getWavFile();
+
+                // Convert if needed
+                if (!wavFile.existsAsFile())
+                {
+                    if (!convertOggToWav(audioFile, wavFile))
+                    {
+                        return; // Conversion failed
+                    }
+                }
+
+                if (wavFile.existsAsFile())
+                {
+                    StringArray filePaths;
+                    filePaths.add(wavFile.getFullPathName());
+                    performExternalDragDropOfFiles(filePaths, false);
+                }
+            }
+            return;
+        }
+
+        bottomBounds.removeFromLeft(badgeSpacing);
+
+        // Check if drag started on Copy badge (third)
+        auto copyBounds = bottomBounds.removeFromLeft(copyBadgeWidth);
         if (copyBounds.contains(event.getMouseDownPosition()))
         {
             // Start enhanced drag operation with metadata
@@ -613,6 +702,7 @@ void SamplePad::mouseDrag(const MouseEvent& event)
         // No dragging from waveform area - only triggering
         return;
     }
+
 
     // Check if drag started on web or license badges - no dragging (both modes)
     auto topBounds = bounds.reduced(3);
@@ -1171,6 +1261,110 @@ void SamplePad::syncMasterQuery(const String& masterQuery)
     }
 }
 
+File SamplePad::getWavFile() const
+{
+    if (!hasValidSample || freesoundId.isEmpty())
+        return File();
+
+    // Get the same directory as the OGG file
+    File oggFile = audioFile;
+    File parentDir = oggFile.getParentDirectory();
+
+    // Create WAV filename: FS_ID_XXXX.wav
+    String wavFileName = "FS_ID_" + freesoundId + ".wav";
+    return parentDir.getChildFile(wavFileName);
+}
+
+bool SamplePad::convertOggToWav(const File& oggFile, const File& wavFile)
+{
+    if (!oggFile.existsAsFile())
+        return false;
+
+    // Use JUCE's audio format manager to read OGG and write WAV
+    AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Read the OGG file
+    std::unique_ptr<AudioFormatReader> reader(formatManager.createReaderFor(oggFile));
+    if (!reader)
+        return false;
+
+    // Create WAV writer
+    WavAudioFormat wavFormat;
+    std::unique_ptr<FileOutputStream> outputStream(wavFile.createOutputStream());
+    if (!outputStream)
+        return false;
+
+    std::unique_ptr<AudioFormatWriter> writer(wavFormat.createWriterFor(
+        outputStream.get(),
+        reader->sampleRate,
+        reader->numChannels,
+        16, // 16-bit
+        {},
+        0
+    ));
+
+    if (!writer)
+        return false;
+
+    // Release the output stream ownership to the writer
+    outputStream.release();
+
+    // Copy audio data
+    const int bufferSize = 8192;
+    AudioBuffer<float> buffer(reader->numChannels, bufferSize);
+
+    int64 samplesRemaining = reader->lengthInSamples;
+    int64 currentPosition = 0;
+
+    while (samplesRemaining > 0)
+    {
+        int samplesToRead = jmin((int64)bufferSize, samplesRemaining);
+
+        if (!reader->read(&buffer, 0, samplesToRead, currentPosition, true, true))
+            break;
+
+        if (!writer->writeFromAudioSampleBuffer(buffer, 0, samplesToRead))
+            break;
+
+        currentPosition += samplesToRead;
+        samplesRemaining -= samplesToRead;
+    }
+
+    // Cleanup is automatic with unique_ptr
+    return wavFile.existsAsFile();
+}
+
+void SamplePad::handleWavCopyClick()
+{
+    if (!hasValidSample)
+        return;
+
+    File wavFile = getWavFile();
+
+    // Check if WAV file already exists
+    if (!wavFile.existsAsFile())
+    {
+        // Convert OGG to WAV
+        if (!convertOggToWav(audioFile, wavFile))
+        {
+            AlertWindow::showMessageBoxAsync(
+                AlertWindow::WarningIcon,
+                "Conversion Failed",
+                "Failed to convert OGG file to WAV format.");
+            return;
+        }
+    }
+
+    // Set cursor to indicate WAV dragging
+    setMouseCursor(MouseCursor::CopyingCursor);
+
+    // Reset cursor after delay
+    Timer::callAfterDelay(3000, [this]() {
+        setMouseCursor(MouseCursor::NormalCursor);
+    });
+}
+
 //==============================================================================
 // SampleGridComponent Implementation
 //==============================================================================
@@ -1293,9 +1487,6 @@ void SampleGridComponent::paint(Graphics& g)
 
         Rectangle<int> padBounds(x, y, padWidth, padHeight);
 
-        // Draw enhanced drop highlight
-        g.setColour(Colour(0x8000FF00)); // Bright green for enhanced drops
-        g.drawRoundedRectangle(padBounds.toFloat().reduced(2), 6.0f, 3.0f);
     }
 }
 
@@ -2537,9 +2728,61 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     var metadata = JSON::parse(jsonMetadata);
     if (!metadata.isObject())
     {
-        // DBG("Invalid metadata JSON");
         return;
     }
+
+    // Extract sample information
+    String freesoundId = metadata.getProperty("freesound_id", "");
+    String sampleName = metadata.getProperty("sample_name", "Unknown");
+    String authorName = metadata.getProperty("author_name", "Unknown");
+    String licenseType = metadata.getProperty("license_type", "");
+    String searchQuery = metadata.getProperty("search_query", "");
+
+    // Check if target pad already has a sample
+    auto targetPadInfo = samplePads[targetPadIndex]->getSampleInfo();
+    if (targetPadInfo.hasValidSample)
+    {
+        // Check if it's the same sample (by Freesound ID)
+        if (targetPadInfo.freesoundId == freesoundId)
+        {
+            // Same sample - proceed without confirmation
+            performEnhancedDrop(jsonMetadata, filePaths, targetPadIndex);
+            return;
+        }
+        else
+        {
+            // Different sample exists - ask for confirmation
+            String message = "Pad " + String(targetPadIndex + 1) + " already contains:\n\"" +
+                           targetPadInfo.sampleName + "\" by " + targetPadInfo.authorName + "\n\n" +
+                           "Replace with:\n\"" + sampleName + "\" by " + authorName + "\"?";
+
+            AlertWindow::showOkCancelBox(
+                AlertWindow::QuestionIcon,
+                "Replace Sample",
+                message,
+                "Yes, Replace", "No, Cancel",
+                nullptr,
+                ModalCallbackFunction::create([this, jsonMetadata, filePaths, targetPadIndex](int result) {
+                    if (result == 1) { // User clicked "Yes, Replace"
+                        performEnhancedDrop(jsonMetadata, filePaths, targetPadIndex);
+                    }
+                    // If result == 0, user clicked "No, Cancel" - do nothing
+                })
+            );
+            return;
+        }
+    }
+
+    // Target pad is empty - proceed without confirmation
+    performEnhancedDrop(jsonMetadata, filePaths, targetPadIndex);
+}
+
+void SampleGridComponent::performEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex)
+{
+    // Parse the metadata
+    var metadata = JSON::parse(jsonMetadata);
+    if (!metadata.isObject())
+        return;
 
     // Extract sample information
     String freesoundId = metadata.getProperty("freesound_id", "");
@@ -2552,10 +2795,7 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     // Copy the file to our samples directory if it's not already there
     File sourceFile(filePaths[0]);
     if (!sourceFile.existsAsFile())
-    {
-        // DBG("Source file does not exist: " + sourceFile.getFullPathName());
         return;
-    }
 
     // Determine target file location
     File samplesDir = processor->getCurrentDownloadLocation();
@@ -2566,11 +2806,7 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     if (!targetFile.existsAsFile())
     {
         if (!sourceFile.copyFileTo(targetFile))
-        {
-            // DBG("Failed to copy file to: " + targetFile.getFullPathName());
             return;
-        }
-        // DBG("Copied file to: " + targetFile.getFullPathName());
     }
 
     // Create FSSound object for processor
@@ -2613,7 +2849,6 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     {
         processor->setSources();
     }
-
 }
 
 // Handle regular file drops (existing functionality)

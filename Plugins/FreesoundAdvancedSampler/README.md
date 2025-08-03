@@ -1,18 +1,18 @@
 # todo
 ---
 
-priority 2:
-- mute/solo
-- audio router
-- search settings tab (duration, ...)
-- drag as wav file
-
-priority 3:
+priority 1:
 - bookmarker
-- download sample if not available
-- looper
+
+priority 2:
+- audio router
+- mute/solo
+
+priority 2:
+- search settings tab (duration, ...)
 
 priority 4:
+- looper
 - per pad controls
 - connect to user account
 - search by sound feature (similarity search)

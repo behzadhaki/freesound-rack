@@ -117,7 +117,7 @@ private:
     bool isPlaying;
     bool hasValidSample;
     bool isDragHover;
-    bool connectedToMaster = false; // NEW: Master search connection state
+    bool connectedToMaster = false; // Master search connection state
 
     Colour padColour;
     TextEditor queryTextBox;
@@ -129,6 +129,10 @@ private:
     bool pendingCleanup = false;
     double currentDownloadProgress = 0.0;
 
+    File getWavFile() const;  // Get corresponding WAV file path
+    bool convertOggToWav(const File& oggFile, const File& wavFile);  // Convert OGG to WAV
+    void handleWavCopyClick();  // Handle WAV drag
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
 
@@ -243,6 +247,7 @@ private:
     int dragHoverPadIndex = -1;
 
     void handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex);
+    void performEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex); // NEW helper method
     void handleFileDrop(const StringArray& filePaths, int targetPadIndex);
     int getPadIndexFromPosition(Point<int> position);
 
@@ -255,6 +260,7 @@ private:
     String pendingMasterSearchQuery;
     Array<FSSound> pendingMasterSearchSounds;
     std::vector<StringArray> pendingMasterSearchSoundInfo;
+
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };
