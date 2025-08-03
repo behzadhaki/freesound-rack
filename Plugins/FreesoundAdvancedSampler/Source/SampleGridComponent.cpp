@@ -29,7 +29,7 @@ SamplePad::SamplePad(int index, bool isSearchable)
     , hasValidSample(false)
     , isDragHover(false)
     , currentDownloadProgress(0.0)
-    , isSearchableMode(isSearchable)  // Initialize new member
+    , isSearchableMode(isSearchable)
 {
     formatManager.registerBasicFormats();
 
@@ -37,28 +37,20 @@ SamplePad::SamplePad(int index, bool isSearchable)
     float hue = (float)padIndex / 16.0f;
     padColour = Colour::fromHSV(hue, 0.3f, 0.8f, 1.0f);
 
-    // Set up query text box with conditional behavior
+    // Set up query text box with CONSISTENT styling always
     queryTextBox.setMultiLine(false);
     queryTextBox.setReturnKeyStartsNewLine(false);
-    queryTextBox.setReadOnly(!isSearchableMode);
+    queryTextBox.setReadOnly(!isSearchableMode);  // Only read-only if not searchable
     queryTextBox.setScrollbarsShown(false);
     queryTextBox.setCaretVisible(isSearchableMode);
     queryTextBox.setPopupMenuEnabled(isSearchableMode);
 
-    // FIX: Ensure correct colors for both modes
-    if (isSearchableMode)
-    {
-        queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.8f));
-        queryTextBox.setColour(TextEditor::textColourId, Colours::black); // Black text on white background
-    }
-    else
-    {
-        queryTextBox.setColour(TextEditor::backgroundColourId, Colours::grey.withAlpha(0.6f));
-        queryTextBox.setColour(TextEditor::textColourId, Colours::white); // White text for view-only mode
-    }
-
+    // CONSISTENT styling for all states - dark background with white text
+    queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+    queryTextBox.setColour(TextEditor::textColourId, Colours::white);
     queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
-    queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
+    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));
+    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
     queryTextBox.setFont(Font(9.0f));
 
     // Only add search functionality if searchable
@@ -925,18 +917,10 @@ void SamplePad::clearSample()
     playheadPosition = 0.0f;
     audioThumbnail.clear();
 
-    // Only clear text box if not connected to master
+    // Only clear text box if not connected to master - NO color changes
     if (!connectedToMaster)
     {
         queryTextBox.setText("", dontSendNotification);
-
-        // Ensure proper colors for empty independent slot
-        if (isSearchableMode)
-        {
-            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.9f));
-            queryTextBox.setColour(TextEditor::textColourId, Colours::black);
-            queryTextBox.repaint();
-        }
     }
 
     resized();
@@ -1138,12 +1122,10 @@ void SamplePad::setConnectedToMaster(bool connected)
     {
         connectedToMaster = connected;
 
-        // Update text editor state
+        // Only change read-only state, NOT styling
         if (connectedToMaster)
         {
             queryTextBox.setReadOnly(true);
-            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::grey.withAlpha(0.4f));
-            queryTextBox.setColour(TextEditor::textColourId, Colours::lightblue);
         }
         else if (isSearchableMode)
         {
@@ -1163,27 +1145,12 @@ void SamplePad::setConnectedToMaster(bool connected)
                 DBG("Pad " + String(padIndex) + " disconnected - keeping previous query: '" + queryToRestore + "'");
             }
 
-            // ALWAYS restore normal styling for independent mode - regardless of empty/filled
-            queryTextBox.setReadOnly(false);
-
-            // Set colors BEFORE setting text (for both empty and filled slots)
-            queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.9f));
-            queryTextBox.setColour(TextEditor::textColourId, Colours::black);
-            queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
-            queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
-            queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colours::blue);
-
-            // Force repaint of text editor BEFORE setting text
-            queryTextBox.repaint();
-
-            // Update the text box with the restored query AFTER color setting
+            // Update the text box with the restored query
             queryTextBox.setText(queryToRestore, dontSendNotification);
-            padQuery = queryToRestore; // Update padQuery to match (even for empty slots)
+            padQuery = queryToRestore; // Update padQuery to match
 
-            // Force another repaint AFTER setting text
-            queryTextBox.repaint();
-
-            DBG("Pad " + String(padIndex) + " colors reset - background: white, text: black, query: '" + queryToRestore + "', hasValidSample: " + String(hasValidSample ? "YES" : "NO"));
+            // Restore editable state
+            queryTextBox.setReadOnly(false);
         }
 
         repaint();
@@ -1194,14 +1161,57 @@ void SamplePad::syncMasterQuery(const String& masterQuery)
 {
     if (connectedToMaster)
     {
-        // Update the text box to show master query
+        // Update the text box to show master query - NO color changes
         queryTextBox.setText(masterQuery, dontSendNotification);
 
         // DON'T update padQuery here - it should preserve the sample's original query
-        // padQuery remains unchanged so we can restore it when disconnecting
-
         DBG("Pad " + String(padIndex) + " synced master query: '" + masterQuery + "' (sample query preserved: '" + padQuery + "')");
     }
+}
+
+void SamplePad::resetTextEditorForIndependentMode(const String& textToSet)
+{
+    // Remove the current text editor
+    removeChildComponent(&queryTextBox);
+
+    // Completely reinitialize it
+    queryTextBox.setMultiLine(false);
+    queryTextBox.setReturnKeyStartsNewLine(false);
+    queryTextBox.setReadOnly(false);
+    queryTextBox.setScrollbarsShown(false);
+    queryTextBox.setCaretVisible(true);
+    queryTextBox.setPopupMenuEnabled(true);
+
+    // Set colors from scratch
+    queryTextBox.setColour(TextEditor::backgroundColourId, Colours::white.withAlpha(0.9f));
+    queryTextBox.setColour(TextEditor::textColourId, Colours::black);
+    queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
+    queryTextBox.setColour(TextEditor::outlineColourId, Colours::grey);
+    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colours::blue);
+    queryTextBox.setFont(Font(9.0f));
+
+    // Set the text
+    queryTextBox.setText(textToSet, dontSendNotification);
+
+    // Re-add to component
+    addAndMakeVisible(queryTextBox);
+
+    // Restore the callback if searchable
+    if (isSearchableMode)
+    {
+        queryTextBox.onReturnKey = [this]() {
+            String query = queryTextBox.getText().trim();
+            if (query.isNotEmpty() && !connectedToMaster)
+            {
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, query);
+                }
+            }
+        };
+    }
+
+    resized(); // Recalculate layout
 }
 
 //==============================================================================

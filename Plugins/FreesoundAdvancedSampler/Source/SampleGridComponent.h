@@ -93,7 +93,8 @@ private:
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
     String getLicenseShortName(const String& license) const;
-    void cleanupProgressComponents();  // Safe cleanup method
+    void cleanupProgressComponents();
+    void resetTextEditorForIndependentMode(const String& textToSet);
 
     bool isSearchableMode;
 
