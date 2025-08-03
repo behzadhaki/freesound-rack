@@ -90,17 +90,17 @@ PresetListItem::PresetListItem(const PresetInfo& info)
    };
    addAndMakeVisible(deleteButton);
 
-   // Rename Editor - more compact
-   renameEditor.setText(presetInfo.name, dontSendNotification);
+    // Rename Editor - consistent styling
+    renameEditor.setText(presetInfo.name, dontSendNotification);
     renameEditor.setJustification(Justification::centredLeft);
-   renameEditor.setSelectAllWhenFocused(true);
-   renameEditor.setFont(Font(10.0f, Font::bold));
-   renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
-   renameEditor.setColour(TextEditor::textColourId, Colours::white);
-   renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.1f));
-   renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff404040).withAlpha(0.1f));
-   renameEditor.onReturnKey = [this]() { confirmRename(); };
-   addAndMakeVisible(renameEditor);
+    renameEditor.setSelectAllWhenFocused(true);
+    renameEditor.setFont(Font(10.0f, Font::bold));
+    renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+    renameEditor.setColour(TextEditor::textColourId, Colours::white);
+    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
+    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
+    renameEditor.onReturnKey = [this]() { confirmRename(); };
+    addAndMakeVisible(renameEditor);
 
    // Create slot buttons - smaller size
    for (int i = 0; i < 8; ++i)
@@ -297,8 +297,8 @@ PresetBrowserComponent::PresetBrowserComponent()
     renameEditor.setVisible(false);
     renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
     renameEditor.setColour(TextEditor::textColourId, Colours::white);
-    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));
-    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
+    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
+    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
     renameEditor.onReturnKey = [this]() { hideInlineRenameEditor(true); };
     renameEditor.onEscapeKey = [this]() { hideInlineRenameEditor(false); };
     renameEditor.onFocusLost = [this]() { hideInlineRenameEditor(true); };

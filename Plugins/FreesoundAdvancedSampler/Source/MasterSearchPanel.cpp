@@ -232,8 +232,8 @@ MasterSearchPanel::MasterSearchPanel()
     masterQueryEditor.setScrollbarsShown(false);
     masterQueryEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
     masterQueryEditor.setColour(TextEditor::textColourId, Colours::white);
-    masterQueryEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));
-    masterQueryEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
+    masterQueryEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
+    masterQueryEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
     masterQueryEditor.setFont(Font(10.0f));
     masterQueryEditor.setTextToShowWhenEmpty("Enter search query for connected pads...", Colours::grey);
 

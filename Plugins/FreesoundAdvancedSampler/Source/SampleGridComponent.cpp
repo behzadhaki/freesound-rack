@@ -40,7 +40,7 @@ SamplePad::SamplePad(int index, bool isSearchable)
     // Set up query text box with CONSISTENT styling always
     queryTextBox.setMultiLine(false);
     queryTextBox.setReturnKeyStartsNewLine(false);
-    queryTextBox.setReadOnly(!isSearchableMode);  // Only read-only if not searchable
+    queryTextBox.setReadOnly(!isSearchableMode);
     queryTextBox.setScrollbarsShown(false);
     queryTextBox.setCaretVisible(isSearchableMode);
     queryTextBox.setPopupMenuEnabled(isSearchableMode);
@@ -49,8 +49,8 @@ SamplePad::SamplePad(int index, bool isSearchable)
     queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
     queryTextBox.setColour(TextEditor::textColourId, Colours::white);
     queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
-    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));
-    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff00D9FF));
+    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
+    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
     queryTextBox.setFont(Font(9.0f));
 
     // Only add search functionality if searchable
@@ -1122,10 +1122,11 @@ void SamplePad::setConnectedToMaster(bool connected)
     {
         connectedToMaster = connected;
 
-        // Only change read-only state, NOT styling
+        // Change background darkness based on master connection, keep text white
         if (connectedToMaster)
         {
             queryTextBox.setReadOnly(true);
+            queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff1A1A1A)); // Darker when connected to master
         }
         else if (isSearchableMode)
         {
@@ -1134,23 +1135,19 @@ void SamplePad::setConnectedToMaster(bool connected)
 
             if (hasValidSample)
             {
-                // Has sample: use the sample's stored query (from padQuery field)
                 queryToRestore = padQuery;
                 DBG("Pad " + String(padIndex) + " disconnected - restoring sample query: '" + queryToRestore + "'");
             }
             else
             {
-                // Empty slot: keep the current text (which was the master query)
                 queryToRestore = queryTextBox.getText().trim();
                 DBG("Pad " + String(padIndex) + " disconnected - keeping previous query: '" + queryToRestore + "'");
             }
 
-            // Update the text box with the restored query
             queryTextBox.setText(queryToRestore, dontSendNotification);
-            padQuery = queryToRestore; // Update padQuery to match
-
-            // Restore editable state
+            padQuery = queryToRestore;
             queryTextBox.setReadOnly(false);
+            queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A)); // Normal background when independent
         }
 
         repaint();
