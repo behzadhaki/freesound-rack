@@ -20,7 +20,7 @@
 class FreesoundAdvancedSamplerAudioProcessorEditor;
 
 //==============================================================================
-// Custom Sample Pad for Bookmarks (with click callback)
+// Custom Sample Pad for Bookmarks (with mouse-hold preview)
 //==============================================================================
 class BookmarkSamplePad : public SamplePad
 {
@@ -28,10 +28,20 @@ public:
     BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo);
     ~BookmarkSamplePad() override;
 
-    std::function<void(const BookmarkInfo&)> onBookmarkClicked;
+    // ADD THESE MOUSE METHODS:
+    void mouseDown(const MouseEvent& event) override;
+    void mouseDrag(const MouseEvent& event) override;
+    void mouseUp(const MouseEvent& event) override;
 
 private:
     BookmarkInfo bookmark;
+
+    // ADD THESE PREVIEW CONTROL METHODS:
+    void startPreviewPlayback();
+    void stopPreviewPlayback();
+
+    // ADD THIS STATE VARIABLE:
+    bool isPreviewPlaying = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BookmarkSamplePad)
 };
@@ -60,7 +70,7 @@ private:
 
     // UI Components
     Label titleLabel;
-    StyledButton refreshButton { "Refresh", 10.0f, false }; // ↻ refresh symbol
+    StyledButton refreshButton { "Refresh", 10.0f, false };
     Viewport bookmarkViewport;
     Component bookmarkContainer;
 

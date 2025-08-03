@@ -157,6 +157,11 @@ public:
 
 	BookmarkManager& getBookmarkManager() { return bookmarkManager; } // Add this method
 
+	// Add these methods to public section
+	void loadPreviewSample(const File& audioFile, const String& freesoundId);
+	void playPreviewSample();
+	void stopPreviewSample();
+
 private:
 	// editor size
 	int savedWindowWidth = 1000;   // Default width
@@ -192,6 +197,10 @@ private:
 	String query;
 	std::vector<juce::StringArray> soundsArray;
     Array<FSSound> currentSoundsArray; // NEW: Store current sounds
+
+	// Add dedicated preview sampler (runs in parallel)
+	Synthesiser previewSampler;
+	AudioFormatManager previewAudioFormatManager;
 
     // NEW: Methods for playback tracking
     void notifyNoteStarted(int noteNumber, float velocity);

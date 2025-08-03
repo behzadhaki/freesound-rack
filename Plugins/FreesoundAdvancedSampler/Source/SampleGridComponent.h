@@ -92,7 +92,7 @@ public:
 
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
-private:
+protected:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
@@ -138,6 +138,7 @@ private:
 
     void handleBookmarkClick();
 
+private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
 

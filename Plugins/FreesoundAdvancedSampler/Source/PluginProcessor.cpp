@@ -83,6 +83,14 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
     midicounter = 1;
     startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
+    // Initialize preview sampler (always runs in parallel)
+    if (previewAudioFormatManager.getNumKnownFormats() == 0) {
+        previewAudioFormatManager.registerBasicFormats();
+    }
+
+    // Add a single voice for preview sampler
+    previewSampler.addVoice(new SamplerVoice());
+
     // Add download manager listener
     downloadManager.addListener(this);
 }
@@ -158,11 +166,6 @@ void FreesoundAdvancedSamplerAudioProcessor::changeProgramName (int index, const
 }
 
 //==============================================================================
-void FreesoundAdvancedSamplerAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
-{
-	sampler.setCurrentPlaybackSampleRate(sampleRate);
-}
-
 void FreesoundAdvancedSamplerAudioProcessor::releaseResources()
 {
 }
@@ -188,12 +191,57 @@ bool FreesoundAdvancedSamplerAudioProcessor::isBusesLayoutSupported (const Buses
 }
 #endif
 
-void FreesoundAdvancedSamplerAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
+void FreesoundAdvancedSamplerAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midiMessages)
 {
-	midiMessages.addEvents(midiFromEditor, 0, INT_MAX, 0);
-	midiFromEditor.clear();
-	sampler.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
-	midiMessages.clear();
+    // Add MIDI events from editor
+    midiMessages.addEvents(midiFromEditor, 0, INT_MAX, 0);
+    midiFromEditor.clear();
+
+    // Create separate MIDI buffers for main and preview samplers
+    MidiBuffer mainMidiBuffer;
+    MidiBuffer previewMidiBuffer;
+
+    // Split MIDI messages by channel
+    for (const auto metadata : midiMessages)
+    {
+        auto message = metadata.getMessage();
+
+        if (message.getChannel() == 2) // Preview channel
+        {
+            previewMidiBuffer.addEvent(message, metadata.samplePosition);
+        }
+        else // Main sampler channel(s)
+        {
+            mainMidiBuffer.addEvent(message, metadata.samplePosition);
+        }
+    }
+
+    // Render main sampler
+    sampler.renderNextBlock(buffer, mainMidiBuffer, 0, buffer.getNumSamples());
+
+    // Render preview sampler on top (mix with main output)
+    if (previewSampler.getNumSounds() > 0)
+    {
+        AudioBuffer<float> previewBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+        previewBuffer.clear();
+
+        previewSampler.renderNextBlock(previewBuffer, previewMidiBuffer, 0, buffer.getNumSamples());
+
+        // Mix preview with main output at reduced volume
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        {
+            buffer.addFrom(channel, 0, previewBuffer, channel, 0, buffer.getNumSamples(), 0.6f); // 60% volume for preview
+        }
+    }
+
+    midiMessages.clear();
+}
+
+// Modify prepareToPlay to prepare both samplers
+void FreesoundAdvancedSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
+    sampler.setCurrentPlaybackSampleRate(sampleRate);
+    previewSampler.setCurrentPlaybackSampleRate(sampleRate);
 }
 
 //==============================================================================
@@ -1111,6 +1159,58 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
 
     // Write to file
     readmeFile.replaceWithText(readmeContent);*/
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::loadPreviewSample(const File& audioFile, const String& freesoundId)
+{
+    if (!audioFile.existsAsFile())
+        return;
+
+    // Clear existing preview sounds but keep the voice
+    previewSampler.clearSounds();
+
+    // Load the preview sample
+    std::unique_ptr<AudioFormatReader> reader(previewAudioFormatManager.createReaderFor(audioFile));
+    if (reader != nullptr)
+    {
+        BigInteger notes;
+        int previewNote = 127; // Use highest MIDI note for preview (won't conflict with main grid)
+        notes.setBit(previewNote, true);
+
+        double maxLength = 10.0; // Max 10 seconds for preview
+        previewSampler.addSound(new SamplerSound("preview_" + freesoundId, *reader, notes, previewNote, 0, maxLength, maxLength));
+
+        DBG("Preview sample loaded: " + audioFile.getFileName());
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::playPreviewSample()
+{
+    // Stop any currently playing preview first
+    stopPreviewSample();
+
+    // Trigger the preview sample
+    int previewNote = 127;
+    MidiMessage message = MidiMessage::noteOn(2, previewNote, (uint8)100); // Channel 2 for preview
+    double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
+    message.setTimeStamp(timestamp);
+
+    auto sampleNumber = (int)(timestamp * getSampleRate());
+    midiFromEditor.addEvent(message, sampleNumber);
+
+    DBG("Preview sample triggered");
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::stopPreviewSample()
+{
+    // Send note off for preview
+    int previewNote = 127;
+    MidiMessage message = MidiMessage::noteOff(2, previewNote, (uint8)0);
+    double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
+    message.setTimeStamp(timestamp);
+
+    auto sampleNumber = (int)(timestamp * getSampleRate());
+    midiFromEditor.addEvent(message, sampleNumber);
 }
 
 //==============================================================================

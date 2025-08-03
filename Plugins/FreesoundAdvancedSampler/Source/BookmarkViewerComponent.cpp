@@ -15,6 +15,10 @@
 // BookmarkSamplePad Implementation
 //==============================================================================
 
+//==============================================================================
+// BookmarkSamplePad Implementation
+//==============================================================================
+
 BookmarkSamplePad::BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo)
     : SamplePad(index, false), bookmark(bookmarkInfo) // false = non-searchable
 {
@@ -22,6 +26,202 @@ BookmarkSamplePad::BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo
 
 BookmarkSamplePad::~BookmarkSamplePad()
 {
+    // Make sure to stop preview if component is destroyed while playing
+    if (isPreviewPlaying)
+    {
+        stopPreviewPlayback();
+    }
+}
+
+void BookmarkSamplePad::mouseDown(const MouseEvent& event)
+{
+    // Don't allow interaction while downloading
+    if (isDownloading)
+        return;
+
+    if (!hasValidSample)
+        return; // Don't process clicks for empty pads
+
+    // Check top-left badges (MIDI info and Copy badge)
+    auto bounds = getLocalBounds();
+    auto topLeftBounds = bounds.reduced(3);
+    topLeftBounds = topLeftBounds.removeFromTop(12);
+
+    // Skip MIDI info area
+    topLeftBounds.removeFromLeft(24 + 3); // MIDI width + spacing
+
+    // Check Copy badge (next to MIDI info) - Always available if sample exists
+    if (hasValidSample)
+    {
+        int copyBadgeWidth = 28;
+        auto copyBounds = topLeftBounds.removeFromLeft(copyBadgeWidth);
+
+        if (copyBounds.contains(event.getPosition()))
+        {
+            handleCopyClick();
+            return;
+        }
+    }
+
+    if (hasValidSample)
+    {
+        topLeftBounds.removeFromLeft(3); // Spacing after copy
+        int bookmarkBadgeWidth = 28;
+        auto bookmarkBounds = topLeftBounds.removeFromLeft(bookmarkBadgeWidth);
+
+        if (bookmarkBounds.contains(event.getPosition()))
+        {
+            handleBookmarkClick();
+            return;
+        }
+    }
+
+    // Check top-right badges
+    auto topRightBounds = bounds.reduced(3);
+    topRightBounds = topRightBounds.removeFromTop(12);
+
+    // License badge (middle in top line) - DOUBLE CLICK to open
+    if (licenseType.isNotEmpty())
+    {
+        int licenseBadgeWidth = 32;
+        auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
+
+        if (licenseBounds.contains(event.getPosition()))
+        {
+            // Only visual feedback on single click, actual action on double click
+            return;
+        }
+        topRightBounds.removeFromRight(3);
+    }
+
+    // Web badge (leftmost in top line) - DOUBLE CLICK to open
+    if (freesoundId.isNotEmpty())
+    {
+        int webBadgeWidth = 28;
+        auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
+
+        if (webBounds.contains(event.getPosition()))
+        {
+            // Only visual feedback on single click, actual action on double click
+            return;
+        }
+    }
+
+    // Check bottom badges: .ogg and .wav
+    if (hasValidSample)
+    {
+        auto bottomBounds = bounds.reduced(3);
+        int oggBadgeWidth = 28;
+        int wavBadgeWidth = 28;
+        int badgeHeight = 12;
+        int badgeSpacing = 3;
+
+        bottomBounds = bottomBounds.removeFromBottom(badgeHeight);
+
+        // Check .ogg badge (leftmost)
+        auto oggBounds = bottomBounds.removeFromLeft(oggBadgeWidth);
+        if (oggBounds.contains(event.getPosition()))
+        {
+            // Handle .ogg drag preparation (visual feedback only)
+            setMouseCursor(MouseCursor::DraggingHandCursor);
+            Timer::callAfterDelay(3000, [this]() {
+                setMouseCursor(MouseCursor::NormalCursor);
+            });
+            return;
+        }
+
+        bottomBounds.removeFromLeft(badgeSpacing);
+
+        // Check .wav badge (second)
+        auto wavBounds = bottomBounds.removeFromLeft(wavBadgeWidth);
+        if (wavBounds.contains(event.getPosition()))
+        {
+            handleWavCopyClick();
+            return;
+        }
+    }
+
+    // Check if clicked in waveform area - for preview playback
+    bounds = getLocalBounds();
+    auto waveformBounds = bounds.reduced(8);
+    waveformBounds.removeFromTop(16); // Space for top line badges
+    waveformBounds.removeFromBottom(16); // Space for bottom line
+
+    if (waveformBounds.contains(event.getPosition()))
+    {
+        // Start preview playback (will play as long as mouse is held down)
+        startPreviewPlayback();
+        return;
+    }
+}
+
+void BookmarkSamplePad::mouseDrag(const MouseEvent& event)
+{
+    // Check if we started preview in waveform area
+    auto bounds = getLocalBounds();
+    auto waveformBounds = bounds.reduced(8);
+    waveformBounds.removeFromTop(16);
+    waveformBounds.removeFromBottom(16);
+
+    // If mouse moves outside waveform area while dragging, stop preview
+    if (isPreviewPlaying && !waveformBounds.contains(event.getPosition()))
+    {
+        stopPreviewPlayback();
+        return;
+    }
+
+    // For other drag operations (like copy badge), call parent implementation
+    if (!isPreviewPlaying)
+    {
+        SamplePad::mouseDrag(event);
+    }
+}
+
+void BookmarkSamplePad::mouseUp(const MouseEvent& event)
+{
+    // Always stop preview when mouse is released
+    if (isPreviewPlaying)
+    {
+        stopPreviewPlayback();
+    }
+
+    // Reset cursor if it was changed
+    setMouseCursor(MouseCursor::NormalCursor);
+}
+
+void BookmarkSamplePad::startPreviewPlayback()
+{
+    if (!hasValidSample || !audioFile.existsAsFile() || !processor || isPreviewPlaying)
+        return;
+
+    // Load the sample into the preview sampler
+    processor->loadPreviewSample(audioFile, freesoundId);
+
+    // Play the preview sample
+    processor->playPreviewSample();
+
+    isPreviewPlaying = true;
+
+    // Optional: Change cursor to indicate preview mode
+    setMouseCursor(MouseCursor::PointingHandCursor);
+
+    DBG("Started preview playback for: " + bookmark.sampleName);
+}
+
+void BookmarkSamplePad::stopPreviewPlayback()
+{
+    if (!isPreviewPlaying || !processor)
+        return;
+
+    // Stop the preview sample
+    processor->stopPreviewSample();
+
+    isPreviewPlaying = false;
+
+    // Reset cursor
+    setMouseCursor(MouseCursor::NormalCursor);
+
+    DBG("Stopped preview playback for: " + bookmark.sampleName);
 }
 
 //==============================================================================
@@ -76,7 +276,7 @@ void BookmarkViewerComponent::resized()
     titleLabel.setBounds(bounds.removeFromTop(35));
 
     // Refresh button on the right
-    refreshButton.setBounds(bounds.removeFromTop(35)); // 30px for button width
+    refreshButton.setBounds(bounds.removeFromTop(35));
 
     bounds.removeFromTop(8); // Spacing after header
 
@@ -122,7 +322,7 @@ void BookmarkViewerComponent::updateBookmarkPads()
     clearBookmarkPads();
 
     // Calculate total rows needed
-    totalRows = (currentBookmarks.size());
+    totalRows = currentBookmarks.size();
 
     // Create pads for bookmarks
     createBookmarkPads();
@@ -136,19 +336,16 @@ void BookmarkViewerComponent::createBookmarkPads()
     if (currentBookmarks.isEmpty())
         return;
 
-    const int padWidth = 150;
+    const int padWidth = 250;
     const int padHeight = 100;
     const int padSpacing = 4;
-
-    int currentRow = 0;
-    int currentCol = 0;
 
     for (int i = 0; i < currentBookmarks.size(); ++i)
     {
         const BookmarkInfo& bookmark = currentBookmarks[i];
 
-        // Create a custom bookmark sample pad
-        auto* pad = new BookmarkSamplePad(i, bookmark);
+        // FIXED: Use unique index to avoid conflicts with main grid
+        auto* pad = new BookmarkSamplePad(1000 + i, bookmark);
         pad->setProcessor(processor);
 
         // Load the bookmark sample if file exists
@@ -159,17 +356,14 @@ void BookmarkViewerComponent::createBookmarkPads()
                           bookmark.freesoundId, bookmark.licenseType, bookmark.searchQuery);
         }
 
-        // Calculate position
-        int x = currentCol * (padWidth + padSpacing);
-        int y = currentRow * (padHeight + padSpacing);
+        // Calculate position (single column)
+        int x = 0;
+        int y = i * (padHeight + padSpacing);
 
         pad->setBounds(x, y, padWidth, padHeight);
 
         bookmarkContainer.addAndMakeVisible(pad);
         bookmarkPads.add(pad);
-
-        // Move to next position
-        currentRow++;
     }
 }
 
@@ -181,7 +375,7 @@ void BookmarkViewerComponent::clearBookmarkPads()
 
 void BookmarkViewerComponent::updateScrollableArea()
 {
-    const int padHeight = 80;
+    const int padHeight = 100; // Match the padHeight from createBookmarkPads
     const int padSpacing = 4;
     const int rowHeight = padHeight + padSpacing;
 
@@ -195,103 +389,8 @@ void BookmarkViewerComponent::updateScrollableArea()
 
 void BookmarkViewerComponent::loadBookmarkIntoSampleGrid(const BookmarkInfo& bookmark)
 {
-    if (!processor)
-        return;
-
-    // Get the editor to access the sample grid
-    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(processor->getActiveEditor()))
-    {
-        auto& sampleGrid = editor->getSampleGridComponent();
-
-        // Find the first empty pad
-        int targetPadIndex = -1;
-
-        for (int i = 0; i < 16; ++i)
-        {
-            auto padInfo = sampleGrid.getPadInfo(i);
-            if (!padInfo.hasValidSample)
-            {
-                targetPadIndex = i;
-                break;
-            }
-        }
-
-        if (targetPadIndex == -1)
-        {
-            AlertWindow::showMessageBoxAsync(
-                AlertWindow::QuestionIcon,
-                "All Pads Full",
-                "All sample pads are occupied. Please clear a pad first, then try again.",
-                "OK"
-            );
-            return;
-        }
-
-        // Check if sample file exists
-        File sampleFile = processor->getPresetManager().getSampleFile(bookmark.freesoundId);
-        if (!sampleFile.existsAsFile())
-        {
-            AlertWindow::showMessageBoxAsync(
-                AlertWindow::WarningIcon,
-                "Sample File Missing",
-                "The sample file for \"" + bookmark.sampleName + "\" is missing from the resources folder.",
-                "OK"
-            );
-            return;
-        }
-
-        // Create FSSound object
-        FSSound sound;
-        sound.id = bookmark.freesoundId;
-        sound.name = bookmark.sampleName;
-        sound.user = bookmark.authorName;
-        sound.license = bookmark.licenseType;
-        sound.duration = bookmark.duration;
-        sound.filesize = bookmark.fileSize;
-
-        // Access the sample pads directly from the grid
-        if (targetPadIndex >= 0 && targetPadIndex < 16)
-        {
-            // Get the target pad and load the sample
-            sampleGrid.samplePads[targetPadIndex]->setSample(sampleFile, bookmark.sampleName, bookmark.authorName,
-                                                           bookmark.freesoundId, bookmark.licenseType, bookmark.searchQuery);
-
-            // Update processor arrays
-            auto& currentSounds = processor->getCurrentSoundsArrayReference();
-            auto& soundsData = processor->getDataReference();
-
-            // Ensure arrays are large enough
-            while (currentSounds.size() <= targetPadIndex)
-                currentSounds.add(FSSound());
-            while (soundsData.size() <= targetPadIndex)
-            {
-                StringArray emptyData;
-                emptyData.add(""); emptyData.add(""); emptyData.add(""); emptyData.add("");
-                soundsData.push_back(emptyData);
-            }
-
-            // Update arrays
-            currentSounds.set(targetPadIndex, sound);
-
-            StringArray soundData;
-            soundData.add(bookmark.sampleName);
-            soundData.add(bookmark.authorName);
-            soundData.add(bookmark.licenseType);
-            soundData.add(bookmark.searchQuery);
-            soundsData[targetPadIndex] = soundData;
-
-            // Rebuild sampler
-            processor->setSources();
-
-            // Show confirmation
-            AlertWindow::showMessageBoxAsync(
-                AlertWindow::InfoIcon,
-                "Sample Loaded",
-                "\"" + bookmark.sampleName + "\" loaded into pad " + String(targetPadIndex + 1) + ".",
-                "OK"
-            );
-        }
-    }
+    // This method is no longer used since we removed the click-to-load functionality
+    // Users now drag from the copy badge to load samples
 }
 
 void BookmarkViewerComponent::scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart)
