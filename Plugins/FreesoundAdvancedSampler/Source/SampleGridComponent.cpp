@@ -199,7 +199,7 @@ void SamplePad::paint(Graphics& g)
     else
     {
         // View-only mode: just show pad number
-        String displayText = "Pad " + String(padIndex + 1);
+        String displayText = String(CharPointer_UTF8("\xF0\x9F\x91\x81")); // String(CharPointer_UTF8("\xF0\x9F\x91\x80"));  // eye icon
         g.drawText(displayText, numberRect, Justification::centred);
     }
 

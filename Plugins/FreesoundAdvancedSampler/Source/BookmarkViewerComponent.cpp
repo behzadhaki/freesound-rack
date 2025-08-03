@@ -338,7 +338,7 @@ void BookmarkViewerComponent::createBookmarkPads()
 
     const int padWidth = 250;
     const int padHeight = 100;
-    const int padSpacing = 4;
+    const int padSpacing = 8;
 
     for (int i = 0; i < currentBookmarks.size(); ++i)
     {

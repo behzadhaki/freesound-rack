@@ -1,11 +1,13 @@
 # todo
 ---
 
+- get all sample tags and store in SamplePadInfo. Then, this can be used to search bookmarks by tag!
+- Add a DL button to download missing bookmarks
+- 
 priority 1:
 - create a multi-tab sample pad 
 
 priority 2:
-- bookmarker
 - audio router
 - mute/solo
 
