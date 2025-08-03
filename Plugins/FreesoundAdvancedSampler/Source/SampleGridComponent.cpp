@@ -1569,57 +1569,67 @@ void SampleGridComponent::updateProcessorArraysFromGrid()
     if (!processor)
         return;
 
-    // Clear the processor's current arrays
     auto& currentSounds = processor->getCurrentSoundsArrayReference();
     auto& soundsData = processor->getDataReference();
 
+    // Ensure arrays are properly sized (16 elements)
     currentSounds.clear();
     soundsData.clear();
 
-    // Rebuild arrays based on current grid order
+    currentSounds.resize(TOTAL_PADS);
+    soundsData.resize(TOTAL_PADS);
+
+    // Initialize all positions with empty data
     for (int i = 0; i < TOTAL_PADS; ++i)
     {
-        auto padInfo = samplePads[i]->getSampleInfo();
+        currentSounds.set(i, FSSound()); // Empty sound
+
+        StringArray emptyData;
+        emptyData.add(""); // name
+        emptyData.add(""); // author
+        emptyData.add(""); // license
+        emptyData.add(""); // query
+        soundsData[i] = emptyData;
+    }
+
+    // Fill in actual pad data at correct positions
+    for (int padIndex = 0; padIndex < TOTAL_PADS; ++padIndex)
+    {
+        auto padInfo = samplePads[padIndex]->getSampleInfo();
 
         if (padInfo.hasValidSample)
         {
-            // Create FSSound object from pad info (no API changes)
+            // Create FSSound object for this specific pad position
             FSSound sound;
             sound.id = padInfo.freesoundId;
             sound.name = padInfo.sampleName;
             sound.user = padInfo.authorName;
             sound.license = padInfo.licenseType;
-            // Note: Can't store query in FSSound, so we rely on soundsData
-
-            // Try to get duration and file size from existing data or set defaults
-            sound.duration = 0.5;
+            sound.duration = 0.5; // Default values
             sound.filesize = 50000;
 
-            // If we can find this sound in the existing arrays, preserve its metadata
-            Array<FSSound> existingSounds = processor->getCurrentSounds();
-            for (const auto& existingSound : existingSounds)
+            // Try to get duration and file size from existing data
+            if (padInfo.audioFile.existsAsFile())
             {
-                if (existingSound.id == sound.id)
-                {
-                    sound.duration = existingSound.duration;
-                    sound.filesize = existingSound.filesize;
-                    break;
-                }
+                sound.filesize = (int)padInfo.audioFile.getSize();
             }
 
-            currentSounds.add(sound);
+            // Set sound at the correct pad position (this is crucial for MIDI mapping)
+            currentSounds.set(padIndex, sound);
 
             // Create sound info including query as 4th element
             StringArray soundData;
             soundData.add(padInfo.sampleName);
             soundData.add(padInfo.authorName);
             soundData.add(padInfo.licenseType);
-            soundData.add(padInfo.query);  // Store query in 4th position
-            soundsData.push_back(soundData);
+            soundData.add(padInfo.query);
+            soundsData[padIndex] = soundData;
+
+            DBG("Updated processor arrays - pad " + String(padIndex) + ": " + padInfo.sampleName + " (ID: " + padInfo.freesoundId + ")");
         }
     }
 
-    // DBG("Updated processor arrays from grid - now has " + String(currentSounds.size()) + " sounds");
+    DBG("Processor arrays updated - total pads with samples: " + String(currentSounds.size()));
 }
 
 void SampleGridComponent::updateJsonMetadata()
@@ -1879,63 +1889,158 @@ void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const
     if (!processor)
         return;
 
-    File downloadDir = processor->getCurrentDownloadLocation();
+    // Store the master search data for when downloads complete
+    pendingMasterSearchSounds = sounds;
+    pendingMasterSearchSoundInfo = soundInfo;
+    pendingMasterSearchQuery = masterQuery;
 
-    // Find pads with empty queries
-    Array<int> emptyQueryPads;
-    for (int i = 0; i < TOTAL_PADS; ++i)
+    // If no pending target pads, determine them now
+    if (pendingMasterSearchPads.isEmpty())
     {
-        if (!samplePads[i]->hasQuery())
+        // Find pads with empty queries or connected to master
+        for (int i = 0; i < TOTAL_PADS; ++i)
         {
-            emptyQueryPads.add(i);
+            if (samplePads[i]->isConnectedToMaster() || !samplePads[i]->hasQuery())
+            {
+                pendingMasterSearchPads.add(i);
+            }
         }
     }
 
-    if (emptyQueryPads.isEmpty())
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "No Empty Pads",
-            "All pads already have individual search queries. Clear pad queries to use master search.");
+    DBG("Master search data stored - waiting for download completion to populate " + String(pendingMasterSearchPads.size()) + " pads");
+}
+
+void SampleGridComponent::populatePadsFromMasterSearch()
+{
+    if (!processor || pendingMasterSearchSounds.isEmpty() || pendingMasterSearchPads.isEmpty())
         return;
+
+    File downloadDir = processor->getCurrentDownloadLocation();
+
+    DBG("Populating pads from master search - " + String(pendingMasterSearchPads.size()) + " target pads, " + String(pendingMasterSearchSounds.size()) + " sounds");
+
+    // First, get current processor arrays to preserve existing samples
+    auto& currentSounds = processor->getCurrentSoundsArrayReference();
+    auto& soundsData = processor->getDataReference();
+
+    // Ensure arrays are properly sized
+    while (currentSounds.size() < TOTAL_PADS)
+        currentSounds.add(FSSound());
+    while (soundsData.size() < TOTAL_PADS)
+    {
+        StringArray emptyData;
+        emptyData.add(""); emptyData.add(""); emptyData.add(""); emptyData.add("");
+        soundsData.push_back(emptyData);
     }
 
-    // Distribute sounds to empty query pads
+    // Distribute sounds to target pads
     int soundIndex = 0;
-    for (int padIndex : emptyQueryPads)
+    for (int padIndex : pendingMasterSearchPads)
     {
-        if (soundIndex >= sounds.size())
+        if (soundIndex >= pendingMasterSearchSounds.size() || padIndex >= TOTAL_PADS)
             break;
 
-        const FSSound& sound = sounds[soundIndex];
+        const FSSound& sound = pendingMasterSearchSounds[soundIndex];
 
         // Create filename using ID-based naming scheme
         String expectedFilename = "FS_ID_" + sound.id + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
-        // Get sample info
-        String sampleName = (soundIndex < soundInfo.size() && soundInfo[soundIndex].size() > 0) ? soundInfo[soundIndex][0] : sound.name;
-        String authorName = (soundIndex < soundInfo.size() && soundInfo[soundIndex].size() > 1) ? soundInfo[soundIndex][1] : sound.user;
-        String license = (soundIndex < soundInfo.size() && soundInfo[soundIndex].size() > 2) ? soundInfo[soundIndex][2] : sound.license;
+        DBG("Looking for file: " + audioFile.getFullPathName() + " (exists: " + String(audioFile.existsAsFile() ? "YES" : "NO") + ")");
 
         if (audioFile.existsAsFile())
         {
-            // Set the master query in the pad's text box
-            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, masterQuery);
+            // Get sample info
+            String sampleName = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 0) ?
+                pendingMasterSearchSoundInfo[soundIndex][0] : sound.name;
+            String authorName = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 1) ?
+                pendingMasterSearchSoundInfo[soundIndex][1] : sound.user;
+            String license = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 2) ?
+                pendingMasterSearchSoundInfo[soundIndex][2] : sound.license;
+
+            // Update the visual pad
+            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, pendingMasterSearchQuery);
+
+            // CRITICAL: Update processor arrays at the correct pad position
+            FSSound processorSound = sound;
+            processorSound.filesize = (int)audioFile.getSize(); // Update file size
+            currentSounds.set(padIndex, processorSound);
+
+            // Update sound info with query
+            StringArray soundData;
+            soundData.add(sampleName);
+            soundData.add(authorName);
+            soundData.add(license);
+            soundData.add(pendingMasterSearchQuery);
+            soundsData[padIndex] = soundData;
+
+            DBG("Successfully populated pad " + String(padIndex) + " with " + sampleName + " (MIDI note: " + String(36 + padIndex) + ")");
+        }
+        else
+        {
+            DBG("File not found for pad " + String(padIndex) + ": " + expectedFilename);
         }
 
         soundIndex++;
     }
 
-    // Update processor arrays to reflect the new state
-    updateProcessorArraysFromGrid();
+    // CRITICAL: Rebuild the sampler with correct MIDI mappings
+    processor->setSources();
 
-    // Reload the sampler
-    if (processor)
+    // Clear pending state
+    clearPendingMasterSearchState();
+
+    DBG("Master search population complete - sampler rebuilt");
+}
+
+void SampleGridComponent::clearPendingMasterSearchState()
+{
+    pendingMasterSearchPads.clear();
+    pendingMasterSearchQuery = "";
+    pendingMasterSearchSounds.clear();
+    pendingMasterSearchSoundInfo.clear();
+}
+
+bool SampleGridComponent::hasPendingMasterSearch() const
+{
+    return !pendingMasterSearchSounds.isEmpty() && !pendingMasterSearchPads.isEmpty();
+}
+
+void SampleGridComponent::updateProcessorArraysForMasterSearch(const Array<FSSound>& sounds,
+    const std::vector<StringArray>& soundInfo, const Array<int>& targetPads, const String& masterQuery)
+{
+    if (!processor)
+        return;
+
+    auto& currentSounds = processor->getCurrentSoundsArrayReference();
+    auto& soundsData = processor->getDataReference();
+
+    // Ensure arrays are large enough
+    while (currentSounds.size() < TOTAL_PADS)
+        currentSounds.add(FSSound());
+    while (soundsData.size() < TOTAL_PADS)
     {
-        processor->setSources();
+        StringArray emptyData;
+        emptyData.add(""); emptyData.add(""); emptyData.add(""); emptyData.add("");
+        soundsData.push_back(emptyData);
     }
 
-    // DBG("Master search applied to " + String(emptyQueryPads.size()) + " pads with master query: " + masterQuery);
+    // Update only the target pads with new sounds
+    for (int i = 0; i < targetPads.size() && i < sounds.size(); ++i)
+    {
+        int padIndex = targetPads[i];
+        const FSSound& sound = sounds[i];
+
+        currentSounds.set(padIndex, sound);
+
+        StringArray soundData;
+        soundData.add((i < soundInfo.size() && soundInfo[i].size() > 0) ? soundInfo[i][0] : sound.name);
+        soundData.add((i < soundInfo.size() && soundInfo[i].size() > 1) ? soundInfo[i][1] : sound.user);
+        soundData.add((i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : sound.license);
+        soundData.add(masterQuery); // Set master query for all target pads
+
+        soundsData[padIndex] = soundData;
+    }
 }
 
 void SampleGridComponent::searchForSinglePadWithQuery(int padIndex, const String& query)
@@ -2505,6 +2610,9 @@ void SampleGridComponent::handleMasterSearchSelected()
 
 void SampleGridComponent::performMasterSearch(const String& masterQuery)
 {
+    if (!processor || masterQuery.isEmpty())
+        return;
+
     // Get all connected pad indices
     Array<int> connectedPadIndices;
     for (int i = 0; i < TOTAL_PADS; ++i)
@@ -2516,12 +2624,130 @@ void SampleGridComponent::performMasterSearch(const String& masterQuery)
     }
 
     if (connectedPadIndices.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "No Connected Pads",
+            "No pads are connected to master search. Use the mini grid to select pads for master search.");
         return;
+    }
 
-    // Search for samples for each connected pad
+    // Check if any connected pads have samples and warn user
+    bool hasExistingSamples = false;
     for (int padIndex : connectedPadIndices)
     {
-        searchForSinglePadWithQuery(padIndex, masterQuery);
+        if (samplePads[padIndex]->getSampleInfo().hasValidSample)
+        {
+            hasExistingSamples = true;
+            break;
+        }
+    }
+
+    if (hasExistingSamples)
+    {
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Replace Existing Samples",
+            "Some connected pads already have samples loaded. This will replace them with new search results. Continue?",
+            "Yes", "No",
+            nullptr,
+            ModalCallbackFunction::create([this, masterQuery, connectedPadIndices](int result) {
+                if (result == 1) { // User clicked "Yes"
+                    executeMasterSearch(masterQuery, connectedPadIndices);
+                }
+            })
+        );
+    }
+    else
+    {
+        executeMasterSearch(masterQuery, connectedPadIndices);
+    }
+}
+
+void SampleGridComponent::executeMasterSearch(const String& masterQuery, const Array<int>& targetPadIndices)
+{
+    if (!processor)
+        return;
+
+    // Store the target pad indices for when the search completes
+    pendingMasterSearchPads = targetPadIndices;
+    pendingMasterSearchQuery = masterQuery;
+
+    // Clear the target pads first
+    for (int padIndex : targetPadIndices)
+    {
+        samplePads[padIndex]->clearSample();
+    }
+
+    // Use the existing Freesound search system
+    // This will trigger a search, download, and eventually call newSoundsReady
+    FreesoundClient client(FREESOUND_API_KEY);
+
+    // Calculate how many sounds we need
+    int numSoundsNeeded = targetPadIndices.size();
+
+    try
+    {
+        SoundList list = client.textSearch(
+            masterQuery,
+            "duration:[0 TO 0.5]",
+            "score",
+            1,
+            1,
+            10000,
+            "id,name,username,license,previews"
+        );
+
+        Array<FSSound> sounds = list.toArrayOfSounds();
+
+        if (sounds.isEmpty())
+        {
+            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                "No Results",
+                "No sounds found for the query: " + masterQuery);
+
+            // Clear pending state
+            pendingMasterSearchPads.clear();
+            pendingMasterSearchQuery = "";
+            return;
+        }
+
+        // Randomize the results to get variety
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle(sounds.begin(), sounds.end(), g);
+
+        // Limit to the number of target pads
+        if (sounds.size() > numSoundsNeeded)
+        {
+            sounds.removeRange(numSoundsNeeded, sounds.size() - numSoundsNeeded);
+        }
+
+        // Create sound info for the processor
+        std::vector<juce::StringArray> soundInfo;
+        for (const auto& sound : sounds)
+        {
+            StringArray info;
+            info.add(sound.name);
+            info.add(sound.user);
+            info.add(sound.license);
+            info.add(masterQuery); // Store the master query
+            soundInfo.push_back(info);
+        }
+
+        // This will trigger the existing download system
+        processor->newSoundsReady(sounds, masterQuery, soundInfo);
+
+        DBG("Master search initiated for " + String(targetPadIndices.size()) + " pads with query: " + masterQuery);
+    }
+    catch (const std::exception& e)
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Search Error",
+            "Failed to search Freesound: " + String(e.what()));
+
+        // Clear pending state
+        pendingMasterSearchPads.clear();
+        pendingMasterSearchQuery = "";
     }
 }
 

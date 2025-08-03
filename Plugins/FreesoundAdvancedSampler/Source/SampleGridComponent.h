@@ -185,6 +185,11 @@ public:
     void itemDragExit(const SourceDetails& dragSourceDetails) override;
     void itemDropped(const SourceDetails& dragSourceDetails) override;
 
+    // Master search management
+    void populatePadsFromMasterSearch();
+    void clearPendingMasterSearchState();
+    bool hasPendingMasterSearch() const;
+
 private:
     static constexpr int GRID_SIZE = 4;
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;
@@ -237,6 +242,16 @@ private:
     void handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex);
     void handleFileDrop(const StringArray& filePaths, int targetPadIndex);
     int getPadIndexFromPosition(Point<int> position);
+
+    // Master search
+    void updateProcessorArraysForMasterSearch(const Array<FSSound>& sounds,
+    const std::vector<StringArray>& soundInfo, const Array<int>& targetPads, const String& masterQuery);
+    void executeMasterSearch(const String& masterQuery, const Array<int>& targetPadIndices);
+
+    Array<int> pendingMasterSearchPads;
+    String pendingMasterSearchQuery;
+    Array<FSSound> pendingMasterSearchSounds;
+    std::vector<StringArray> pendingMasterSearchSoundInfo;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SampleGridComponent)
 };

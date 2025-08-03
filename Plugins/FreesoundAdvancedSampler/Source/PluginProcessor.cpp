@@ -472,7 +472,7 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         audioFormatManager.registerBasicFormats();
     }
 
-    // Load samples by their actual pad positions
+    // Load samples by their actual pad positions - THIS IS CRITICAL
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
         // Check if we have a sound for this specific pad position
@@ -490,13 +490,17 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
                 if (reader != nullptr)
                 {
                     BigInteger notes;
-                    int midiNote = 36 + padIndex; // Note 36 = pad 0, Note 37 = pad 1, etc.
+                    int midiNote = 36 + padIndex; // CRITICAL: Note 36 = pad 0, Note 37 = pad 1, etc.
                     notes.setBit(midiNote, true);
                     sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote, 0, maxLength, maxLength));
+
+                    DBG("Added sample to sampler - Pad " + String(padIndex) + " -> MIDI note " + String(midiNote) + " (" + sound.name + ")");
                 }
             }
         }
     }
+
+    DBG("Sampler rebuild complete with " + String(sampler.getNumSounds()) + " sounds");
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addToMidiBuffer(int notenumber)

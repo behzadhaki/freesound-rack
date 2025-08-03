@@ -226,8 +226,6 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadProgressChanged(const
     });
 }
 
-// In PluginEditor.cpp - Replace the existing downloadCompleted method with this version:
-
 void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool success)
 {
     MessageManager::callAsync([this, success]()
@@ -246,12 +244,16 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
             // Add a small delay to ensure all files are written to disk
             Timer::callAfterDelay(500, [this]()
             {
-                // DO NOT call updateSamples here for master search operations
-                // The grid has already been updated by handleMasterSearch and should preserve text boxes
-                // Only update for other operations like preset loading
-
-                // Instead, just refresh the sampler sources and preset browser
-                // The grid visual state should already be correct from handleMasterSearch
+                // Check if this was a master search operation and populate pads
+                if (sampleGridComponent.hasPendingMasterSearch())
+                {
+                    sampleGridComponent.populatePadsFromMasterSearch();
+                }
+                else
+                {
+                    // Regular updateSamples for other operations like preset loading
+                    sampleGridComponent.updateSamples(processor.getCurrentSounds(), processor.getData());
+                }
 
                 // Refresh preset browser to show if this creates a new preset opportunity
                 presetBrowserComponent.refreshPresetList();
@@ -267,7 +269,6 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
         });
     });
 }
-
 void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex)
 {
     if (processor.loadPreset(presetInfo.presetFile, slotIndex))
