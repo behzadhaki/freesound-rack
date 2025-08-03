@@ -44,6 +44,7 @@ public:
     bool keyPressed(const KeyPress& key) override;
 
 private:
+
     FreesoundAdvancedSamplerAudioProcessor& processor;
 
     std::unique_ptr<CustomAlertWindowLookAndFeel> customAlertLookAndFeel;
@@ -61,6 +62,7 @@ private:
 
     // Handle preset loading with slot support
     void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
+    void loadPresetNormally(const PresetInfo& presetInfo, int slotIndex); // NEW helper method
 
     // Method for expandable panel on the right side
     void updateWindowSizeForPanelState();

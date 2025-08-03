@@ -202,6 +202,83 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::downloadCompleted(bool succes
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex)
 {
+    // First, check sample availability before loading
+    Array<String> allUniqueSampleIds;
+    Array<String> missingSampleIds;
+
+    // Load the preset data to check which samples it needs
+    Array<PadInfo> padInfos;
+    if (!processor.getPresetManager().loadPreset(presetInfo.presetFile, slotIndex, padInfos))
+    {
+        AlertWindow::showMessageBoxAsync(
+            AlertWindow::WarningIcon,
+            "Load Failed",
+            "Failed to read preset data from \"" + presetInfo.name + "\" slot " + String(slotIndex + 1) + ".");
+        return;
+    }
+
+    // Check sample availability
+    for (const auto& padInfo : padInfos)
+    {
+        allUniqueSampleIds.addIfNotAlreadyThere(padInfo.freesoundId);
+
+        File sampleFile = processor.getPresetManager().getSampleFile(padInfo.freesoundId);
+        if (!sampleFile.existsAsFile())
+        {
+            missingSampleIds.addIfNotAlreadyThere(padInfo.freesoundId);
+        }
+    }
+
+    int totalSamples = allUniqueSampleIds.size();
+    int missingSamples = missingSampleIds.size();
+
+    if (totalSamples == 0)
+    {
+        // Empty preset - load normally
+        loadPresetNormally(presetInfo, slotIndex);
+        return;
+    }
+
+    if (missingSamples == totalSamples)
+    {
+        // All samples are missing
+        AlertWindow::showMessageBoxAsync(
+            AlertWindow::WarningIcon,
+            "All Samples Missing",
+            "All " + String(totalSamples) + " samples for this preset are missing from the resources folder.\n\n" +
+            "Press the ⬇ icon next to \"" + presetInfo.name + "\" in the preset browser to download the missing samples, then try loading again.");
+        return;
+    }
+    else if (missingSamples > 0)
+    {
+        // Some samples are missing
+        String message = String(missingSamples) + " of " + String(totalSamples) +
+                        " samples are missing from the resources folder.\n\n" +
+                        "The preset will load with available samples only. " +
+                        "Press the ⬇ icon next to \"" + presetInfo.name + "\" to recover missing samples.";
+
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Some Samples Missing",
+            message,
+            "Load Anyway", "Cancel",
+            nullptr,
+            ModalCallbackFunction::create([this, presetInfo, slotIndex](int result) {
+                if (result == 1) { // User clicked "Load Anyway"
+                    loadPresetNormally(presetInfo, slotIndex);
+                }
+                // If result == 0, user clicked "Cancel" - do nothing
+            })
+        );
+        return;
+    }
+
+    // All samples are available - load normally
+    loadPresetNormally(presetInfo, slotIndex);
+}
+
+void FreesoundAdvancedSamplerAudioProcessorEditor::loadPresetNormally(const PresetInfo& presetInfo, int slotIndex)
+{
     if (processor.loadPreset(presetInfo.presetFile, slotIndex))
     {
         // Update the sample grid with the loaded preset
@@ -216,7 +293,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::handlePresetLoadRequested(con
         AlertWindow::showMessageBoxAsync(
             AlertWindow::WarningIcon,
             "Load Failed",
-            "Failed to load preset \"" + presetInfo.name + "\" slot " + String(slotIndex + 1) + ". Some samples may be missing.");
+            "Failed to load preset \"" + presetInfo.name + "\" slot " + String(slotIndex + 1) + ".");
     }
 }
 
