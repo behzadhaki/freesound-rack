@@ -1,10 +1,6 @@
 # todo
 ---
 
-priority 1:
-- underline selected preset
-- if file deleted, use json path to download it
-
 priority 2:
 - mute/solo
 - audio router
