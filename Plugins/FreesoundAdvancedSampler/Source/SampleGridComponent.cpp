@@ -1446,7 +1446,7 @@ void SampleGridComponent::paint(Graphics& g)
 
     auto bounds = getLocalBounds();
     int padding = 4;
-    int bottomControlsHeight = 30;
+    int bottomControlsHeight = 90;
     bounds.removeFromBottom(bottomControlsHeight + padding);
 
     int totalPadding = padding * (GRID_SIZE + 1);
@@ -1473,7 +1473,7 @@ void SampleGridComponent::paint(Graphics& g)
         // Get pad bounds and draw special highlight
         auto bounds = getLocalBounds();
         int padding = 4;
-        int bottomControlsHeight = 30;
+        int bottomControlsHeight = 90;
         bounds.removeFromBottom(bottomControlsHeight + padding);
 
         int totalPadding = padding * (GRID_SIZE + 1);
@@ -1487,7 +1487,6 @@ void SampleGridComponent::paint(Graphics& g)
         int y = padding + row * (padHeight + padding);
 
         Rectangle<int> padBounds(x, y, padWidth, padHeight);
-
     }
 
 }
@@ -1497,6 +1496,8 @@ void SampleGridComponent::resized()
     auto bounds = getLocalBounds();
     int padding = 4;
     int bottomControlsHeight = 90; // Increased for master search panel
+    int buttonHeight = 20;
+
     int buttonWidth = 60;
     int spacing = 5;
 
@@ -1508,7 +1509,6 @@ void SampleGridComponent::resized()
 
     // Right side: stacked buttons (shuffle above clear all)
     auto rightButtonArea = controlsBounds.removeFromRight(buttonWidth);
-    int buttonHeight = 20;
     controlsBounds.removeFromRight(spacing);
     rightButtonArea.removeFromTop(8);
     shuffleButton.setBounds(rightButtonArea.removeFromTop(buttonHeight));
@@ -2729,7 +2729,7 @@ int SampleGridComponent::getPadIndexFromPosition(Point<int> position)
 {
     auto bounds = getLocalBounds();
     int padding = 4;
-    int bottomControlsHeight = 30;
+    int bottomControlsHeight = 90;
     bounds.removeFromBottom(bottomControlsHeight + padding);
 
     int totalPadding = padding * (GRID_SIZE + 1);
