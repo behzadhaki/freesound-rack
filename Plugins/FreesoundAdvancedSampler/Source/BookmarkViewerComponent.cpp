@@ -326,12 +326,13 @@ void BookmarkViewerComponent::resized()
     int gapHeight = 8; // Gap
 
     // Title takes most of the header
-    titleLabel.setBounds(bounds.removeFromTop(textHeight));
+    auto topLine = bounds.removeFromTop(textHeight);
+    auto topLine2 = getLocalBounds().reduced(8).removeFromTop(textHeight);
+    titleLabel.setBounds(topLine);
+    refreshButton.setBounds(topLine2.removeFromLeft(refreshButtonWidth));
 
     bounds.removeFromTop(gapHeight);
 
-    // Refresh button on the right
-    refreshButton.setBounds(bounds.removeFromLeft(refreshButtonWidth));
 
     bounds.removeFromLeft(6);
     // Viewport takes the rest
@@ -406,7 +407,7 @@ void BookmarkViewerComponent::createBookmarkPads()
     if (currentBookmarks.isEmpty())
         return;
 
-    const int padWidth = 180;
+    const int padWidth = 190;
     const int padHeight = 80;
     const int padSpacing = 8;
 
