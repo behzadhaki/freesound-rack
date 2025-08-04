@@ -16,8 +16,8 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     : AudioProcessorEditor (&p), processor (p)
 {
     // Set up custom look and feel for AlertWindows
-    customAlertLookAndFeel = std::make_unique<CustomAlertWindowLookAndFeel>();
-    LookAndFeel::setDefaultLookAndFeel(customAlertLookAndFeel.get());
+    customLookAndFeel = std::make_unique<CustomLookAndFeel>();
+    LookAndFeel::setDefaultLookAndFeel(customLookAndFeel.get());
 
     // Register as download listener
     processor.addDownloadListener(this);
@@ -26,7 +26,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     sampleGridComponent.setProcessor(&processor);
     addAndMakeVisible(sampleGridComponent);
 
-    // Set up sample drag area
+    // Set up sample drag areaxq
     sampleDragArea.setSampleGridComponent(&sampleGridComponent);
     addAndMakeVisible(sampleDragArea);
 

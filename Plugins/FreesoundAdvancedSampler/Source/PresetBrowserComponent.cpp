@@ -53,12 +53,7 @@ void SlotButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted, bo
     g.fillRoundedRectangle(bounds, 3.0f);
 
     // Border intensity based on selection
-    if (isActiveFlag && hasDataFlag)
-    {
-        g.setColour(Colours::white.withAlpha(1.0f));
-        g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 2.0f); // Thick bright border
-    }
-    else if (hasDataFlag)
+    if (hasDataFlag)
     {
         g.setColour(Colours::white.withAlpha(0.4f));
         g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Normal border
@@ -375,9 +370,6 @@ PresetBrowserComponent::PresetBrowserComponent()
 {
     // Dark styling for title
     titleLabel.setText("Presets", dontSendNotification);
-    titleLabel.setFont(Font(14.0f, Font::bold));
-    titleLabel.setJustificationType(Justification::centred);
-    titleLabel.setColour(Label::textColourId, Colours::grey);
     addAndMakeVisible(titleLabel);
 
     // Dark viewport styling

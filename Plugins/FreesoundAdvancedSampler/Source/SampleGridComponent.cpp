@@ -95,6 +95,7 @@ void SamplePad::resized()
         auto progressArea = bottomBounds.reduced(2);
         auto labelBounds = progressArea.removeFromBottom(8);
         progressLabel->setBounds(labelBounds);
+        progressArea.removeFromLeft(42);
         progressBar->setBounds(progressArea);
     }
     else if (!isDownloading)
@@ -363,7 +364,7 @@ void SamplePad::paint(Graphics& g)
     // === BACKGROUND WITH MASTER CONNECTION STYLING ===
     if (isDragHover)
     {
-        g.setColour(Colour(0x8000D9FF).withAlpha(0.6f));
+        g.setColour(pluginChoiceColour.withAlpha(0.6f));
     }
     else if (isPlaying)
     {
@@ -374,9 +375,7 @@ void SamplePad::paint(Graphics& g)
     }
     else if (isDownloading)
     {
-        g.setGradientFill(ColourGradient(
-            Colour(0x8000D9FF).withAlpha(0.3f), bounds.getTopLeft().toFloat(),
-            Colour(0x800099CC).withAlpha(0.3f), bounds.getBottomRight().toFloat(), false));
+        g.setColour(Colours::grey.withAlpha(0.5f));
     }
     else if (connectedToMaster)
     {
@@ -398,12 +397,12 @@ void SamplePad::paint(Graphics& g)
     // Modern border styling
     if (isDragHover)
     {
-        g.setColour(Colour(0x8000D9FF));
+        g.setColour(pluginChoiceColour);
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.5f);
     }
     else if (isDownloading)
     {
-        g.setColour(Colour(0x8000D9FF));
+        g.setColour(pluginChoiceColour);
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
     }
     else if (isPlaying)
@@ -1035,8 +1034,6 @@ void SamplePad::startDownloadProgress()
     if (!progressBar)
     {
         progressBar = std::make_unique<ProgressBar>(currentDownloadProgress);
-        progressBar->setColour(ProgressBar::backgroundColourId, Colour(0x80404040));
-        progressBar->setColour(ProgressBar::foregroundColourId, Colour(0x8000D9FF));
     }
 
     if (!progressLabel)
@@ -3258,7 +3255,7 @@ void SampleDragArea::paint(Graphics& g)
     if (isDragging)
     {
         g.setGradientFill(ColourGradient(
-            Colour(0x8000D9FF).withAlpha(0.5f), bounds.getTopLeft().toFloat(),
+            pluginChoiceColour.withAlpha(0.5f), bounds.getTopLeft().toFloat(),
             Colour(0x800099CC).withAlpha(0.5f), bounds.getBottomRight().toFloat(), false));
     }
     else
@@ -3268,7 +3265,7 @@ void SampleDragArea::paint(Graphics& g)
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
 
     // Modern border
-    g.setColour(isDragging ? Colour(0x8000D9FF) : Colour(0x80404040));
+    g.setColour(isDragging ? pluginChoiceColour : Colour(0x80404040));
     g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.5f);
 
     // Modern icon and text styling
@@ -3399,9 +3396,9 @@ void DirectoryOpenButton::paint(Graphics &g) {
     if (isMouseOver())
     {
         // g.setGradientFill(ColourGradient(
-        //    Colour(0x8000D9FF).withAlpha(0.5f), bounds.getTopLeft().toFloat(),
+        //    pluginChoiceColour.withAlpha(0.5f), bounds.getTopLeft().toFloat(),
         //    Colour(0x800099CC).withAlpha(0.5f), bounds.getBottomRight().toFloat(), false));
-        g.setColour(Colour(0x8000D9FF).withAlpha(0.3f));
+        g.setColour(pluginChoiceColour.withAlpha(0.3f));
         g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
     }
     else

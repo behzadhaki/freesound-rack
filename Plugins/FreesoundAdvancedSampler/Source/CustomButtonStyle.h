@@ -12,6 +12,7 @@
 
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "PluginProcessor.h"
+#include "CustomLookAndFeel.h"
 
 using namespace juce;
 
@@ -65,7 +66,7 @@ private:
     juce::Colour buttonOnColour = Colour(0x80FFB347);
     juce::Colour textColourOff = Colours::white;
     juce::Colour textColourOn = Colours::white;
-    juce::Colour mouseOverColour = Colour(0x8000D9FF).withAlpha(0.3f);
+    juce::Colour mouseOverColour = pluginChoiceColour.withAlpha(0.3f);
 
     juce::Colour dangerButtonColour = Colour(0x80FF4D4D).withAlpha(0.3f);
     juce::Colour dangerButtonOnColour = Colour(0x80FF4D4D);

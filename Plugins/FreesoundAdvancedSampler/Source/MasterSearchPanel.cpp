@@ -9,6 +9,9 @@
 */
 
 #include "MasterSearchPanel.h"
+
+#include <CustomLookAndFeel.h>
+
 #include "SampleGridComponent.h"
 
 //==============================================================================
@@ -32,7 +35,7 @@ void MiniPadButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted,
     Colour bgColour;
     if (isConnectedToMaster)
     {
-        bgColour = Colour(0xff00D9FF).withAlpha(0.8f); // Bright blue for connected
+        bgColour = pluginChoiceColour.withAlpha(0.3f);
     }
     else
     {
@@ -48,7 +51,7 @@ void MiniPadButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted,
     g.fillRoundedRectangle(bounds, 3.0f);
 
     // Border
-    g.setColour(isConnectedToMaster ? Colours::white : Colour(0xff666666));
+    g.setColour(Colour(0xff666666));
     g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f);
 
     // Position number (1-16, bottom-left = 1)
@@ -441,8 +444,6 @@ void MasterSearchPanel::handleActivateAll(bool activate_all)
 void MasterSearchPanel::setupProgressComponents()
 {
     // Set up progress bar
-    progressBar.setColour(ProgressBar::backgroundColourId, Colour(0xff404040));
-    progressBar.setColour(ProgressBar::foregroundColourId, Colour(0xff00D9FF));
     addAndMakeVisible(progressBar);
 
     // Set up status label

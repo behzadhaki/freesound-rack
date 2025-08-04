@@ -233,9 +233,6 @@ BookmarkViewerComponent::BookmarkViewerComponent()
 {
     // Title label
     titleLabel.setText("Bookmarks", dontSendNotification);
-    titleLabel.setFont(Font(14.0f, Font::bold));
-    titleLabel.setJustificationType(Justification::centredLeft);
-    titleLabel.setColour(Label::textColourId, Colours::white);
     addAndMakeVisible(titleLabel);
 
     // Refresh button
