@@ -113,7 +113,7 @@ public:
     void addDownloadListener(DownloadListener* listener);
     void removeDownloadListener(DownloadListener* listener);
 
-    // NEW: Playback listener for visual feedback
+    // Playback listener for visual feedback on 4x4 grid
     class PlaybackListener
     {
     public:
@@ -125,6 +125,20 @@ public:
 
     void addPlaybackListener(PlaybackListener* listener);
     void removePlaybackListener(PlaybackListener* listener);
+
+	// Preview playback listener for preview sample visual feedback
+	class PreviewPlaybackListener
+	{
+	public:
+		virtual ~PreviewPlaybackListener() = default;
+		virtual void previewStarted(const String& freesoundId) = 0;
+		virtual void previewStopped(const String& freesoundId) = 0;
+		virtual void previewPlayheadPositionChanged(const String& freesoundId, float position) = 0;
+	};
+
+	void addPreviewPlaybackListener(PreviewPlaybackListener* listener);
+	void removePreviewPlaybackListener(PreviewPlaybackListener* listener);
+
 
 	static String cleanFilename(const String& input)
 	{
@@ -188,6 +202,31 @@ private:
         double samplePosition = 0.0;
         double sampleLength = 0.0;
     };
+
+	// Enhanced preview sampler voice class for playback tracking of 4x4 Grid and Preview Samples
+	class TrackingPreviewSamplerVoice : public SamplerVoice
+	{
+	public:
+		TrackingPreviewSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner);
+
+		void startNote(int midiNoteNumber, float velocity, SynthesiserSound*, int currentPitchWheelPosition) override;
+		void stopNote(float velocity, bool allowTailOff) override;
+		void renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
+
+	private:
+		FreesoundAdvancedSamplerAudioProcessor& processor;
+		String currentFreesoundId;
+		double samplePosition = 0.0;
+		double sampleLength = 0.0;
+	};
+
+	ListenerList<PreviewPlaybackListener> previewPlaybackListeners;
+	String currentPreviewFreesoundId; // Track which sample is currently previewing
+
+	// Preview notification methods
+	void notifyPreviewStarted(const String& freesoundId);
+	void notifyPreviewStopped(const String& freesoundId);
+	void notifyPreviewPlayheadPositionChanged(const String& freesoundId, float position);
 
     AudioDownloadManager downloadManager;
     ListenerList<DownloadListener> downloadListeners;

@@ -61,6 +61,88 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::renderNextBlo
 }
 
 //==============================================================================
+// TrackingPreviewSamplerVoice Implementation (Add after TrackingSamplerVoice)
+//==============================================================================
+
+FreesoundAdvancedSamplerAudioProcessor::TrackingPreviewSamplerVoice::TrackingPreviewSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner)
+    : processor(owner)
+{
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::TrackingPreviewSamplerVoice::startNote(int midiNoteNumber, float velocity, SynthesiserSound* sound, int currentPitchWheelPosition)
+{
+
+    // Call parent first
+    SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
+
+    // Extract freesound ID from the sound name
+    if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound))
+    {
+        String soundName = samplerSound->getName();
+
+        if (soundName.startsWith("preview_"))
+        {
+            currentFreesoundId = soundName.substring(8); // Remove "preview_" prefix
+            samplePosition = 0.0;
+            sampleLength = samplerSound->getAudioData()->getNumSamples();
+
+            // Notify that preview started
+            processor.notifyPreviewStarted(currentFreesoundId);
+        }
+        else
+        {
+            DBG("  - Sound name doesn't start with 'preview_', ignoring");
+        }
+    }
+    else
+    {
+        DBG("  - Not a SamplerSound, ignoring");
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::TrackingPreviewSamplerVoice::stopNote(float velocity, bool allowTailOff)
+{
+    if (currentFreesoundId.isNotEmpty())
+    {
+        processor.notifyPreviewStopped(currentFreesoundId);
+        currentFreesoundId = "";
+        samplePosition = 0.0;
+        sampleLength = 0.0;
+    }
+
+    SamplerVoice::stopNote(velocity, allowTailOff);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::TrackingPreviewSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
+{
+    // Call parent first to actually render the audio
+    SamplerVoice::renderNextBlock(outputBuffer, startSample, numSamples);
+
+    // Update playhead position for preview
+    if (currentFreesoundId.isNotEmpty() && sampleLength > 0 && isVoiceActive())
+    {
+        samplePosition += numSamples;
+        float position = (float)samplePosition / (float)sampleLength;
+
+        // Only send position updates occasionally to avoid flooding
+        static int updateCounter = 0;
+        updateCounter++;
+
+        if (updateCounter % 128 == 0) // Update every 128 samples (~2.9ms at 44.1kHz)
+        {
+            processor.notifyPreviewPlayheadPositionChanged(currentFreesoundId, jlimit(0.0f, 1.0f, position));
+        }
+
+        // Always send the final position when near the end
+        if (position >= 0.99f)
+        {
+            processor.notifyPreviewPlayheadPositionChanged(currentFreesoundId, 1.0f);
+        }
+    }
+}
+
+
+//==============================================================================
 // FreesoundAdvancedSamplerAudioProcessor Implementation
 //==============================================================================
 
@@ -74,22 +156,22 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
                        .withOutput ("Output", AudioChannelSet::stereo(), true)
                      #endif
                        ), presetManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler"))
-                        , bookmarkManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler")) // Add this
+                        , bookmarkManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler"))
 #endif
 {
     tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
     tmpDownloadLocation.createDirectory();
-    currentSessionDownloadLocation = presetManager.getSamplesFolder(); // Use samples folder as default
+    currentSessionDownloadLocation = presetManager.getSamplesFolder();
     midicounter = 1;
     startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
-    // Initialize preview sampler (always runs in parallel)
+    // Initialize preview sampler format manager
     if (previewAudioFormatManager.getNumKnownFormats() == 0) {
         previewAudioFormatManager.registerBasicFormats();
     }
 
-    // Add a single voice for preview sampler
-    previewSampler.addVoice(new SamplerVoice());
+    // FIXED: Add tracking voice for preview sampler (not regular voice)
+    previewSampler.addVoice(new TrackingPreviewSamplerVoice(*this));
 
     // Add download manager listener
     downloadManager.addListener(this);
@@ -343,7 +425,6 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
         if (activePresetFile.existsAsFile())
         {
             presetManager.setActivePreset(activePresetFile, activeSlot);
-            DBG("Restored active preset: " + activePresetFile.getFileName() + ", slot " + String(activeSlot));
         }
     }
 
@@ -533,6 +614,9 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         sampler.addVoice(new TrackingSamplerVoice(*this));
     }
 
+    // Add a tracking voice for preview sampler instead of regular voice
+    previewSampler.addVoice(new TrackingPreviewSamplerVoice(*this));
+
     if (audioFormatManager.getNumKnownFormats() == 0) {
         audioFormatManager.registerBasicFormats();
     }
@@ -565,13 +649,11 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
                     sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote,
                                                      attackTime, releaseTime, maxSampleLength));
 
-                    DBG("Added sample to sampler - Pad " + String(padIndex) + " -> MIDI note " + String(midiNote) + " (" + sound.name + ")");
                 }
             }
         }
     }
 
-    DBG("Sampler rebuild complete with " + String(sampler.getNumSounds()) + " sounds");
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addNoteOnToMidiBuffer(int notenumber)
@@ -749,7 +831,7 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
         File sampleFile = presetManager.getSampleFile(padInfo.freesoundId);
         if (!sampleFile.existsAsFile())
         {
-            // DBG("Missing sample file for ID: " + padInfo.freesoundId + " at pad " + String(padInfo.padIndex));
+            DBG("Missing sample file for ID: " + padInfo.freesoundId + " at pad " + String(padInfo.padIndex));
             continue;
         }
 
@@ -773,7 +855,6 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
         soundData.add(padInfo.searchQuery);  // IMPORTANT: Store query in 4th position
         soundsArray[padInfo.padIndex] = soundData;
 
-        // DBG("Loaded sample at pad " + String(padInfo.padIndex) + ": " + padInfo.originalName + " with query: " + padInfo.searchQuery);
     }
 
     // Update current session location to samples folder
@@ -788,8 +869,6 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, 
         // This will update the visual grid and restore queries to text boxes
         editor->getSampleGridComponent().updateSamples(currentSoundsArray, soundsArray);
     }
-
-    // DBG("Loaded preset slot " + String(slotIndex) + " with master query: " + masterQuery);
 
     return true;
 }
@@ -1179,35 +1258,65 @@ void FreesoundAdvancedSamplerAudioProcessor::updateReadmeFile()
 
 void FreesoundAdvancedSamplerAudioProcessor::loadPreviewSample(const File& audioFile, const String& freesoundId)
 {
-    if (!audioFile.existsAsFile())
-        return;
 
-    // Clear existing preview sounds but keep the voice
+    if (!audioFile.existsAsFile())
+    {
+        DBG("  - File doesn't exist, aborting");
+        return;
+    }
+
+    // CRITICAL: Stop any currently playing preview first
+    stopPreviewSample();
+
+    // Clear existing preview sounds but keep the tracking voice
     previewSampler.clearSounds();
+
+    // Store which sample we're about to load
+    currentPreviewFreesoundId = freesoundId;
 
     // Load the preview sample
     std::unique_ptr<AudioFormatReader> reader(previewAudioFormatManager.createReaderFor(audioFile));
     if (reader != nullptr)
     {
+
         BigInteger notes;
-        int previewNote = 127; // Use highest MIDI note for preview (won't conflict with main grid)
+        int previewNote = 127; // Use highest MIDI note for preview
         notes.setBit(previewNote, true);
 
-        // Use 0.0 for release and maxLength to allow proper preview playback
-        // For preview, you might want a short release when mouse is released
+        // Create the sampler sound with the freesound ID in the name
+        // This is crucial for the tracking voice to identify it
+        String soundName = "preview_" + freesoundId;
+
         double maxLength = 10.0;
         double attackTime = 0.0;
-        double releaseTime = 0.1; // set to sample maxLength to play for the full duration
+        double releaseTime = 0.1;
 
-        previewSampler.addSound(new SamplerSound("preview_" + freesoundId, *reader, notes, previewNote,
-                                                 attackTime, releaseTime, maxLength));
+        auto* samplerSound = new SamplerSound(soundName, *reader, notes, previewNote,
+                                             attackTime, releaseTime, maxLength);
+
+        previewSampler.addSound(samplerSound);
+
+    }
+    else
+    {
+        currentPreviewFreesoundId = ""; // Clear on failure
     }
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::playPreviewSample()
 {
-    // Stop any currently playing preview first
-    stopPreviewSample();
+
+    if (currentPreviewFreesoundId.isEmpty())
+    {
+        DBG("  - No preview sample loaded, aborting");
+        return;
+    }
+
+    if (previewSampler.getNumSounds() == 0)
+    {
+        DBG("  - No sounds in preview sampler, aborting");
+        return;
+    }
 
     // Trigger the preview sample
     int previewNote = 127;
@@ -1218,12 +1327,12 @@ void FreesoundAdvancedSamplerAudioProcessor::playPreviewSample()
     auto sampleNumber = (int)(timestamp * getSampleRate());
     midiFromEditor.addEvent(message, sampleNumber);
 
-    DBG("Preview sample triggered");
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::stopPreviewSample()
 {
-    // Send note off for preview
+    // Send note off for preview - do this even if currentPreviewFreesoundId is empty
+    // to ensure any stuck notes are released
     int previewNote = 127;
     MidiMessage message = MidiMessage::noteOff(2, previewNote, (uint8)0);
     double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
@@ -1231,6 +1340,49 @@ void FreesoundAdvancedSamplerAudioProcessor::stopPreviewSample()
 
     auto sampleNumber = (int)(timestamp * getSampleRate());
     midiFromEditor.addEvent(message, sampleNumber);
+
+    // Don't clear currentPreviewFreesoundId here - let the voice handle it
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::notifyPreviewStarted(const String& freesoundId)
+{
+    currentPreviewFreesoundId = freesoundId;
+
+    previewPlaybackListeners.call([freesoundId](PreviewPlaybackListener& l) {
+        l.previewStarted(freesoundId);
+    });
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::notifyPreviewStopped(const String& freesoundId)
+{
+    previewPlaybackListeners.call([freesoundId](PreviewPlaybackListener& l) {
+        l.previewStopped(freesoundId);
+    });
+
+    // Clear the current preview ID after notifying listeners
+    if (currentPreviewFreesoundId == freesoundId)
+    {
+        currentPreviewFreesoundId = "";
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::notifyPreviewPlayheadPositionChanged(const String& freesoundId, float position)
+{
+    // Don't log this one as it's called frequently
+    previewPlaybackListeners.call([freesoundId, position](PreviewPlaybackListener& l) {
+        l.previewPlayheadPositionChanged(freesoundId, position);
+    });
+}
+
+// Add these listener management methods:
+void FreesoundAdvancedSamplerAudioProcessor::addPreviewPlaybackListener(PreviewPlaybackListener* listener)
+{
+    previewPlaybackListeners.add(listener);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::removePreviewPlaybackListener(PreviewPlaybackListener* listener)
+{
+    previewPlaybackListeners.remove(listener);
 }
 
 //==============================================================================
