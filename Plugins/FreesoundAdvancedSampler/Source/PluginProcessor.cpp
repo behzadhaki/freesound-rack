@@ -526,7 +526,7 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
     sampler.clearVoices();
 
     int poliphony = 16;
-    int maxLength = 10;
+    double maxLength = 0.0; // CHANGED: 0.0 means no length limit
 
     // Add tracking voices
     for (int i = 0; i < poliphony; i++) {
@@ -537,10 +537,9 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         audioFormatManager.registerBasicFormats();
     }
 
-    // Load samples by their actual pad positions - THIS IS CRITICAL
+    // Load samples by their actual pad positions
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
-        // Check if we have a sound for this specific pad position
         if (padIndex < currentSoundsArray.size() && !currentSoundsArray[padIndex].id.isEmpty())
         {
             const FSSound& sound = currentSoundsArray[padIndex];
@@ -555,9 +554,16 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
                 if (reader != nullptr)
                 {
                     BigInteger notes;
-                    int midiNote = 36 + padIndex; // CRITICAL: Note 36 = pad 0, Note 37 = pad 1, etc.
+                    int midiNote = 36 + padIndex;
                     notes.setBit(midiNote, true);
-                    sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote, 0, maxLength, maxLength));
+
+                    // For sustained playback (samples play until note off):
+                    double attackTime = 0.0;      // Start immediately
+                    double releaseTime = 0.1;     // Short release (100ms fadeout after note off)
+                    double maxSampleLength = 10.0; // No length limit - play full sample
+
+                    sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote,
+                                                     attackTime, releaseTime, maxSampleLength));
 
                     DBG("Added sample to sampler - Pad " + String(padIndex) + " -> MIDI note " + String(midiNote) + " (" + sound.name + ")");
                 }
