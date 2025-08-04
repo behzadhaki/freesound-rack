@@ -21,8 +21,6 @@
 static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampler-data"; // for inter plugin drag and drop
 
 //==============================================================================
-// SamplePad Component (a single sample pad in the grid)
-//==============================================================================
 
 struct Badge {
     String id;
@@ -44,6 +42,8 @@ struct Badge {
         : id(badgeId), text(badgeText), backgroundColour(bgColor), textColour(Colours::white) {}
 };
 
+//==============================================================================
+// SamplePad Component (a single sample pad in the grid)
 class SamplePad : public Component,
                   public DragAndDropContainer,
                   public DragAndDropTarget,
@@ -151,7 +151,8 @@ protected:
     float playheadPosition;
     bool isPlaying;
     bool hasValidSample;
-    bool isDragHover;
+    bool isDragHover;                   // for visual feedback during swapping
+    bool isCopyDragHover = false; // for visual feedback during copy drag
     bool connectedToMaster = false; // Master search connection state
 
     Colour padColour;
@@ -170,9 +171,12 @@ protected:
 
     void handleBookmarkClick();
 
+
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };
+
+
 
 //==============================================================================
 // SampleGridComponent (the grid of sample pads)
@@ -227,6 +231,7 @@ public:
     void itemDragEnter(const SourceDetails& dragSourceDetails) override;
     void itemDragExit(const SourceDetails& dragSourceDetails) override;
     void itemDropped(const SourceDetails& dragSourceDetails) override;
+    void handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex);
 
     // Master search management
     void populatePadsFromMasterSearch();
@@ -286,7 +291,6 @@ private:
     bool isEnhancedDragHover = false;
     int dragHoverPadIndex = -1;
 
-    void handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex);
     void performEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex); // NEW helper method
     void handleFileDrop(const StringArray& filePaths, int targetPadIndex);
     int getPadIndexFromPosition(Point<int> position);

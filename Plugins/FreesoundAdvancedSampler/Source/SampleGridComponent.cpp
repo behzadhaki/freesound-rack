@@ -366,9 +366,13 @@ void SamplePad::paint(Graphics& g)
     auto bounds = getLocalBounds();
 
     // === BACKGROUND WITH MASTER CONNECTION STYLING ===
-    if (isDragHover)
+    if (isDragHover || isCopyDragHover) // Add isCopyDragHover here
     {
-        g.setColour(pluginChoiceColour.withAlpha(0.6f));
+        g.setColour(padColour.withAlpha(0.3f));
+    }
+    else if (isPlaying)
+    {
+        g.setColour(padColour.withAlpha(0.6f));
     }
     else if (isPlaying)
     {
@@ -391,7 +395,7 @@ void SamplePad::paint(Graphics& g)
     else
     {
         if (hasValidSample && isSearchableMode)
-            g.setColour(padColour.withAlpha(0.1f));
+            g.setColour(padColour.withAlpha(0.2f));
         else if (hasValidSample && !isSearchableMode)
             g.setColour(padColour);
         else
@@ -401,9 +405,9 @@ void SamplePad::paint(Graphics& g)
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
 
     // Modern border styling
-    if (isDragHover)
+    if (isDragHover || isCopyDragHover)
     {
-        g.setColour(pluginChoiceColour);
+        g.setColour(padColour.withAlpha(0.3f));
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.5f);
     }
     else if (isDownloading)
@@ -738,7 +742,7 @@ void SamplePad::performEnhancedDragDrop()
 // DragAndDropTarget implementation
 bool SamplePad::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
 {
-    // Only accept drags from other sample pads
+    // Accept pad swaps
     if (dragSourceDetails.description.hasProperty("type") &&
         dragSourceDetails.description.getProperty("type", "") == "samplePad")
     {
@@ -746,26 +750,46 @@ bool SamplePad::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
         int sourcePadIndex = dragSourceDetails.description.getProperty("sourcePadIndex", -1);
         return sourcePadIndex != padIndex;
     }
+
+    // Accept enhanced sampler data (copy operations)
+    if (dragSourceDetails.description.hasProperty("mime_type") &&
+        dragSourceDetails.description.getProperty("mime_type", "") == FREESOUND_SAMPLER_MIME_TYPE)
+    {
+        return true;
+    }
+
     return false;
 }
 
 void SamplePad::itemDragEnter(const SourceDetails& dragSourceDetails)
 {
-    isDragHover = true;
+    if (dragSourceDetails.description.hasProperty("type") &&
+        dragSourceDetails.description.getProperty("type", "") == "samplePad")
+    {
+        isDragHover = true;
+    }
+    else if (dragSourceDetails.description.hasProperty("mime_type") &&
+             dragSourceDetails.description.getProperty("mime_type", "") == FREESOUND_SAMPLER_MIME_TYPE)
+    {
+        isCopyDragHover = true;
+    }
     repaint();
 }
 
 void SamplePad::itemDragExit(const SourceDetails& dragSourceDetails)
 {
     isDragHover = false;
+    isCopyDragHover = false;
     repaint();
 }
 
 void SamplePad::itemDropped(const SourceDetails& dragSourceDetails)
 {
     isDragHover = false;
+    isCopyDragHover = false;
     repaint();
 
+    // Handle pad swaps
     if (dragSourceDetails.description.hasProperty("type") &&
         dragSourceDetails.description.getProperty("type", "") == "samplePad")
     {
@@ -775,6 +799,32 @@ void SamplePad::itemDropped(const SourceDetails& dragSourceDetails)
         if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
         {
             gridComponent->swapSamples(sourcePadIndex, padIndex);
+        }
+    }
+    // Handle enhanced sampler data drops (copy operations)
+    else if (dragSourceDetails.description.hasProperty("mime_type") &&
+             dragSourceDetails.description.getProperty("mime_type", "") == FREESOUND_SAMPLER_MIME_TYPE)
+    {
+        if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+        {
+            String jsonMetadata = dragSourceDetails.description.getProperty("metadata", "");
+            var filesVar = dragSourceDetails.description.getProperty("files", var());
+
+            StringArray filePaths;
+            if (filesVar.isArray())
+            {
+                Array<var>* filesArray = filesVar.getArray();
+                for (const auto& fileVar : *filesArray)
+                {
+                    filePaths.add(fileVar.toString());
+                }
+            }
+            else if (filesVar.isString())
+            {
+                filePaths.add(filesVar.toString());
+            }
+
+            gridComponent->handleEnhancedDrop(jsonMetadata, filePaths, padIndex);
         }
     }
 }
