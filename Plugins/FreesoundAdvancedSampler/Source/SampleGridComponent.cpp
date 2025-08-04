@@ -180,29 +180,6 @@ void SamplePad::paint(Graphics& g)
     auto numberBounds = bounds.reduced(4);
     auto topLeftLine = numberBounds.removeFromTop(14); // Keep the whole top line for positioning
 
-    // MIDI/Keyboard info (leftmost)
-    auto numberRect = topLeftLine.removeFromLeft(24);
-
-    // Small dark background for MIDI/keyboard info
-    g.setColour(Colour(0x80000000).withAlpha(0.6f));
-    g.fillRoundedRectangle(numberRect.toFloat(), 2.0f);
-    g.setColour(Colours::white);
-
-    if (isSearchableMode)
-    {
-        // Original behavior: show MIDI note and keyboard key
-        int midiNote = padIndex + 36;
-        String keyboardKey = getKeyboardKeyForPad(padIndex);
-        String displayText = String(midiNote) + " | " + keyboardKey;
-        g.drawText(displayText, numberRect, Justification::centred);
-    }
-    else
-    {
-        // View-only mode: just show pad number
-        String displayText = String(CharPointer_UTF8("\xF0\x9F\x91\x81")); // String(CharPointer_UTF8("\xF0\x9F\x91\x80"));  // eye icon
-        g.drawText(displayText, numberRect, Justification::centred);
-    }
-
     // Copy badge (next to MIDI info) - NEW POSITION
     if (hasValidSample)
     {
@@ -322,8 +299,8 @@ void SamplePad::paint(Graphics& g)
     {
         // Adjust waveform bounds to account for top and bottom badges
         auto waveformBounds = bounds.reduced(8);
-        waveformBounds.removeFromTop(18); // Space for top line badges
-        waveformBounds.removeFromBottom(18); // Space for bottom line
+        waveformBounds.removeFromTop(14); // Space for top line badges
+        waveformBounds.removeFromBottom(14); // Space for bottom line
 
         // Draw waveform with modern styling
         drawWaveform(g, waveformBounds);
@@ -334,10 +311,25 @@ void SamplePad::paint(Graphics& g)
             drawPlayhead(g, waveformBounds);
         }
 
-        // Draw filename and author with modern white text
+        // Overlay MIDI/Keyboard info at top-right of waveform (ONLY for searchable pads)
+        if (isSearchableMode)
+        {
+            g.setColour(Colours::white);
+            g.setFont(Font(8.0f, Font::bold));
+
+            // Create MIDI info display
+            int midiNote = padIndex + 36;
+            String keyboardKey = getKeyboardKeyForPad(padIndex);
+            String displayText = String(midiNote) + " | " + keyboardKey;
+
+            // Position at top-right corner of waveform area (no background)
+            auto midiInfoBounds = Rectangle<int>(waveformBounds.getRight() - 30, waveformBounds.getY(), 30, 14);
+            g.drawText(displayText, midiInfoBounds, Justification::centred);
+        }
+
+        // Draw filename and author with modern white text (existing code at bottom)
         g.setColour(Colours::white);
         g.setFont(Font(8.5f, Font::bold));
-
         // Format filename to max 10 characters with ellipsis if needed
         String displayName = sampleName;
         if (displayName.length() > 10)
@@ -353,14 +345,19 @@ void SamplePad::paint(Graphics& g)
         }
 
         // Create the full text string
-        String displayText = "Freesound ID: "+ freesoundId + " | " + displayName + " by " + displayAuthor;
+        String displayText = "FS ID: "+ freesoundId;
+        // max length of 20 characters
+        if (displayText.length() > 20)
+        {
+            displayText = displayText.substring(0, 17) + "...";
+        }
 
         // Position at bottom of waveform area with dark background
         auto filenameBounds = waveformBounds.removeFromBottom(14);
-        g.setColour(Colour(0x80000000).withAlpha(0.7f));
-        g.fillRoundedRectangle(filenameBounds.toFloat(), 2.0f);
+        // g.setColour(Colour(0x80000000).withAlpha(0.7f));
+        // g.fillRoundedRectangle(filenameBounds.toFloat(), 2.0f);
         g.setColour(Colours::white);
-        g.drawText(displayText, filenameBounds, Justification::centred, true);
+        g.drawText(displayText, filenameBounds, Justification::bottomRight, true);
     }
 
     // === BOTTOM LINE: .ogg and .wav badges only ===
@@ -986,10 +983,10 @@ void SamplePad::drawWaveform(Graphics& g, Rectangle<int> bounds)
     if (!hasValidSample || audioThumbnail.getTotalLength() == 0.0)
         return;
 
-    g.setColour(Colours::black.withAlpha(0.3f));
+    g.setColour(Colours::black.withAlpha(0.2f));
     g.fillRect(bounds);
 
-    g.setColour(Colours::white.withAlpha(0.8f));
+    g.setColour(!isPlaying? Colours::lightgrey.withAlpha(0.8f) : Colours::white.withAlpha(0.8f));
     audioThumbnail.drawChannels(g, bounds, 0.0, audioThumbnail.getTotalLength(), 1.0f);
 }
 
@@ -2433,6 +2430,36 @@ void SampleGridComponent::searchForSinglePadWithQuery(int padIndex, const String
         return;
     }
 
+    // Check if pad already has a sample and ask for confirmation
+    auto currentSample = samplePads[padIndex]->getSampleInfo();
+    if (currentSample.hasValidSample)
+    {
+        String message = "Pad " + String(padIndex + 1) + " already contains:\n\"" +
+                        currentSample.sampleName + "\" by " + currentSample.authorName + "\n\n" +
+                        "Replace with a new search for: \"" + query + "\"?";
+
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Replace Sample",
+            message,
+            "Yes, Replace", "No, Cancel",
+            nullptr,
+            ModalCallbackFunction::create([this, padIndex, query](int result) {
+                if (result == 1) { // User clicked "Yes, Replace"
+                    performSinglePadSearch(padIndex, query);
+                }
+                // If result == 0, user clicked "No, Cancel" - do nothing
+            })
+        );
+        return;
+    }
+
+    // Pad is empty - proceed without confirmation
+    performSinglePadSearch(padIndex, query);
+}
+
+void SampleGridComponent::performSinglePadSearch(int padIndex, const String& query)
+{
     // Search for a single sound with the specific query
     Array<FSSound> searchResults = searchSingleSound(query);
 
@@ -3106,17 +3133,6 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
         // Use page_size parameter (5th parameter) to get multiple results
         int requestedResults = jmax(numSoundsNeeded * 2, 50); // Request at least 50 or 2x what we need
 
-        /*
-        * SoundList list = client.textSearch(
-            masterQuery, <--- this is the master query
-            "duration:[0 TO 0.5]", <--- filter for short sounds
-            "score", <--- sort by score
-            1,      <--- group by pack
-            1,     <--- page number
-            10000,  <--- page size (max results per page)
-            "id,name,username,license,previews" <--- fields to return
-        );
-         */
         SoundList list = client.textSearch(
             masterQuery,
             "duration:[0 TO 0.5]",
@@ -3124,7 +3140,7 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
             1,
             1,
             10000,
-            "id,name,username,license,previews"
+            "id,name,username,license,previews,tags,description"
         );
 
         Array<FSSound> sounds = list.toArrayOfSounds();

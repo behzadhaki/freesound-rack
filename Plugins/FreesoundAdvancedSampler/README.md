@@ -5,6 +5,8 @@
 - Add a DL button to download missing bookmarks
 - 
 priority 1:
+- Use a single uniform search method instead of repeating the same code in each search function 
+  - get tags and description from the search results and store them in SamplePadInfo
 - create a multi-tab sample pad 
 
 priority 2:

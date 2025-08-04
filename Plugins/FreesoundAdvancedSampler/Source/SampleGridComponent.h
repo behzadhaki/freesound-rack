@@ -89,7 +89,6 @@ public:
     void handleCopyClick();
 
     bool isSearchable() const { return isSearchableMode; }
-
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
 protected:
@@ -178,6 +177,7 @@ public:
     bool isPositionConnectedToMaster(int row, int col) const;
     void syncMasterQueryToPosition(int row, int col, const String& masterQuery);
     void searchSelectedPositions(const String& masterQuery);
+    void performSinglePadSearch(int padIndex, const String& query);
 
     // PlaybackListener implementation
     void noteStarted(int noteNumber, float velocity) override;
