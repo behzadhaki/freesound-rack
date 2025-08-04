@@ -17,6 +17,7 @@
 #include <random>
 #include "CustomButtonStyle.h"
 #include "MasterSearchPanel.h"
+#include "FreesoundSearchUtils.h"
 
 static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampler-data"; // for inter plugin drag and drop
 
@@ -73,7 +74,7 @@ public:
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
 
     // Query management
-    void setQuery(const String& query);
+    void setQuery(const String& query, bool dontUpdatePadInfoQuery=false);
     String getQuery() const;
     bool hasQuery() const;
 

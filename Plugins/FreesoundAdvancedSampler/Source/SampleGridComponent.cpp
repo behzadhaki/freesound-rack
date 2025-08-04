@@ -1055,11 +1055,14 @@ void SamplePad::clearSample()
     repaint();
 }
 
-void SamplePad::setQuery(const String& query)
+void SamplePad::setQuery(const String& query, bool dontUpdatePadInfoQuery)
 {
-    padQuery = query;
+    if (!dontUpdatePadInfoQuery) padQuery = query;
+
     queryTextBox.setText(query, dontSendNotification);
 }
+
+
 
 String SamplePad::getQuery() const
 {
@@ -2097,22 +2100,8 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
 
 Array<FSSound> SampleGridComponent::searchSingleSound(const String& query)
 {
-    FreesoundClient client(FREESOUND_API_KEY);
-    SoundList list = client.textSearch(query, "duration:[0 TO 0.5]", "score", 1, 1, 10000, "id,name,username,license,previews");
-    Array<FSSound> sounds = list.toArrayOfSounds();
-
-    if (sounds.isEmpty())
-        return sounds;
-
-    // Randomize and pick one
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(sounds.begin(), sounds.end(), g);
-
-    // Return just the first one
-    Array<FSSound> result;
-    result.add(sounds[0]);
-    return result;
+    auto [finalSounds, soundInfo] = getSoundsForQuery(query, 1, true);
+    return finalSounds;
 }
 
 void SampleGridComponent::loadSingleSample(int padIndex, const FSSound& sound, const File& audioFile)
@@ -2418,6 +2407,8 @@ void SampleGridComponent::performSinglePadSearch(int padIndex, const String& que
         AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
             "No Results",
             "No sounds found for the query: " + query);
+        std::cout << samplePads[padIndex]->getSampleInfo().query << std::endl; // Debugging output
+        samplePads[padIndex]->setQuery(samplePads[padIndex]->getSampleInfo().query, true); // Reset query visually)
         return;
     }
 
@@ -3065,120 +3056,26 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
     pendingMasterSearchPads = targetPadIndices;
     pendingMasterSearchQuery = masterQuery;
 
+    int numSoundsNeeded = targetPadIndices.size();
+
+    auto [finalSounds, soundInfo] = getSoundsForQuery(masterQuery, numSoundsNeeded, true);
+
+    if (finalSounds.isEmpty())
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "No Results",
+            "No sounds found for the query: " + masterQuery);
+        return;
+    }
+
     // Clear the target pads first
     for (int padIndex : targetPadIndices)
     {
         samplePads[padIndex]->clearSample();
     }
 
-    // Use the existing Freesound search system
-    FreesoundClient client(FREESOUND_API_KEY);
-
     // Calculate how many sounds we need
-    int numSoundsNeeded = targetPadIndices.size();
-
-    try
-    {
-        // Request more results than we need to have variety for shuffling
-        // Use page_size parameter (5th parameter) to get multiple results
-        int requestedResults = jmax(numSoundsNeeded * 2, 50); // Request at least 50 or 2x what we need
-
-        SoundList list = client.textSearch(
-            masterQuery,
-            "duration:[0 TO 0.5]",
-            "score",
-            1,
-            1,
-            10000,
-            "id,name,username,license,previews,tags,description"
-        );
-
-        Array<FSSound> sounds = list.toArrayOfSounds();
-
-        // 1. Handle no results case
-        if (sounds.isEmpty())
-        {
-            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                "No Results",
-                "No sounds found for the query: " + masterQuery);
-
-            // Clear pending state and do nothing else
-            pendingMasterSearchPads.clear();
-            pendingMasterSearchQuery = "";
-            return;
-        }
-
-        // 3. Shuffle results if more than one sound found
-        if (sounds.size() > 1)
-        {
-            std::random_device rd;
-            std::mt19937 g(rd());
-            std::shuffle(sounds.begin(), sounds.end(), g);
-            // DBG("Shuffled " + String(sounds.size()) + " search results");
-        }
-
-        // 2. Handle insufficient results by repeating them
-        Array<FSSound> finalSounds;
-        std::vector<juce::StringArray> soundInfo;
-
-        if (sounds.size() < numSoundsNeeded)
-        {
-            // DBG("Not enough results (" + String(sounds.size()) + "), repeating to fill " + String(numSoundsNeeded) + " pads");
-
-            // Repeat sounds in a cycling manner to fill all target pads
-            for (int i = 0; i < numSoundsNeeded; ++i)
-            {
-                int sourceIndex = i % sounds.size(); // Cycle through available sounds
-                finalSounds.add(sounds[sourceIndex]);
-
-                // Create sound info for each repeated sound
-                StringArray info;
-                info.add(sounds[sourceIndex].name);
-                info.add(sounds[sourceIndex].user);
-                info.add(sounds[sourceIndex].license);
-                info.add(masterQuery); // Store the master query
-                soundInfo.push_back(info);
-            }
-        }
-        else
-        {
-            // We have enough results, just take what we need
-            for (int i = 0; i < numSoundsNeeded; ++i)
-            {
-                finalSounds.add(sounds[i]);
-
-                StringArray info;
-                info.add(sounds[i].name);
-                info.add(sounds[i].user);
-                info.add(sounds[i].license);
-                info.add(masterQuery); // Store the master query
-                soundInfo.push_back(info);
-            }
-        }
-
-        // DBG("Final sound selection: " + String(finalSounds.size()) + " sounds for " + String(numSoundsNeeded) + " pads");
-
-        // Log which sounds will be used (helpful for debugging repeats)
-        for (int i = 0; i < finalSounds.size(); ++i)
-        {
-            // DBG("  Pad " + String(i) + ": " + finalSounds[i].name + " (ID: " + finalSounds[i].id + ")");
-        }
-
-        // This will trigger the existing download system
-        processor->newSoundsReady(finalSounds, masterQuery, soundInfo);
-
-        // DBG("Master search initiated for " + String(targetPadIndices.size()) + " pads with query: " + masterQuery);
-    }
-    catch (const std::exception& e)
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Search Error",
-            "Failed to search Freesound: " + String(e.what()));
-
-        // Clear pending state
-        pendingMasterSearchPads.clear();
-        pendingMasterSearchQuery = "";
-    }
+    processor->newSoundsReady(finalSounds, masterQuery, soundInfo);
 }
 
 int SampleGridComponent::getVisualPositionFromRowCol(int row, int col) const
