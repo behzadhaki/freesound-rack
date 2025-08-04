@@ -244,8 +244,8 @@ BookmarkViewerComponent::BookmarkViewerComponent()
     // Viewport for scrolling
     bookmarkViewport.setViewedComponent(&bookmarkContainer, false);
     bookmarkViewport.setScrollBarsShown(true, false); // Vertical scrollbar only
-    bookmarkViewport.setColour(ScrollBar::backgroundColourId, Colour(0xff2A2A2A));
-    bookmarkViewport.setColour(ScrollBar::thumbColourId, Colour(0xff555555));
+    bookmarkViewport.setColour(ScrollBar::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
+    bookmarkViewport.setColour(ScrollBar::thumbColourId, pluginChoiceColour);
     addAndMakeVisible(bookmarkViewport);
 }
 
@@ -270,18 +270,16 @@ void BookmarkViewerComponent::resized()
     auto bounds = getLocalBounds().reduced(8);
 
     int textHeight = 35; // Height for title and refresh button
-    int refreshButtonHeight = 30; // Height for refresh button
+    int refreshButtonWidth = 17; // Height for refresh button
     int gapHeight = 8; // Gap
 
     // Title takes most of the header
     titleLabel.setBounds(bounds.removeFromTop(textHeight));
 
     // Refresh button on the right
-    refreshButton.setBounds(bounds.removeFromTop(refreshButtonHeight).removeFromLeft(refreshButtonHeight));
+    refreshButton.setBounds(bounds.removeFromLeft(refreshButtonWidth));
 
-    bounds = getLocalBounds().reduced(8);
-    bounds.removeFromTop(textHeight + refreshButtonHeight + gapHeight);
-
+    bounds.removeFromLeft(6);
     // Viewport takes the rest
     bookmarkViewport.setBounds(bounds);
 
@@ -338,8 +336,8 @@ void BookmarkViewerComponent::createBookmarkPads()
     if (currentBookmarks.isEmpty())
         return;
 
-    const int padWidth = 250;
-    const int padHeight = 100;
+    const int padWidth = 180;
+    const int padHeight = 80;
     const int padSpacing = 8;
 
     for (int i = 0; i < currentBookmarks.size(); ++i)

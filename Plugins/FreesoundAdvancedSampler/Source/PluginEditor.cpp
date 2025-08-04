@@ -55,7 +55,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     // Set up bookmark viewer with expandable panel
     bookmarkExpandablePanel.setOrientation(ExpandablePanel::Orientation::Left); // Left orientation = expands right
     bookmarkExpandablePanel.setContentComponent(&bookmarkViewerComponent);
-    bookmarkExpandablePanel.setExpandedWidth(300); // Width for bookmark viewer
+    bookmarkExpandablePanel.setExpandedWidth(250); // Width for bookmark viewer
     bookmarkExpandablePanel.setExpanded(false); // Start collapsed
     bookmarkExpandablePanel.onExpandedStateChanged = [this](bool expanded) {
         // You can save the state if needed
