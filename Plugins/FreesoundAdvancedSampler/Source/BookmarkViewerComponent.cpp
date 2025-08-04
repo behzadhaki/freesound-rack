@@ -390,6 +390,13 @@ void BookmarkViewerComponent::updateBookmarkPads()
     // Create pads for bookmarks
     createBookmarkPads();
 
+    // iterate through pads and add them to the container
+    for (auto* pad : bookmarkPads)
+    {
+        bookmarkContainer.addAndMakeVisible(pad);
+        bookmarkPadMap[pad->getFreesoundId()] = pad; // Map by freesound ID
+    }
+
     // Update scrollable area
     updateScrollableArea();
 }
@@ -434,6 +441,9 @@ void BookmarkViewerComponent::clearBookmarkPads()
 {
     bookmarkPads.clear();
     bookmarkContainer.removeAllChildren();
+
+    // Clear the map as well
+    bookmarkPadMap.clear();
 }
 
 void BookmarkViewerComponent::updateScrollableArea()
@@ -491,12 +501,5 @@ void BookmarkViewerComponent::previewPlayheadPositionChanged(const String& frees
 
 BookmarkSamplePad* BookmarkViewerComponent::findPadByFreesoundId(const String& freesoundId)
 {
-    for (auto* pad : bookmarkPads)
-    {
-        if (pad && pad->getFreesoundId() == freesoundId)
-        {
-            return pad;
-        }
-    }
-    return nullptr;
+    return bookmarkPadMap.count(freesoundId) > 0 ? bookmarkPadMap[freesoundId] : nullptr;
 }

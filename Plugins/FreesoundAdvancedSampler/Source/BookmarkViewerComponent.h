@@ -93,6 +93,7 @@ private:
 
     // Sample pads for bookmarks (non-searchable)
     OwnedArray<BookmarkSamplePad> bookmarkPads;
+    std::map<String, BookmarkSamplePad*> bookmarkPadMap; // Map for quick access by Freesound ID
 
     // Current bookmark data
     Array<BookmarkInfo> currentBookmarks;
