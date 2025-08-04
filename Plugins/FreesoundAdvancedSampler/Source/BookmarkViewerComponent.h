@@ -42,6 +42,7 @@ private:
 
     // ADD THIS STATE VARIABLE:
     bool isPreviewPlaying = false;
+    Colour defaultColour = Colours::darkgrey;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BookmarkSamplePad)
 };

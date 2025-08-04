@@ -375,8 +375,6 @@ PresetBrowserComponent::PresetBrowserComponent()
     // Dark viewport styling
     presetViewport.setViewedComponent(&presetListContainer, false);
     presetViewport.setScrollBarsShown(true, false);
-    presetViewport.setColour(ScrollBar::backgroundColourId, Colour(0xff2A2A2A));
-    presetViewport.setColour(ScrollBar::thumbColourId, Colour(0xff555555));
     addAndMakeVisible(presetViewport);
 
     // Dark rename editor

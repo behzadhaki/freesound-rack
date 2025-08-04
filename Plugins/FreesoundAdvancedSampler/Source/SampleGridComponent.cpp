@@ -105,10 +105,12 @@ void SamplePad::resized()
         // int rightBadgesWidth = 0;
         int spacing = 3;
 
-        // Calculate bottom-left badges width (.ogg and .wav when sample exists)
+        // Calculate bottom-left badges width (.wav and  when sample exists)
         if (hasValidSample) {
-            leftBadgesWidth += 20 + spacing; // .ogg badge
-            leftBadgesWidth += 20 + spacing; // .wav badge
+            leftBadgesWidth += 20 + spacing; // .wav
+            if (isSearchable()) {
+                leftBadgesWidth += 20 + spacing; // .wav badge
+            }
         }
 
         // Calculate bottom-right badges width (search when searchable and not downloading)
@@ -234,25 +236,27 @@ void SamplePad::initializeBadges()
         };
         bottomLeftBadges.push_back(wavBadge);
 
-        Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
-        searchBadge.width = 16;
-        searchBadge.fontSize = 16.0f; // Smaller font size for search badge
-        searchBadge.onClick = [this]() {
-            String searchQuery = queryTextBox.getText().trim();
-            if (searchQuery.isEmpty() && processor) {
-                searchQuery = processor->getQuery();
-            }
-            if (searchQuery.isNotEmpty()) {
-                queryTextBox.setText(searchQuery);
-                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
-                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+        if (isSearchable()) {
+            Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
+            searchBadge.width = 16;
+            searchBadge.fontSize = 16.0f; // Smaller font size for search badge
+            searchBadge.onClick = [this]() {
+                String searchQuery = queryTextBox.getText().trim();
+                if (searchQuery.isEmpty() && processor) {
+                    searchQuery = processor->getQuery();
                 }
-            } else {
-                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                    "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
-            }
-        };
-        bottomLeftBadges.push_back(searchBadge);
+                if (searchQuery.isNotEmpty()) {
+                    queryTextBox.setText(searchQuery);
+                    if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
+                        gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                    }
+                } else {
+                    AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                        "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
+                }
+            };
+            bottomLeftBadges.push_back(searchBadge);
+        }
 
     }
 
@@ -388,6 +392,8 @@ void SamplePad::paint(Graphics& g)
     {
         if (hasValidSample && isSearchableMode)
             g.setColour(padColour.withAlpha(0.1f));
+        else if (hasValidSample && !isSearchableMode)
+            g.setColour(padColour);
         else
             g.setColour(Colour(0x801A1A1A));
     }

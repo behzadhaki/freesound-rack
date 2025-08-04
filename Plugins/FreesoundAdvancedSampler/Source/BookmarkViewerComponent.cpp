@@ -15,13 +15,10 @@
 // BookmarkSamplePad Implementation
 //==============================================================================
 
-//==============================================================================
-// BookmarkSamplePad Implementation
-//==============================================================================
-
 BookmarkSamplePad::BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo)
     : SamplePad(index, false), bookmark(bookmarkInfo) // false = non-searchable
 {
+    padColour = defaultColour.withAlpha(0.2f);
 }
 
 BookmarkSamplePad::~BookmarkSamplePad()
@@ -39,113 +36,23 @@ void BookmarkSamplePad::mouseDown(const MouseEvent& event)
     if (isDownloading)
         return;
 
+    // Check if clicked on any badge
+    Badge* clickedBadge = findBadgeAtPosition(event.getPosition());
+    if (clickedBadge && clickedBadge->onClick)
+    {
+        clickedBadge->onClick();
+        return;
+    }
+
+    // If no valid sample and didn't click a badge, return
     if (!hasValidSample)
-        return; // Don't process clicks for empty pads
-
-    // Check top-left badges (MIDI info and Copy badge)
-    auto bounds = getLocalBounds();
-    auto topLeftBounds = bounds.reduced(3);
-    topLeftBounds = topLeftBounds.removeFromTop(12);
-
-    // Skip MIDI info area
-    topLeftBounds.removeFromLeft(24 + 3); // MIDI width + spacing
-
-    // Check Copy badge (next to MIDI info) - Always available if sample exists
-    if (hasValidSample)
-    {
-        int copyBadgeWidth = 28;
-        auto copyBounds = topLeftBounds.removeFromLeft(copyBadgeWidth);
-
-        if (copyBounds.contains(event.getPosition()))
-        {
-            handleCopyClick();
-            return;
-        }
-    }
-
-    if (hasValidSample)
-    {
-        topLeftBounds.removeFromLeft(3); // Spacing after copy
-        int bookmarkBadgeWidth = 28;
-        auto bookmarkBounds = topLeftBounds.removeFromLeft(bookmarkBadgeWidth);
-
-        if (bookmarkBounds.contains(event.getPosition()))
-        {
-            handleBookmarkClick();
-            return;
-        }
-    }
-
-    // Check top-right badges
-    auto topRightBounds = bounds.reduced(3);
-    topRightBounds = topRightBounds.removeFromTop(12);
-
-    // License badge (middle in top line) - DOUBLE CLICK to open
-    if (licenseType.isNotEmpty())
-    {
-        int licenseBadgeWidth = 32;
-        auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
-
-        if (licenseBounds.contains(event.getPosition()))
-        {
-            // Only visual feedback on single click, actual action on double click
-            return;
-        }
-        topRightBounds.removeFromRight(3);
-    }
-
-    // Web badge (leftmost in top line) - DOUBLE CLICK to open
-    if (freesoundId.isNotEmpty())
-    {
-        int webBadgeWidth = 28;
-        auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
-
-        if (webBounds.contains(event.getPosition()))
-        {
-            // Only visual feedback on single click, actual action on double click
-            return;
-        }
-    }
-
-    // Check bottom badges: .ogg and .wav
-    if (hasValidSample)
-    {
-        auto bottomBounds = bounds.reduced(3);
-        int oggBadgeWidth = 28;
-        int wavBadgeWidth = 28;
-        int badgeHeight = 12;
-        int badgeSpacing = 3;
-
-        bottomBounds = bottomBounds.removeFromBottom(badgeHeight);
-
-        // Check .ogg badge (leftmost)
-        auto oggBounds = bottomBounds.removeFromLeft(oggBadgeWidth);
-        if (oggBounds.contains(event.getPosition()))
-        {
-            // Handle .ogg drag preparation (visual feedback only)
-            setMouseCursor(MouseCursor::DraggingHandCursor);
-            Timer::callAfterDelay(3000, [this]() {
-                setMouseCursor(MouseCursor::NormalCursor);
-            });
-            return;
-        }
-
-        bottomBounds.removeFromLeft(badgeSpacing);
-
-        // Check .wav badge (second)
-        auto wavBounds = bottomBounds.removeFromLeft(wavBadgeWidth);
-        if (wavBounds.contains(event.getPosition()))
-        {
-            handleWavCopyClick();
-            return;
-        }
-    }
+        return;
 
     // Check if clicked in waveform area - for preview playback
-    bounds = getLocalBounds();
+    auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
-    waveformBounds.removeFromTop(16); // Space for top line badges
-    waveformBounds.removeFromBottom(16); // Space for bottom line
+    waveformBounds.removeFromTop(18); // Space for top line badges
+    waveformBounds.removeFromBottom(18); // Space for bottom line
 
     if (waveformBounds.contains(event.getPosition()))
     {
@@ -153,6 +60,9 @@ void BookmarkSamplePad::mouseDown(const MouseEvent& event)
         startPreviewPlayback();
         return;
     }
+
+    // If clicked on edge areas (outside waveform but not on badges), handle edge dragging preparation
+    // This will be handled in mouseDrag if the drag distance threshold is met
 }
 
 void BookmarkSamplePad::mouseDrag(const MouseEvent& event)
@@ -160,8 +70,8 @@ void BookmarkSamplePad::mouseDrag(const MouseEvent& event)
     // Check if we started preview in waveform area
     auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
-    waveformBounds.removeFromTop(16);
-    waveformBounds.removeFromBottom(16);
+    waveformBounds.removeFromTop(18);
+    waveformBounds.removeFromBottom(18);
 
     // If mouse moves outside waveform area while dragging, stop preview
     if (isPreviewPlaying && !waveformBounds.contains(event.getPosition()))
@@ -202,10 +112,12 @@ void BookmarkSamplePad::startPreviewPlayback()
 
     isPreviewPlaying = true;
 
+    padColour = defaultColour.withAlpha(0.5f);
+
+    repaint();
     // Optional: Change cursor to indicate preview mode
     setMouseCursor(MouseCursor::PointingHandCursor);
 
-    DBG("Started preview playback for: " + bookmark.sampleName);
 }
 
 void BookmarkSamplePad::stopPreviewPlayback()
@@ -218,10 +130,12 @@ void BookmarkSamplePad::stopPreviewPlayback()
 
     isPreviewPlaying = false;
 
+    padColour = defaultColour.withAlpha(0.2f);
+
+    repaint();
     // Reset cursor
     setMouseCursor(MouseCursor::NormalCursor);
 
-    DBG("Stopped preview playback for: " + bookmark.sampleName);
 }
 
 //==============================================================================
@@ -244,8 +158,6 @@ BookmarkViewerComponent::BookmarkViewerComponent()
     // Viewport for scrolling
     bookmarkViewport.setViewedComponent(&bookmarkContainer, false);
     bookmarkViewport.setScrollBarsShown(true, false); // Vertical scrollbar only
-    bookmarkViewport.setColour(ScrollBar::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
-    bookmarkViewport.setColour(ScrollBar::thumbColourId, pluginChoiceColour);
     addAndMakeVisible(bookmarkViewport);
 }
 
@@ -269,12 +181,14 @@ void BookmarkViewerComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(8);
 
-    int textHeight = 35; // Height for title and refresh button
+    int textHeight = 18; // Height for title and refresh button
     int refreshButtonWidth = 17; // Height for refresh button
     int gapHeight = 8; // Gap
 
     // Title takes most of the header
     titleLabel.setBounds(bounds.removeFromTop(textHeight));
+
+    bounds.removeFromTop(gapHeight);
 
     // Refresh button on the right
     refreshButton.setBounds(bounds.removeFromLeft(refreshButtonWidth));
