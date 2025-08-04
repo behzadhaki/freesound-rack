@@ -67,8 +67,17 @@ public:
     File currentSessionDownloadLocation; // NEW: Current session's download folder
 	void newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo);
 
+
+	// Add these methods to public section
+	void loadPreviewSample(const File& audioFile, const String& freesoundId);
+	void playPreviewSample();
+	void stopPreviewSample();
+
+	// main sampler methods for sample pads in 4x4 grid
 	void setSources();
-	void addToMidiBuffer(int notenumber);
+	void addNoteOnToMidiBuffer(int notenumber);	// for adding notes from
+	void addNoteOffToMidiBuffer(int noteNumber);
+
 
 	double getStartTime();
 	bool isArrayNotEmpty();
@@ -156,11 +165,6 @@ public:
 	void setPresetPanelExpandedState(bool state) { presetPanelExpandedState = state; }
 
 	BookmarkManager& getBookmarkManager() { return bookmarkManager; } // Add this method
-
-	// Add these methods to public section
-	void loadPreviewSample(const File& audioFile, const String& freesoundId);
-	void playPreviewSample();
-	void stopPreviewSample();
 
 private:
 	// editor size

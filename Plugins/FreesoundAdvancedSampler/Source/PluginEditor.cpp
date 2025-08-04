@@ -358,7 +358,7 @@ bool FreesoundAdvancedSamplerAudioProcessorEditor::keyPressed(const KeyPress& ke
         if (padInfo.hasValidSample)
         {
             int noteNumber = padIndex + 36;
-            processor.addToMidiBuffer(noteNumber);
+            processor.addNoteOnToMidiBuffer(noteNumber);
 
             // Optional: Add some visual feedback
             repaint();

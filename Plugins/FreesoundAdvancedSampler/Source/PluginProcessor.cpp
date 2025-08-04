@@ -574,7 +574,7 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
     DBG("Sampler rebuild complete with " + String(sampler.getNumSounds()) + " sounds");
 }
 
-void FreesoundAdvancedSamplerAudioProcessor::addToMidiBuffer(int notenumber)
+void FreesoundAdvancedSamplerAudioProcessor::addNoteOnToMidiBuffer(int notenumber)
 {
 	MidiMessage message = MidiMessage::noteOn(10, notenumber, (uint8)100);
 	double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
@@ -582,6 +582,16 @@ void FreesoundAdvancedSamplerAudioProcessor::addToMidiBuffer(int notenumber)
 
 	auto sampleNumber = (int)(timestamp * getSampleRate());
 	midiFromEditor.addEvent(message,sampleNumber);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::addNoteOffToMidiBuffer(int noteNumber)
+{
+    MidiMessage message = MidiMessage::noteOff(10, noteNumber, (uint8)0);
+    double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
+    message.setTimeStamp(timestamp);
+
+    auto sampleNumber = (int)(timestamp * getSampleRate());
+    midiFromEditor.addEvent(message,sampleNumber);
 }
 
 double FreesoundAdvancedSamplerAudioProcessor::getStartTime(){

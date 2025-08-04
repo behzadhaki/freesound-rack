@@ -580,13 +580,30 @@ void SamplePad::mouseDown(const MouseEvent& event)
         if (processor)
         {
             int noteNumber = padIndex + 36;
-            processor->addToMidiBuffer(noteNumber);
+            processor->addNoteOnToMidiBuffer(noteNumber);
         }
         return;
     }
 
     // If clicked on edge areas (outside waveform but not on badges), handle edge dragging preparation
     // This will be handled in mouseDrag if the drag distance threshold is met
+}
+
+void SamplePad::mouseUp(const MouseEvent& event)
+{
+    // Stop playback when mouse is released
+    if (isPlaying && processor)
+    {
+        // Find the MIDI note for this pad and send note off
+        int noteNumber = padIndex + 36;
+        processor->addNoteOffToMidiBuffer(noteNumber); // You'll need to implement this method in processor
+
+        // Or alternatively, if there's a direct way to stop the sample:
+        setIsPlaying(false);
+    }
+
+    // Reset any cursor changes
+    setMouseCursor(MouseCursor::NormalCursor);
 }
 
 void SamplePad::mouseDrag(const MouseEvent& event)
