@@ -3076,6 +3076,7 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
 
     // Calculate how many sounds we need
     processor->newSoundsReady(finalSounds, masterQuery, soundInfo);
+    std::cout << "Sound 0 tags : " << finalSounds[0].tags.joinIntoString(", ")  << std::endl;
 }
 
 int SampleGridComponent::getVisualPositionFromRowCol(int row, int col) const
