@@ -124,14 +124,8 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingPreviewSamplerVoice::render
         samplePosition += numSamples;
         float position = (float)samplePosition / (float)sampleLength;
 
-        // Only send position updates occasionally to avoid flooding
-        static int updateCounter = 0;
-        updateCounter++;
-
-        if (updateCounter % 128 == 0) // Update every 128 samples (~2.9ms at 44.1kHz)
-        {
-            processor.notifyPreviewPlayheadPositionChanged(currentFreesoundId, jlimit(0.0f, 1.0f, position));
-        }
+        // Always send position updates for smooth animation
+        processor.notifyPreviewPlayheadPositionChanged(currentFreesoundId, jlimit(0.0f, 1.0f, position));
 
         // Always send the final position when near the end
         if (position >= 0.99f)
