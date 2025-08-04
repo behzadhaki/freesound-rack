@@ -315,15 +315,15 @@ void SamplePad::paint(Graphics& g)
         if (isSearchableMode)
         {
             g.setColour(Colours::white);
-            g.setFont(Font(8.0f, Font::bold));
+            g.setFont(Font(11.0f));
 
             // Create MIDI info display
             int midiNote = padIndex + 36;
             String keyboardKey = getKeyboardKeyForPad(padIndex);
-            String displayText = String(midiNote) + " | " + keyboardKey;
+            String displayText = String(CharPointer_UTF8("\xF0\x9F\x8E\xB9")) + String(midiNote) + " | " + String(CharPointer_UTF8("\xE2\x8C\xA8\xEF\xB8\x8F"))  + " " + keyboardKey;
 
             // Position at top-right corner of waveform area (no background)
-            auto midiInfoBounds = Rectangle<int>(waveformBounds.getRight() - 30, waveformBounds.getY(), 30, 14);
+            auto midiInfoBounds = Rectangle<int>(waveformBounds.getRight() - 60, waveformBounds.getY(), 60, 14);
             g.drawText(displayText, midiInfoBounds, Justification::centred);
         }
 
@@ -357,6 +357,7 @@ void SamplePad::paint(Graphics& g)
         // g.setColour(Colour(0x80000000).withAlpha(0.7f));
         // g.fillRoundedRectangle(filenameBounds.toFloat(), 2.0f);
         g.setColour(Colours::white);
+        g.setFont(Font(10.0f));
         g.drawText(displayText, filenameBounds, Justification::bottomRight, true);
     }
 

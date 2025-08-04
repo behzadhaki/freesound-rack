@@ -272,13 +272,18 @@ void BookmarkViewerComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(8);
 
+    int textHeight = 35; // Height for title and refresh button
+    int refreshButtonHeight = 30; // Height for refresh button
+    int gapHeight = 8; // Gap
+
     // Title takes most of the header
-    titleLabel.setBounds(bounds.removeFromTop(35));
+    titleLabel.setBounds(bounds.removeFromTop(textHeight));
 
     // Refresh button on the right
-    refreshButton.setBounds(bounds.removeFromTop(35));
+    refreshButton.setBounds(bounds.removeFromTop(refreshButtonHeight).removeFromLeft(refreshButtonHeight));
 
-    bounds.removeFromTop(8); // Spacing after header
+    bounds = getLocalBounds().reduced(8);
+    bounds.removeFromTop(textHeight + refreshButtonHeight + gapHeight);
 
     // Viewport takes the rest
     bookmarkViewport.setBounds(bounds);

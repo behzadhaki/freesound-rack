@@ -70,7 +70,7 @@ private:
 
     // UI Components
     Label titleLabel;
-    StyledButton refreshButton { "Refresh", 10.0f, false };
+    StyledButton refreshButton { String(CharPointer_UTF8("\xE2\x9F\xB3")) , 20.0f, false };
     Viewport bookmarkViewport;
     Component bookmarkContainer;
 
