@@ -1177,10 +1177,14 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPreviewSample(const File& audio
         int previewNote = 127; // Use highest MIDI note for preview (won't conflict with main grid)
         notes.setBit(previewNote, true);
 
-        double maxLength = 10.0; // Max 10 seconds for preview
-        previewSampler.addSound(new SamplerSound("preview_" + freesoundId, *reader, notes, previewNote, 0, maxLength, maxLength));
+        // Use 0.0 for release and maxLength to allow proper preview playback
+        // For preview, you might want a short release when mouse is released
+        double maxLength = 10.0;
+        double attackTime = 0.0;
+        double releaseTime = 0.1; // set to sample maxLength to play for the full duration
 
-        DBG("Preview sample loaded: " + audioFile.getFileName());
+        previewSampler.addSound(new SamplerSound("preview_" + freesoundId, *reader, notes, previewNote,
+                                                 attackTime, releaseTime, maxLength));
     }
 }
 
