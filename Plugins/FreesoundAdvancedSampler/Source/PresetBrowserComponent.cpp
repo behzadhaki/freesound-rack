@@ -168,7 +168,7 @@ void PresetListItem::paint(Graphics& g)
 
     // Border - use same color but different thickness for selection
     g.setColour(Colour(0xff404040)); // Same color for both selected and unselected
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 4.0f : 1.0f); // Thicker when selected
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 2.0f : 0.5f); // Thicker when selected
 
     // Line 2: Info
     auto infoLine = bounds.withHeight(lineHeight).translated(0, lineHeight);
