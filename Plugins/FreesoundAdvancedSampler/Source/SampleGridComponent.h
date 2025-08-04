@@ -24,6 +24,26 @@ static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampl
 // SamplePad Component (a single sample pad in the grid)
 //==============================================================================
 
+struct Badge {
+    String id;
+    String text;
+    String icon;
+    Colour backgroundColour;
+    Colour textColour;
+    std::function<void()> onClick;
+    std::function<void()> onDoubleClick;
+    std::function<void(const MouseEvent&)> onDrag;
+    bool visible = true;
+    int width = 16;
+    int height = 14;
+    float fontSize = 11.0f;  // Add this line
+    bool isBold = true; // Add this line for bold text
+    Rectangle<int> bounds;
+
+    Badge(const String& badgeId, const String& badgeText, Colour bgColor = Colour(0x80404040))
+        : id(badgeId), text(badgeText), backgroundColour(bgColor), textColour(Colours::white) {}
+};
+
 class SamplePad : public Component,
                   public DragAndDropContainer,
                   public DragAndDropTarget,
@@ -92,6 +112,19 @@ public:
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
 protected:
+    // badges for various actions
+    std::vector<Badge> topLeftBadges;
+    std::vector<Badge> topRightBadges;
+    std::vector<Badge> bottomLeftBadges;
+    // std::vector<Badge> bottomRightBadges;
+
+    void initializeBadges();
+    void layoutBadges();
+    void paintBadges(Graphics& g);
+    Badge* findBadgeAtPosition(Point<int> position);
+    void updateBadgeVisibility();
+
+    // Waveform loading and drawing
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);

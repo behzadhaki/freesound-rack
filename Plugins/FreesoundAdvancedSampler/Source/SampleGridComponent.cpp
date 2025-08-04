@@ -52,6 +52,9 @@ SamplePad::SamplePad(int index, bool isSearchable)
     queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
     queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
     queryTextBox.setFont(Font(9.0f));
+    queryTextBox.setJustification(Justification::topLeft);
+    queryTextBox.setInterceptsMouseClicks(false, false);
+    queryTextBox.setClicksOutsideDismissVirtualKeyboard(true);
 
     // Only add search functionality if searchable
     if (isSearchableMode)
@@ -84,11 +87,6 @@ void SamplePad::resized()
     // Position query text box or progress components at the bottom
     auto bottomBounds = bounds.reduced(3);
     int bottomHeight = 14;
-    int oggBadgeWidth = 28;     // .ogg badge
-    int wavBadgeWidth = 28;     // .wav badge
-    int searchBadgeWidth = 32;  // Search badge
-    int badgeSpacing = 3;
-
     bottomBounds = bottomBounds.removeFromBottom(bottomHeight);
 
     if (isDownloading && progressBar && progressLabel)
@@ -101,13 +99,261 @@ void SamplePad::resized()
     }
     else if (!isDownloading)
     {
-        // Normal layout with query text box
-        // Remove space for: .ogg + .wav + Search badges + spacing (Copy is now at top)
-        bottomBounds.removeFromLeft(oggBadgeWidth + badgeSpacing);
-        bottomBounds.removeFromLeft(wavBadgeWidth + badgeSpacing);
-        bottomBounds.removeFromRight(searchBadgeWidth + badgeSpacing);
-        queryTextBox.setBounds(bottomBounds);
+        // Calculate badge widths manually (since badges aren't initialized yet)
+        int leftBadgesWidth = 0;
+        // int rightBadgesWidth = 0;
+        int spacing = 3;
+
+        // Calculate bottom-left badges width (.ogg and .wav when sample exists)
+        if (hasValidSample) {
+            leftBadgesWidth += 20 + spacing; // .ogg badge
+            leftBadgesWidth += 20 + spacing; // .wav badge
+        }
+
+        // Calculate bottom-right badges width (search when searchable and not downloading)
+        // if (isSearchableMode && !isDownloading) {
+        //     rightBadgesWidth += 32 + spacing; // search badge
+        // }
+
+        // Position query text box in the remaining space between badges
+        auto textBoxBounds = bottomBounds;
+        if (leftBadgesWidth > 0) {
+            textBoxBounds.removeFromLeft(leftBadgesWidth);
+        }
+        // if (rightBadgesWidth > 0) {
+        //     textBoxBounds.removeFromRight(rightBadgesWidth);
+        // }
+
+        queryTextBox.setBounds(textBoxBounds);
     }
+
+    // Layout badges after text box is positioned
+    // Note: We can't call initializeBadges() here as it depends on current state
+    // Badges will be initialized and laid out in paint()
+}
+
+void SamplePad::initializeBadges()
+{
+    // Clear existing badges
+    topLeftBadges.clear();
+    topRightBadges.clear();
+    bottomLeftBadges.clear();
+    // bottomRightBadges.clear();
+
+    // Top-left badges
+    if (hasValidSample) {
+        Badge copyBadge("copy", String(CharPointer_UTF8("\xF0\x9F\x91\x86")), Colour(0x80FF8C00));
+        copyBadge.width = 16; // Fixed width for copy badge
+        copyBadge.fontSize = 11.0f; // Smaller font size for copy badge
+        copyBadge.onClick = [this]() { handleCopyClick(); };
+        copyBadge.onDrag = [this](const MouseEvent& e) {
+            if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
+        };
+        topLeftBadges.push_back(copyBadge);
+
+        Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
+                           processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
+                           Colour(0x80FFD700) : Colour(0x80808080));
+        bookmarkBadge.width = 16; // Smaller width for bookmark badge
+        bookmarkBadge.onClick = [this]() { handleBookmarkClick(); };
+        topLeftBadges.push_back(bookmarkBadge);
+
+    }
+
+    // Top-right badges
+    if (hasValidSample) {
+        if (isSearchableMode) {
+            Badge delBadge("delete", String(CharPointer_UTF8("\xE2\x9C\x95")) , Colour(0x80C62828).withAlpha(0.0f));
+            delBadge.textColour = Colours::mediumvioletred.withAlpha(0.8f);
+            delBadge.onClick = [this]() { handleDeleteClick(); };
+            delBadge.fontSize = 14.0f; // Smaller font size for delete badge
+            delBadge.width = 14; // Smaller width for delete badge
+            delBadge.isBold = true;
+            topRightBadges.push_back(delBadge);
+        }
+
+        if (freesoundId.isNotEmpty()) {
+            Badge webBadge("web", String(CharPointer_UTF8("\xF0\x9F\x94\x97")), Colour(0x800277BD).withAlpha(0.0f));
+            webBadge.width = 14; // Fixed width for web badge
+            webBadge.fontSize = 12.0f; // Smaller font size for web badge`
+            webBadge.onDoubleClick = [this]() {
+                URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
+            };
+            topRightBadges.push_back(webBadge);
+        }
+
+        if (licenseType.isNotEmpty()) {
+            Badge licenseBadge("license", getLicenseShortName(licenseType), Colour(0x80EF6C00).withAlpha(0.0f));
+            // get number of characters in licenseType
+            int numChars = getLicenseShortName(licenseType).length();
+            licenseBadge.width = jmax(16, int(numChars * 5.0f)); // Adjust width based on text length
+            licenseBadge.fontSize = 9.0f; // Smaller font size for license badge
+            licenseBadge.isBold = false; // License badge text is not bold
+            licenseBadge.onDoubleClick = [this]() { URL(licenseType).launchInDefaultBrowser(); };
+            topRightBadges.push_back(licenseBadge);
+        }
+
+    }
+
+    // Bottom-left badges
+    if (hasValidSample) {
+        // Badge oggBadge("ogg", "ogg", Colour(0x804ECDC4).withAlpha(0.2f));
+        // oggBadge.width = 20;
+        // oggBadge.fontSize = 10.0f; // Smaller font size for ogg badge
+        // oggBadge.onDrag = [this](const MouseEvent& e) {
+        //     if (e.getDistanceFromDragStart() > 10 && audioFile.existsAsFile()) {
+        //         StringArray filePaths;
+        //         filePaths.add(audioFile.getFullPathName());
+        //         performExternalDragDropOfFiles(filePaths, false);
+        //     }
+        // };
+        // bottomLeftBadges.push_back(oggBadge);
+        //
+        // Badge floppyBadge("save", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x804ECDC4).withAlpha(0.0f));
+        // floppyBadge.width = 8; // Fixed width for floppy badge
+        // floppyBadge.fontSize = 10.0f; // Smaller font size for floppy badge
+        // bottomLeftBadges.push_back(floppyBadge);
+
+        Badge wavBadge("wav", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x806A5ACD).withAlpha(0.0f));
+        wavBadge.width = 20;
+        wavBadge.fontSize = 16.0f; // Smaller font size for ogg badge
+        wavBadge.onClick = [this]() { handleWavCopyClick(); };
+        wavBadge.onDrag = [this](const MouseEvent& e) {
+            if (e.getDistanceFromDragStart() > 10) {
+                File wavFile = getWavFile();
+                if (!wavFile.existsAsFile()) {
+                    if (!convertOggToWav(audioFile, wavFile)) return;
+                }
+                if (wavFile.existsAsFile()) {
+                    StringArray filePaths;
+                    filePaths.add(wavFile.getFullPathName());
+                    performExternalDragDropOfFiles(filePaths, false);
+                }
+            }
+        };
+        bottomLeftBadges.push_back(wavBadge);
+
+        Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
+        searchBadge.width = 16;
+        searchBadge.fontSize = 16.0f; // Smaller font size for search badge
+        searchBadge.onClick = [this]() {
+            String searchQuery = queryTextBox.getText().trim();
+            if (searchQuery.isEmpty() && processor) {
+                searchQuery = processor->getQuery();
+            }
+            if (searchQuery.isNotEmpty()) {
+                queryTextBox.setText(searchQuery);
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                }
+            } else {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
+            }
+        };
+        bottomLeftBadges.push_back(searchBadge);
+
+    }
+
+    // Bottom-right badges
+    if (isSearchableMode && !isDownloading) {
+
+    }
+}
+
+void SamplePad::layoutBadges()
+{
+    auto bounds = getLocalBounds().reduced(4);
+    int spacing = 3;
+    int badgeHeight = 14;
+
+    // Layout top-left badges
+    auto topLeftArea = bounds.removeFromTop(badgeHeight);
+    int x = topLeftArea.getX();
+    for (auto& badge : topLeftBadges) {
+        if (badge.visible) {
+            badge.bounds = Rectangle<int>(x, topLeftArea.getY(), badge.width, badgeHeight);
+            x += badge.width + spacing;
+        }
+    }
+
+    // Layout top-right badges (right to left)
+    auto topRightArea = bounds.removeFromTop(0); // Reset to full width
+    topRightArea = getLocalBounds().reduced(4).removeFromTop(badgeHeight);
+    x = topRightArea.getRight();
+    for (auto& badge : topRightBadges) {
+        if (badge.visible) {
+            x -= badge.width;
+            badge.bounds = Rectangle<int>(x, topRightArea.getY(), badge.width, badgeHeight);
+            x -= spacing;
+        }
+    }
+
+    // Layout bottom-left badges
+    auto bottomArea = getLocalBounds().reduced(4);
+    auto bottomLeftArea = bottomArea.removeFromBottom(badgeHeight);
+    x = bottomLeftArea.getX();
+    for (auto& badge : bottomLeftBadges) {
+        if (badge.visible) {
+            badge.bounds = Rectangle<int>(x, bottomLeftArea.getY(), badge.width, badgeHeight);
+            x += badge.width + spacing;
+        }
+    }
+
+    // Layout bottom-right badges (right to left)
+    // x = bottomLeftArea.getRight();
+    // for (auto& badge : bottomRightBadges) {
+    //     if (badge.visible) {
+    //         x -= badge.width;
+    //         badge.bounds = Rectangle<int>(x, bottomLeftArea.getY(), badge.width, badgeHeight);
+    //         x -= spacing;
+    //     }
+    // }
+}
+
+void SamplePad::paintBadges(Graphics& g)
+{
+    auto paintBadgeGroup = [&g](const std::vector<Badge>& badges) {
+        for (const auto& badge : badges) {
+            if (!badge.visible) continue;
+
+            // Draw background gradient
+            g.setGradientFill(ColourGradient(
+                badge.backgroundColour, badge.bounds.getTopLeft().toFloat(),
+                badge.backgroundColour.darker(0.2f), badge.bounds.getBottomRight().toFloat(), false));
+            g.fillRoundedRectangle(badge.bounds.toFloat(), 3.0f);
+
+            // Draw text/icon with custom font size
+            g.setColour(badge.textColour);
+            g.setFont(badge.isBold ? Font(badge.fontSize, Font::bold) : Font(badge.fontSize));
+            g.drawText(badge.icon.isNotEmpty() ? badge.icon : badge.text,
+                      badge.bounds, Justification::centred);
+        }
+    };
+
+    paintBadgeGroup(topLeftBadges);
+    paintBadgeGroup(topRightBadges);
+    paintBadgeGroup(bottomLeftBadges);
+    // paintBadgeGroup(bottomRightBadges);
+}
+
+Badge* SamplePad::findBadgeAtPosition(Point<int> position)
+{
+    auto checkBadgeGroup = [&position](std::vector<Badge>& badges) -> Badge* {
+        for (auto& badge : badges) {
+            if (badge.visible && badge.bounds.contains(position)) {
+                return &badge;
+            }
+        }
+        return nullptr;
+    };
+
+    if (auto* badge = checkBadgeGroup(topLeftBadges)) return badge;
+    if (auto* badge = checkBadgeGroup(topRightBadges)) return badge;
+    if (auto* badge = checkBadgeGroup(bottomLeftBadges)) return badge;
+    // if (auto* badge = checkBadgeGroup(bottomRightBadges)) return badge;
+
+    return nullptr;
 }
 
 void SamplePad::paint(Graphics& g)
@@ -121,9 +367,10 @@ void SamplePad::paint(Graphics& g)
     }
     else if (isPlaying)
     {
-        g.setGradientFill(ColourGradient(
-            padColour.brighter(0.4f), bounds.getCentre().toFloat(),
-            padColour.darker(0.2f), bounds.getBottomRight().toFloat(), false));
+        /*g.setGradientFill(ColourGradient(
+            padColour.brighter(0.2f), bounds.getCentre().toFloat(),
+            padColour.darker(0.05f), bounds.getBottomRight().toFloat(), false));*/
+        g.setColour(padColour.withAlpha(0.6f));
     }
     else if (isDownloading)
     {
@@ -135,12 +382,15 @@ void SamplePad::paint(Graphics& g)
     {
         // Special styling for master-connected pads
         g.setGradientFill(ColourGradient(
-            Colour(0xff00D9FF).withAlpha(0.05f), bounds.getTopLeft().toFloat(),
-            Colour(0xff0099CC).withAlpha(0.05f), bounds.getBottomRight().toFloat(), false));
+            Colour(0xff00D9FF).withAlpha(0.1f), bounds.getTopLeft().toFloat(),
+            Colour(0xff0099CC).withAlpha(0.1f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
-        g.setColour(Colour(0x801A1A1A));
+        if (hasValidSample && isSearchableMode)
+            g.setColour(padColour.withAlpha(0.1f));
+        else
+            g.setColour(Colour(0x801A1A1A));
     }
 
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
@@ -158,7 +408,7 @@ void SamplePad::paint(Graphics& g)
     }
     else if (isPlaying)
     {
-        g.setColour(Colours::white);
+        g.setColour(Colours::white.withAlpha(0.0f));
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
     }
     else if (hasValidSample)
@@ -172,135 +422,18 @@ void SamplePad::paint(Graphics& g)
         g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
 
-    // === TOP LINE: MIDI/Keyboard number + Copy badge + Web badge + License badge + DEL badge ===
-
-    // MIDI Note and Keyboard Key display
-    g.setColour(Colours::white);
-    g.setFont(Font(8.0f, Font::bold));
-    auto numberBounds = bounds.reduced(4);
-    auto topLeftLine = numberBounds.removeFromTop(14); // Keep the whole top line for positioning
-
-    // Copy badge (next to MIDI info) - NEW POSITION
-    if (hasValidSample)
-    {
-        topLeftLine.removeFromLeft(3); // Small spacing
-        int copyBadgeWidth = 28;
-        auto copyBounds = topLeftLine.removeFromLeft(copyBadgeWidth);
-
-        g.setGradientFill(ColourGradient(
-            Colour(0x80FF8C00), copyBounds.getTopLeft().toFloat(),
-            Colour(0x80E67300), copyBounds.getBottomRight().toFloat(), false));
-        g.fillRoundedRectangle(copyBounds.toFloat(), 3.0f);
-
-        g.setColour(Colours::white);
-        g.setFont(Font(8.0f, Font::bold));
-        g.drawText("Copy", copyBounds, Justification::centred);
-    }
-
-    // Bookmark badge (next to Copy) - Always show if sample exists
-    if (hasValidSample)
-    {
-        topLeftLine.removeFromLeft(3); // Small spacing after copy
-        int bookmarkBadgeWidth = 28;
-        auto bookmarkBounds = topLeftLine.removeFromLeft(bookmarkBadgeWidth);
-
-        // Check if this sample is bookmarked
-        bool isBookmarked = false;
-        if (processor)
-        {
-            isBookmarked = processor->getBookmarkManager().isBookmarked(freesoundId);
-        }
-
-        // Different colors for bookmarked vs unbookmarked
-        if (isBookmarked)
-        {
-            g.setGradientFill(ColourGradient(
-                Colour(0x80FFD700), bookmarkBounds.getTopLeft().toFloat(),  // Gold for bookmarked
-                Colour(0x80FFA500), bookmarkBounds.getBottomRight().toFloat(), false));
-        }
-        else
-        {
-            g.setGradientFill(ColourGradient(
-                Colour(0x80808080), bookmarkBounds.getTopLeft().toFloat(),  // Gray for not bookmarked
-                Colour(0x80606060), bookmarkBounds.getBottomRight().toFloat(), false));
-        }
-
-        g.fillRoundedRectangle(bookmarkBounds.toFloat(), 3.0f);
-
-        g.setColour(Colours::white);
-        g.setFont(Font(10.0f, Font::bold));
-        g.drawText(String(CharPointer_UTF8("\xE2\x98\x85")), bookmarkBounds, Justification::centred); // ★ star
-    }
-
-    // Top-right badges - CONDITIONAL RENDERING BASED ON MODE
-    if (hasValidSample)
-    {
-        // Start from top-right and work leftward
-        auto topRightBounds = bounds.reduced(4);
-        topRightBounds = topRightBounds.removeFromTop(14);
-
-        // DEL badge (rightmost) - ONLY show in searchable mode
-        if (isSearchableMode)
-        {
-            int delBadgeWidth = 28;
-            auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
-
-            g.setGradientFill(ColourGradient(
-                Colour(0x80C62828), delBounds.getTopLeft().toFloat(),
-                Colour(0x808E0000), delBounds.getBottomRight().toFloat(), false));
-            g.fillRoundedRectangle(delBounds.toFloat(), 3.0f);
-
-            g.setColour(Colours::white);
-            g.setFont(Font(11.0f, Font::bold));
-            g.drawText(String(CharPointer_UTF8("\xF0\x9F\x97\x91")), delBounds, Justification::centred);
-            g.setFont(Font(8.0f, Font::bold));
-
-            topRightBounds.removeFromRight(3);
-        }
-
-        // License badge (middle) - Always show if license exists
-        if (licenseType.isNotEmpty())
-        {
-            String shortLicense = getLicenseShortName(licenseType);
-            int licenseBadgeWidth = 32;
-            auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
-
-            g.setGradientFill(ColourGradient(
-                Colour(0x80EF6C00), licenseBounds.getTopLeft().toFloat(),
-                Colour(0x80BF360C), licenseBounds.getBottomRight().toFloat(), false));
-            g.fillRoundedRectangle(licenseBounds.toFloat(), 3.0f);
-
-            g.setColour(Colours::white.withAlpha(0.9f));
-            g.drawText(shortLicense, licenseBounds, Justification::centred);
-
-            topRightBounds.removeFromRight(3);
-        }
-
-        // Web badge (leftmost of top-right) - Always show if freesound ID exists
-        if (freesoundId.isNotEmpty())
-        {
-            int webBadgeWidth = 28;
-            auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
-
-            g.setGradientFill(ColourGradient(
-                Colour(0x800277BD), webBounds.getTopLeft().toFloat(),
-                Colour(0x8001579B), webBounds.getBottomRight().toFloat(), false));
-            g.fillRoundedRectangle(webBounds.toFloat(), 3.0f);
-
-            g.setColour(Colours::white);
-            g.setFont(Font(11.0f, Font::bold));
-            g.drawText(String(CharPointer_UTF8("\xF0\x9F\x94\x97")), webBounds, Justification::centred);
-            g.setFont(Font(8.0f, Font::bold));
-        }
-    }
+    // Initialize and paint badges
+    initializeBadges();
+    layoutBadges();
+    paintBadges(g);
 
     // === MIDDLE: Waveform and sample text ===
     if (hasValidSample)
     {
         // Adjust waveform bounds to account for top and bottom badges
-        auto waveformBounds = bounds.reduced(8);
-        waveformBounds.removeFromTop(14); // Space for top line badges
-        waveformBounds.removeFromBottom(14); // Space for bottom line
+        auto waveformBounds = bounds.reduced(3);
+        waveformBounds.removeFromTop(18); // Space for top line badges
+        waveformBounds.removeFromBottom(18); // Space for bottom line
 
         // Draw waveform with modern styling
         drawWaveform(g, waveformBounds);
@@ -320,102 +453,41 @@ void SamplePad::paint(Graphics& g)
             // Create MIDI info display
             int midiNote = padIndex + 36;
             String keyboardKey = getKeyboardKeyForPad(padIndex);
-            String displayText = String(CharPointer_UTF8("\xF0\x9F\x8E\xB9")) + String(midiNote) + " | " + String(CharPointer_UTF8("\xE2\x8C\xA8\xEF\xB8\x8F"))  + " " + keyboardKey;
+            String displayText = String(CharPointer_UTF8("\xF0\x9F\x8E\xB9")) + String(midiNote) + " | " +
+                               String(CharPointer_UTF8("\xE2\x8C\xA8\xEF\xB8\x8F")) + " " + keyboardKey;
 
             // Position at top-right corner of waveform area (no background)
             auto midiInfoBounds = Rectangle<int>(waveformBounds.getRight() - 60, waveformBounds.getY(), 60, 14);
+            if (!isPlaying) {
+                g.setColour(Colour(0x80000000).withAlpha(0.5f)); // Semi-transparent background
+                g.fillRect(midiInfoBounds);
+            }
+            g.setColour(Colours::white);
             g.drawText(displayText, midiInfoBounds, Justification::centred);
         }
 
-        // Draw filename and author with modern white text (existing code at bottom)
+        // Draw Freesound ID at bottom-right of waveform
         g.setColour(Colours::white);
-        g.setFont(Font(8.5f, Font::bold));
-        // Format filename to max 10 characters with ellipsis if needed
-        String displayName = sampleName;
-        if (displayName.length() > 10)
-        {
-            displayName = displayName.substring(0, 7) + "...";
-        }
+        g.setFont(Font(10.0f));
 
-        // Format author name
-        String displayAuthor = authorName;
-        if (displayAuthor.length() > 10)
-        {
-            displayAuthor = displayAuthor.substring(0, 7) + "...";
-        }
-
-        // Create the full text string
-        String displayText = "FS ID: "+ freesoundId;
-        // max length of 20 characters
+        String displayText = "FS ID: " + freesoundId;
         if (displayText.length() > 20)
         {
             displayText = displayText.substring(0, 17) + "...";
         }
 
-        // Position at bottom of waveform area with dark background
-        auto filenameBounds = waveformBounds.removeFromBottom(14);
-        // g.setColour(Colour(0x80000000).withAlpha(0.7f));
-        // g.fillRoundedRectangle(filenameBounds.toFloat(), 2.0f);
+        // Position at bottom-right of waveform area
+        auto idBounds = waveformBounds.removeFromBottom(14);
+        idBounds = Rectangle<int>(idBounds.getRight() - 60, idBounds.getY(), 60, 14);
+
+        // draw the text with a background
+        // get the bounds for the text
+        if (!isPlaying) {
+            g.setColour(Colour(0x80000000).withAlpha(0.5f)); // Semi-transparent background
+            g.fillRect(idBounds);
+        }
         g.setColour(Colours::white);
-        g.setFont(Font(10.0f));
-        g.drawText(displayText, filenameBounds, Justification::bottomRight, true);
-    }
-
-    // === BOTTOM LINE: .ogg and .wav badges only ===
-
-    // Bottom badges - show only .ogg and .wav if sample exists, search only if searchable
-    if (hasValidSample)
-    {
-        g.setFont(Font(8.0f, Font::bold));
-
-        // .ogg badge (leftmost)
-        auto oggBounds = bounds.reduced(4);
-        int oggBadgeWidth = 28;
-        int badgeHeight = 14;
-        oggBounds = oggBounds.removeFromBottom(badgeHeight).removeFromLeft(oggBadgeWidth);
-
-        g.setGradientFill(ColourGradient(
-            Colour(0x804ECDC4), oggBounds.getTopLeft().toFloat(),
-            Colour(0x8026A69A), oggBounds.getBottomRight().toFloat(), false));
-        g.fillRoundedRectangle(oggBounds.toFloat(), 3.0f);
-
-        g.setColour(Colours::white);
-        g.drawText(".ogg", oggBounds, Justification::centred);
-
-        // .wav badge (second)
-        auto wavBounds = bounds.reduced(4);
-        int wavBadgeWidth = 28;
-        int badgeSpacing = 3;
-
-        wavBounds = wavBounds.removeFromBottom(badgeHeight);
-        wavBounds.removeFromLeft(oggBadgeWidth + badgeSpacing);  // Skip .ogg badge
-        wavBounds = wavBounds.removeFromLeft(wavBadgeWidth);
-
-        g.setGradientFill(ColourGradient(
-            Colour(0x806A5ACD), wavBounds.getTopLeft().toFloat(),      // Purple/slate blue color
-            Colour(0x804B0082), wavBounds.getBottomRight().toFloat(), false));
-        g.fillRoundedRectangle(wavBounds.toFloat(), 3.0f);
-
-        g.setColour(Colours::white);
-        g.drawText(".wav", wavBounds, Justification::centred);
-    }
-
-    // Search badge - ONLY show in searchable mode and when not downloading
-    if (isSearchableMode && !isDownloading)
-    {
-        g.setFont(Font(8.0f, Font::bold));
-        auto searchBounds = bounds.reduced(4);
-        int badgeWidth = 32;
-        int badgeHeight = 14;
-        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
-
-        g.setGradientFill(ColourGradient(
-            Colour(0x809C88FF), searchBounds.getTopLeft().toFloat(),
-            Colour(0x807B68EE), searchBounds.getBottomRight().toFloat(), false));
-        g.fillRoundedRectangle(searchBounds.toFloat(), 3.0f);
-
-        g.setColour(Colours::white);
-        g.drawText("Search", searchBounds, Justification::centred);
+        g.drawText(displayText, idBounds, Justification::centredRight, true);
     }
 
     // Empty pad text (only show when not downloading and no sample)
@@ -475,163 +547,23 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (isDownloading)
         return;
 
-    // Check if clicked on search badge (bottom-right) - ONLY in searchable mode
-    if (isSearchableMode && !isDownloading)
+    // Check if clicked on any badge
+    Badge* clickedBadge = findBadgeAtPosition(event.getPosition());
+    if (clickedBadge && clickedBadge->onClick)
     {
-        auto bounds = getLocalBounds();
-        auto searchBounds = bounds.reduced(3);
-        int badgeWidth = 32;
-        int badgeHeight = 12;
-        searchBounds = searchBounds.removeFromBottom(badgeHeight).removeFromRight(badgeWidth);
-
-        if (searchBounds.contains(event.getPosition()))
-        {
-            String searchQuery = queryTextBox.getText().trim();
-            if (searchQuery.isEmpty() && processor)
-            {
-                searchQuery = processor->getQuery();
-            }
-
-            if (searchQuery.isNotEmpty())
-            {
-                queryTextBox.setText(searchQuery);
-
-                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-                {
-                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
-                }
-            }
-            else
-            {
-                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                    "Empty Query",
-                    "Please enter a search term in the pad's text box or the main search box.");
-            }
-            return;
-        }
+        clickedBadge->onClick();
+        return;
     }
 
+    // If no valid sample and didn't click a badge, return
     if (!hasValidSample)
-        return; // Don't process other clicks for empty pads
-
-    // Check top-left badges (MIDI info and Copy badge)
-    auto bounds = getLocalBounds();
-    auto topLeftBounds = bounds.reduced(3);
-    topLeftBounds = topLeftBounds.removeFromTop(12);
-
-    // Skip MIDI info area
-    topLeftBounds.removeFromLeft(24 + 3); // MIDI width + spacing
-
-    // Check Copy badge (next to MIDI info) - Always available if sample exists
-    if (hasValidSample)
-    {
-        int copyBadgeWidth = 28;
-        auto copyBounds = topLeftBounds.removeFromLeft(copyBadgeWidth);
-
-        if (copyBounds.contains(event.getPosition()))
-        {
-            handleCopyClick();
-            return;
-        }
-    }
-
-    if (hasValidSample)
-    {
-        topLeftBounds.removeFromLeft(3); // Spacing after copy
-        int bookmarkBadgeWidth = 28;
-        auto bookmarkBounds = topLeftBounds.removeFromLeft(bookmarkBadgeWidth);
-
-        if (bookmarkBounds.contains(event.getPosition()))
-        {
-            handleBookmarkClick();
-            return;
-        }
-    }
-
-    // Check top-right badges
-    auto topRightBounds = bounds.reduced(3);
-    topRightBounds = topRightBounds.removeFromTop(12);
-
-    // Check DEL badge (rightmost in top line) - ONLY in searchable mode
-    if (hasValidSample && isSearchableMode)
-    {
-        int delBadgeWidth = 28;
-        auto delBounds = topRightBounds.removeFromRight(delBadgeWidth);
-
-        if (delBounds.contains(event.getPosition()))
-        {
-            handleDeleteClick();
-            return;
-        }
-        topRightBounds.removeFromRight(3);
-    }
-
-    // License badge (middle in top line) - DOUBLE CLICK to open
-    if (licenseType.isNotEmpty())
-    {
-        int licenseBadgeWidth = 32;
-        auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
-
-        if (licenseBounds.contains(event.getPosition()))
-        {
-            // Only visual feedback on single click, actual action on double click
-            return;
-        }
-        topRightBounds.removeFromRight(3);
-    }
-
-    // Web badge (leftmost in top line) - DOUBLE CLICK to open
-    if (freesoundId.isNotEmpty())
-    {
-        int webBadgeWidth = 28;
-        auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
-
-        if (webBounds.contains(event.getPosition()))
-        {
-            // Only visual feedback on single click, actual action on double click
-            return;
-        }
-    }
-
-    // Check bottom badges: .ogg and .wav
-    if (hasValidSample)
-    {
-        auto bottomBounds = bounds.reduced(3);
-        int oggBadgeWidth = 28;
-        int wavBadgeWidth = 28;
-        int badgeHeight = 12;
-        int badgeSpacing = 3;
-
-        bottomBounds = bottomBounds.removeFromBottom(badgeHeight);
-
-        // Check .ogg badge (leftmost)
-        auto oggBounds = bottomBounds.removeFromLeft(oggBadgeWidth);
-        if (oggBounds.contains(event.getPosition()))
-        {
-            // Handle .ogg drag preparation (visual feedback only)
-            setMouseCursor(MouseCursor::DraggingHandCursor);
-            Timer::callAfterDelay(3000, [this]() {
-                setMouseCursor(MouseCursor::NormalCursor);
-            });
-            return;
-        }
-
-        bottomBounds.removeFromLeft(badgeSpacing);
-
-        // Check .wav badge (second)
-        auto wavBounds = bottomBounds.removeFromLeft(wavBadgeWidth);
-        if (wavBounds.contains(event.getPosition()))
-        {
-            handleWavCopyClick();
-            return;
-        }
-    }
+        return;
 
     // Check if clicked in waveform area - for manual triggering (always available)
-    bounds = getLocalBounds();
+    auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
-    waveformBounds.removeFromTop(16); // Space for top line badges
-    waveformBounds.removeFromBottom(16); // Space for bottom line
+    waveformBounds.removeFromTop(18); // Space for top line badges
+    waveformBounds.removeFromBottom(18); // Space for bottom line
 
     if (waveformBounds.contains(event.getPosition()))
     {
@@ -644,8 +576,8 @@ void SamplePad::mouseDown(const MouseEvent& event)
         return;
     }
 
-    // If clicked on edge areas (outside waveform but not on badges), do nothing here
-    // mouseDrag will handle edge dragging for swapping in searchable mode
+    // If clicked on edge areas (outside waveform but not on badges), handle edge dragging preparation
+    // This will be handled in mouseDrag if the drag distance threshold is met
 }
 
 void SamplePad::mouseDrag(const MouseEvent& event)
@@ -653,114 +585,24 @@ void SamplePad::mouseDrag(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    auto bounds = getLocalBounds();
-
-    // Check if drag started on Copy badge (top-left, next to MIDI info)
+    // Check if drag started on a badge that supports dragging
+    Badge* draggedBadge = findBadgeAtPosition(event.getMouseDownPosition());
+    if (draggedBadge && draggedBadge->onDrag)
     {
-        auto topLeftBounds = bounds.reduced(3);
-        topLeftBounds = topLeftBounds.removeFromTop(12);
-        topLeftBounds.removeFromLeft(24 + 3); // Skip MIDI info + spacing
-
-        if (hasValidSample)
-        {
-            int copyBadgeWidth = 28;
-            auto copyBounds = topLeftBounds.removeFromLeft(copyBadgeWidth);
-
-            if (copyBounds.contains(event.getMouseDownPosition()))
-            {
-                // Start enhanced drag operation with metadata
-                if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
-                {
-                    performEnhancedDragDrop();
-                }
-                return;
-            }
-        }
-    }
-
-    // Check drag from bottom badges: .ogg and .wav
-    {
-        auto bottomBounds = bounds.reduced(3);
-        int oggBadgeWidth = 28;
-        int wavBadgeWidth = 28;
-        int badgeHeight = 12;
-        int badgeSpacing = 3;
-
-        bottomBounds = bottomBounds.removeFromBottom(badgeHeight);
-
-        // Check if drag started on .ogg badge (leftmost)
-        auto oggBounds = bottomBounds.removeFromLeft(oggBadgeWidth);
-        if (oggBounds.contains(event.getMouseDownPosition()))
-        {
-            // Start regular OGG file drag operation
-            if (event.getDistanceFromDragStart() > 10 && audioFile.existsAsFile())
-            {
-                StringArray filePaths;
-                filePaths.add(audioFile.getFullPathName());
-                performExternalDragDropOfFiles(filePaths, false);
-            }
-            return;
-        }
-
-        bottomBounds.removeFromLeft(badgeSpacing);
-
-        // Check if drag started on .wav badge (second)
-        auto wavBounds = bottomBounds.removeFromLeft(wavBadgeWidth);
-        if (wavBounds.contains(event.getMouseDownPosition()))
-        {
-            // Start WAV file drag operation
-            if (event.getDistanceFromDragStart() > 10)
-            {
-                File wavFile = getWavFile();
-
-                // Convert if needed
-                if (!wavFile.existsAsFile())
-                {
-                    if (!convertOggToWav(audioFile, wavFile))
-                    {
-                        return; // Conversion failed
-                    }
-                }
-
-                if (wavFile.existsAsFile())
-                {
-                    StringArray filePaths;
-                    filePaths.add(wavFile.getFullPathName());
-                    performExternalDragDropOfFiles(filePaths, false);
-                }
-            }
-            return;
-        }
+        draggedBadge->onDrag(event);
+        return;
     }
 
     // Check if drag started in waveform area - no dragging allowed here (both modes)
-    auto waveformBounds = bounds.reduced(8, 20);
+    auto bounds = getLocalBounds();
+    auto waveformBounds = bounds.reduced(8);
+    waveformBounds.removeFromTop(18);
+    waveformBounds.removeFromBottom(18);
+
     if (waveformBounds.contains(event.getMouseDownPosition()))
     {
         // No dragging from waveform area - only triggering
         return;
-    }
-
-    // Check if drag started on web or license badges - no dragging (both modes)
-    auto topBounds = bounds.reduced(3);
-    topBounds = topBounds.removeFromTop(12);
-
-    if (freesoundId.isNotEmpty())
-    {
-        int webBadgeWidth = 28;
-        auto webBounds = topBounds.removeFromRight(webBadgeWidth);
-
-        if (webBounds.contains(event.getMouseDownPosition()))
-            return;
-    }
-
-    if (licenseType.isNotEmpty())
-    {
-        int licenseBadgeWidth = 32;
-        auto licenseBounds = topBounds.removeFromRight(licenseBadgeWidth);
-
-        if (licenseBounds.contains(event.getMouseDownPosition()))
-            return;
     }
 
     // Edge area dragging for pad swapping - Available in BOTH modes
@@ -786,44 +628,15 @@ void SamplePad::mouseDoubleClick(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    auto bounds = getLocalBounds();
-    auto topRightBounds = bounds.reduced(3);
-    topRightBounds = topRightBounds.removeFromTop(12);
-
-    // Check DEL badge area first (to skip it)
-    if (isSearchableMode)
+    // Check if double-clicked on any badge
+    Badge* clickedBadge = findBadgeAtPosition(event.getPosition());
+    if (clickedBadge && clickedBadge->onDoubleClick)
     {
-        int delBadgeWidth = 28;
-        topRightBounds.removeFromRight(delBadgeWidth + 3);
+        clickedBadge->onDoubleClick();
+        return;
     }
 
-    // License badge (middle in top line) - DOUBLE CLICK to open
-    if (licenseType.isNotEmpty())
-    {
-        int licenseBadgeWidth = 32;
-        auto licenseBounds = topRightBounds.removeFromRight(licenseBadgeWidth);
-
-        if (licenseBounds.contains(event.getPosition()))
-        {
-            URL(licenseType).launchInDefaultBrowser();
-            return;
-        }
-        topRightBounds.removeFromRight(3);
-    }
-
-    // Web badge (leftmost in top line) - DOUBLE CLICK to open
-    if (freesoundId.isNotEmpty())
-    {
-        int webBadgeWidth = 28;
-        auto webBounds = topRightBounds.removeFromRight(webBadgeWidth);
-
-        if (webBounds.contains(event.getPosition()))
-        {
-            String freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
-            URL(freesoundUrl).launchInDefaultBrowser();
-            return;
-        }
-    }
+    // No special double-click behavior for other areas currently
 }
 
 void SamplePad::handleCopyClick()
@@ -1032,20 +845,86 @@ String SamplePad::getLicenseShortName(const String& license) const
     // Parse the actual Creative Commons URLs to determine license type
     String lowerLicense = license.toLowerCase();
 
-    if (lowerLicense.contains("creativecommons.org/publicdomain/zero") ||
-        lowerLicense.contains("cc0") ||
-        lowerLicense.contains("publicdomain/zero"))
-        return "cc0";
-    else if (lowerLicense.contains("creativecommons.org/licenses/by-nc") ||
-             lowerLicense.contains("by-nc"))
-        return "by-nc";
-    else if (lowerLicense.contains("creativecommons.org/licenses/by/") ||
-             (lowerLicense.contains("creativecommons.org/licenses/by") && !lowerLicense.contains("-nc")))
-        return "by";
-    else if (lowerLicense.contains("sampling+"))
-        return "by-nc"; // Sampling+ is treated as by-nc according to Freesound
-    else
-        return "by-nc"; // Default to most restrictive for unknown licenses
+    // Extract license version from URLs like /3.0/ or /4.0/
+    String licenseVer = "";
+
+    try
+    {
+        // Use regex-like approach to find version patterns
+        // Look for patterns like /3.0/ or /4.0/ or /2.5/
+        for (int i = 0; i < lowerLicense.length() - 4; ++i)
+        {
+            if (lowerLicense[i] == '/' &&
+                lowerLicense[i + 1] >= '0' && lowerLicense[i + 1] <= '9' &&
+                lowerLicense[i + 2] == '.' &&
+                lowerLicense[i + 3] >= '0' && lowerLicense[i + 3] <= '9')
+            {
+                // Found version pattern like /x.y
+                String version = "";
+                version += lowerLicense[i + 1]; // first digit
+                version += '.';
+                version += lowerLicense[i + 3]; // second digit
+
+                // Check if there's more digits after the decimal
+                int j = i + 4;
+                while (j < lowerLicense.length() &&
+                       lowerLicense[j] >= '0' && lowerLicense[j] <= '9')
+                {
+                    version += lowerLicense[j];
+                    j++;
+                }
+
+                licenseVer = " " + version;
+                break; // Take the first version found
+            }
+        }
+    }
+    catch (...)
+    {
+        // If version extraction fails, continue without version
+        licenseVer = "";
+    }
+
+    // Determine license type
+    try
+    {
+        if (lowerLicense.contains("creativecommons.org/publicdomain/zero") ||
+            lowerLicense.contains("cc0") ||
+            lowerLicense.contains("publicdomain/zero"))
+            return "CC0" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-sa") ||
+                 lowerLicense.contains("by-nc-sa"))
+            return "BY-NC-SA" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-nd") ||
+                 lowerLicense.contains("by-nc-nd"))
+            return "BY-NC-ND" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-sa") ||
+                 lowerLicense.contains("by-sa"))
+            return "BY-SA" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nd") ||
+                 lowerLicense.contains("by-nd"))
+            return "BY-ND" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc") ||
+                 lowerLicense.contains("by-nc"))
+            return "BY-NC" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by/") ||
+                 (lowerLicense.contains("creativecommons.org/licenses/by") && !lowerLicense.contains("-nc")))
+            return "BY" + licenseVer;
+        else if (lowerLicense.contains("sampling+"))
+            return "S+" + licenseVer;
+        else if (lowerLicense.contains("sampling"))
+            return "S" + licenseVer;
+        else if (lowerLicense.contains("public domain") || lowerLicense.contains("publicdomain"))
+            return "PD";
+        else if (lowerLicense.contains("all rights reserved"))
+            return "ARR";
+        else
+            return "???"; // Default to most restrictive for unknown licenses
+    }
+    catch (...)
+    {
+        return "???";
+    }
 }
 
 void SamplePad::setSample(const File& audioFile, const String& name, const String& author, String fsId, String license, String query)
