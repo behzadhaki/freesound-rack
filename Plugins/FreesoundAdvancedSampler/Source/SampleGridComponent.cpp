@@ -395,7 +395,7 @@ void SamplePad::paint(Graphics& g)
     else
     {
         if (hasValidSample && isSearchableMode)
-            g.setColour(padColour.withAlpha(0.2f));
+            g.setColour(padColour.withAlpha(0.15f));
         else if (hasValidSample && !isSearchableMode)
             g.setColour(padColour);
         else
