@@ -108,24 +108,16 @@ void SamplePad::resized()
         // Calculate bottom-left badges width (.wav and  when sample exists)
         if (hasValidSample) {
             leftBadgesWidth += 20 + spacing; // .wav
-            if (isSearchable()) {
-                leftBadgesWidth += 20 + spacing; // .wav badge
-            }
+            if (isSearchable()) leftBadgesWidth += 20 + spacing; // search icon
+        } else {
+            if (isSearchable()) leftBadgesWidth += 20 + spacing; // search icon only
         }
-
-        // Calculate bottom-right badges width (search when searchable and not downloading)
-        // if (isSearchableMode && !isDownloading) {
-        //     rightBadgesWidth += 32 + spacing; // search badge
-        // }
 
         // Position query text box in the remaining space between badges
         auto textBoxBounds = bottomBounds;
         if (leftBadgesWidth > 0) {
             textBoxBounds.removeFromLeft(leftBadgesWidth);
         }
-        // if (rightBadgesWidth > 0) {
-        //     textBoxBounds.removeFromRight(rightBadgesWidth);
-        // }
 
         queryTextBox.setBounds(textBoxBounds);
     }
@@ -265,6 +257,30 @@ void SamplePad::initializeBadges()
     // Bottom-right badges
     if (isSearchableMode && !isDownloading) {
 
+    }
+
+    // in empty mode, we only show the search badge
+    if (!hasValidSample && isSearchableMode) // Bottom-left badges
+    {
+        Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
+        searchBadge.width = 16;
+        searchBadge.fontSize = 16.0f; // Smaller font size for search badge
+        searchBadge.onClick = [this]() {
+            String searchQuery = queryTextBox.getText().trim();
+            if (searchQuery.isEmpty() && processor) {
+                searchQuery = processor->getQuery();
+            }
+            if (searchQuery.isNotEmpty()) {
+                queryTextBox.setText(searchQuery);
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                }
+            } else {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
+            }
+        };
+        bottomLeftBadges.push_back(searchBadge);
     }
 }
 
