@@ -2366,10 +2366,10 @@ void SampleGridComponent::populatePadsFromMasterSearch()
                 pendingMasterSearchSoundInfo[soundIndex][1] : sound.user;
             String license = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 2) ?
                 pendingMasterSearchSoundInfo[soundIndex][2] : sound.license;
-            String fsTags = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 4) ?
-                pendingMasterSearchSoundInfo[soundIndex][4] : ""; // Get tags from 5th element
-            String fsDescription = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 5) ?
-                pendingMasterSearchSoundInfo[soundIndex][5] : ""; // Get description from 6th element
+            String fsTags = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 3) ?
+                pendingMasterSearchSoundInfo[soundIndex][3] : ""; // Get tags from 5th element
+            String fsDescription = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 4) ?
+                pendingMasterSearchSoundInfo[soundIndex][4] : ""; // Get description from 6th element
 
             // Update the visual pad
             samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, pendingMasterSearchQuery, fsTags, fsDescription);

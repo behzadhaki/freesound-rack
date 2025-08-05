@@ -56,12 +56,12 @@ inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> makeQuerySearch
 
             // Create sound info for each repeated sound
             StringArray info;
-            info.add(sounds[sourceIndex].name);
-            info.add(sounds[sourceIndex].user);
-            info.add(sounds[sourceIndex].license);
-            info.add(sounds[sourceIndex].tags.joinIntoString(","));
-            info.add(sounds[sourceIndex].description);
-            info.add(masterQuery); // Store the master query
+            info.add(sounds[sourceIndex].name);                             // index 0
+            info.add(sounds[sourceIndex].user);                             // index 1
+            info.add(sounds[sourceIndex].license);                          // index 2
+            info.add(sounds[sourceIndex].tags.joinIntoString(","));      // index 3
+            info.add(sounds[sourceIndex].description);                      // index 4
+            info.add(masterQuery); // Store the master query             // index 5
 
             soundInfo.push_back(info);
         }
