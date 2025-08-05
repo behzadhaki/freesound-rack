@@ -67,8 +67,7 @@ public:
     void itemDragEnter(const SourceDetails& dragSourceDetails) override;
     void itemDragExit(const SourceDetails& dragSourceDetails) override;
     void itemDropped(const SourceDetails& dragSourceDetails) override;
-
-    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String(), String query = String());
+    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String(), String query = String(), String fsTags= String(), String fsDescription= String());
     void setPlayheadPosition(float position);
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);

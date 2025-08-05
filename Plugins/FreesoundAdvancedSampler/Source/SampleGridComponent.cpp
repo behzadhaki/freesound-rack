@@ -780,6 +780,9 @@ void SamplePad::performCrossAppDragDrop()
     metadata.getDynamicObject()->setProperty("author_name", authorName);
     metadata.getDynamicObject()->setProperty("license_type", licenseType);
     metadata.getDynamicObject()->setProperty("search_query", getQuery());
+    metadata.getDynamicObject()->setProperty("tags", tags);
+    metadata.getDynamicObject()->setProperty("description", description);
+
     metadata.getDynamicObject()->setProperty("audio_file_path", audioFile.getFullPathName()); // Reference, don't copy
 
     File metadataFile = tempDir.getChildFile("metadata.json");
@@ -809,6 +812,8 @@ void SamplePad::performInternalDragDrop()
     dataPackage.getDynamicObject()->setProperty("author_name", authorName);
     dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
     dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
+    dataPackage.getDynamicObject()->setProperty("tags", tags);
+    dataPackage.getDynamicObject()->setProperty("description", description);
     dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
     dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
     dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
@@ -1085,13 +1090,15 @@ String SamplePad::getLicenseShortName(const String& license) const
     }
 }
 
-void SamplePad::setSample(const File& audioFile, const String& name, const String& author, String fsId, String license, String query)
+void SamplePad::setSample(const File& audioFile, const String& name, const String& author, String fsId, String license, String query, String fsTags, String fsDescription)
 {
     sampleName = name;
     authorName = author;
     freesoundId = fsId;
     licenseType = license;
     padQuery = query; // CRITICAL: Store the query in padQuery field
+    tags = fsTags;
+    description = fsDescription;
 
     // Update query text box with the sample's query (but don't override if connected to master)
     if (!connectedToMaster)
@@ -1779,13 +1786,17 @@ void SampleGridComponent::loadSamplesFromJson(const File& metadataFile)
         String authorName = sample.getProperty("author", "Unknown");
         String license = sample.getProperty("license", "Unknown");
         String freesoundId = sample.getProperty("freesound_id", "");
+        String search_query = sample.getProperty("search_query", "");
+        String fsTags = sample.getProperty("tags", "");
+        String fsDescription = sample.getProperty("description", "");
 
+        DBG("TAGS ARE : " + fsTags);
         if (fileName.isNotEmpty())
         {
             File audioFile = downloadDir.getChildFile(fileName);
             if (audioFile.existsAsFile())
             {
-                samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license);
+                samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license, search_query, fsTags, fsDescription);
             }
         }
     }
@@ -1813,6 +1824,8 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
         String license = (i < soundInfo.size() && soundInfo[i].size() > 2) ? soundInfo[i][2] : sound.license;
         String sampleQuery = (i < soundInfo.size() && soundInfo[i].size() > 3) ? soundInfo[i][3] : "";  // Get query from 4th element
         String freesoundId = sound.id;
+        String fsTags = (i < soundInfo.size() && soundInfo[i].size() > 4) ? soundInfo[i][4] : ""; // Get tags from 5th element
+        String fsDescription = (i < soundInfo.size() && soundInfo[i].size() > 5) ? soundInfo[i][5] : ""; // Get description from 6th element
 
         String expectedFilename = "FS_ID_" + freesoundId + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
@@ -1824,7 +1837,7 @@ void SampleGridComponent::loadSamplesFromArrays(const Array<FSSound>& sounds, co
         if (audioFile.existsAsFile())
         {
             // IMPORTANT: Pass the query to setSample so it appears in the text box
-            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license, sampleQuery);
+            samplePads[i]->setSample(audioFile, sampleName, authorName, freesoundId, license, sampleQuery, fsTags, fsDescription);
             // DBG("  Successfully set sample on pad " + String(i) + " with query: '" + sampleQuery + "'");
         }
         else
@@ -2103,6 +2116,8 @@ void SampleGridComponent::updateJsonMetadata()
                             sample->setProperty("file_size", originalSample.getProperty("file_size", 0));
                             sample->setProperty("downloaded_at", originalSample.getProperty("downloaded_at", ""));
                             sample->setProperty("freesound_url", "https://freesound.org/s/" + padInfo.freesoundId + "/");
+                            sample->setProperty("tags", originalSample.getProperty("tags", ""));
+                            sample->setProperty("description", originalSample.getProperty("description", ""));
                             break;
                         }
                     }
@@ -2348,9 +2363,13 @@ void SampleGridComponent::populatePadsFromMasterSearch()
                 pendingMasterSearchSoundInfo[soundIndex][1] : sound.user;
             String license = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 2) ?
                 pendingMasterSearchSoundInfo[soundIndex][2] : sound.license;
+            String fsTags = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 4) ?
+                pendingMasterSearchSoundInfo[soundIndex][4] : ""; // Get tags from 5th element
+            String fsDescription = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 5) ?
+                pendingMasterSearchSoundInfo[soundIndex][5] : ""; // Get description from 6th element
 
             // Update the visual pad
-            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, pendingMasterSearchQuery);
+            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, pendingMasterSearchQuery, fsTags, fsDescription);
 
             // CRITICAL: Update processor arrays at the correct pad position
             FSSound processorSound = sound;
@@ -2523,7 +2542,7 @@ void SampleGridComponent::performSinglePadSearch(int padIndex, const String& que
 void SampleGridComponent::loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query)
 {
     // Update the pad visually with the query
-    samplePads[padIndex]->setSample(audioFile, sound.name, sound.user, sound.id, sound.license, query);
+    samplePads[padIndex]->setSample(audioFile, sound.name, sound.user, sound.id, sound.license, query, sound.tags.joinIntoString(","), sound.description);
 
     // Update processor's internal arrays
     updateSinglePadInProcessor(padIndex, sound);
@@ -2889,8 +2908,11 @@ int SampleGridComponent::getPadIndexFromPosition(Point<int> position)
     {
         // Convert grid position to pad index (bottom-left is pad 0)
         int padIndex = (GRID_SIZE - 1 - row) * GRID_SIZE + col;
-        return padIndex;
+        DBG("padIndex: " +  String(jmin(padIndex, 15)));
+        return jmin(padIndex, 15);
     }
+
+    DBG("padIndex: -1");
 
     return -1;
 }
@@ -2914,6 +2936,8 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     String authorName = metadata.getProperty("author_name", "Unknown");
     String licenseType = metadata.getProperty("license_type", "");
     String searchQuery = metadata.getProperty("search_query", "");
+    String tags = metadata.getProperty("tags", "");
+    String description = metadata.getProperty("description", "");
 
     // Check if target pad already has a sample
     auto targetPadInfo = samplePads[targetPadIndex]->getSampleInfo();
@@ -2968,6 +2992,8 @@ void SampleGridComponent::performEnhancedDrop(const String& jsonMetadata, const 
     String licenseType = metadata.getProperty("license_type", "");
     String searchQuery = metadata.getProperty("search_query", "");
     String originalFileName = metadata.getProperty("file_name", "");
+    String tags = metadata.getProperty("tags", "");
+    String description = metadata.getProperty("description", "");
 
     // Copy the file to our samples directory if it's not already there
     File sourceFile(filePaths[0]);
@@ -2994,9 +3020,11 @@ void SampleGridComponent::performEnhancedDrop(const String& jsonMetadata, const 
     sound.license = licenseType;
     sound.duration = 0.5; // Default values
     sound.filesize = (int)targetFile.getSize();
+    sound.tags = tags;
+    sound.description = description;
 
     // Update the target pad with full metadata
-    samplePads[targetPadIndex]->setSample(targetFile, sampleName, authorName, freesoundId, licenseType, searchQuery);
+    samplePads[targetPadIndex]->setSample(targetFile, sampleName, authorName, freesoundId, licenseType, searchQuery, tags, description);
 
     // Update processor arrays
     updateSinglePadInProcessor(targetPadIndex, sound);
@@ -3163,7 +3191,7 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
 
     // Calculate how many sounds we need
     processor->newSoundsReady(finalSounds, masterQuery, soundInfo);
-    std::cout << "Sound 0 tags : " << finalSounds[0].tags.joinIntoString(", ")  << std::endl;
+    std::cout << "Sound 0 tags : " << finalSounds[0].tags.joinIntoString(",")  << std::endl;
 }
 
 int SampleGridComponent::getVisualPositionFromRowCol(int row, int col) const
@@ -3345,9 +3373,11 @@ void SampleGridComponent::handleCrossAppDrop(const StringArray& files, int targe
     String authorName = metadata.getProperty("author_name", "");
     String licenseType = metadata.getProperty("license_type", "");
     String searchQuery = metadata.getProperty("search_query", "");
+    String fsTags = metadata.getProperty("tags", "");
+    String fsDescription = metadata.getProperty("description", "");
 
     // Load sample directly from original location
-    samplePads[targetPadIndex]->setSample(audioFile, sampleName, authorName, freesoundId, licenseType, searchQuery);
+    samplePads[targetPadIndex]->setSample(audioFile, sampleName, authorName, freesoundId, licenseType, searchQuery, fsTags, fsDescription);
 
     // Create FSSound from metadata
     FSSound sound;
@@ -3357,6 +3387,8 @@ void SampleGridComponent::handleCrossAppDrop(const StringArray& files, int targe
     sound.license = licenseType;
     sound.duration = 0.5; // Default
     sound.filesize = (int)audioFile.getSize();
+    sound.tags = fsTags;
+    sound.description = fsDescription;
 
     // Update processor arrays
     updateSinglePadInProcessor(targetPadIndex, sound);  // Complete expression

@@ -59,7 +59,7 @@ inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> makeQuerySearch
             info.add(sounds[sourceIndex].name);
             info.add(sounds[sourceIndex].user);
             info.add(sounds[sourceIndex].license);
-            info.add(sounds[sourceIndex].tags.joinIntoString(", "));
+            info.add(sounds[sourceIndex].tags.joinIntoString(","));
             info.add(sounds[sourceIndex].description);
 
             info.add(masterQuery); // Store the master query
@@ -70,6 +70,8 @@ inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> makeQuerySearch
     {
       DBG("Error during Freesound search: " + String(e.what()));
     }
+
+    DBG("Tags for first sound: " + finalSounds[0].tags.joinIntoString(","));
 
     return { finalSounds, soundInfo };
 
