@@ -96,6 +96,7 @@ public:
         String freesoundId;
         String licenseType;
         String query;
+        float fileSourceSampleRate = 44100.0f; // Sample rate of the source file
         bool hasValidSample;
         int padIndex;
     };
@@ -148,6 +149,7 @@ protected:
     String freesoundId;
     String licenseType;
     String padQuery;
+    float fileSourceSampleRate = 44100.0f;
     String getKeyboardKeyForPad(int padIndex) const;
 
     float playheadPosition;

@@ -110,6 +110,8 @@ void BookmarkSamplePad::mouseDown(const MouseEvent& event)
         return;
     }
 
+    DBG("STARTING PLAYBACK (FILE ORIGINAL SAMPLE RATE: " + String(fileSourceSampleRate));
+
     // Calculate waveform bounds
     auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);

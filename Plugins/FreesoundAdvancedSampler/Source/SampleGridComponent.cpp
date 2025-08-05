@@ -568,6 +568,8 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
+    DBG("STARTING PLAYBACK (FILE ORIGINAL SAMPLE RATE: " + String(fileSourceSampleRate));
+
     // Check if clicked in waveform area - for manual triggering (always available)
     auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
@@ -857,6 +859,21 @@ void SamplePad::loadWaveform()
         auto* fileSource = new FileInputSource(audioFile);
         audioThumbnail.setSource(fileSource);
 
+        // get sample rate of fileSource
+        {
+            juce::AudioFormatManager formatManager;
+            formatManager.registerBasicFormats(); // Registers WAV, AIFF, FLAC, OggVorbis, etc.
+
+            std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(audioFile));
+
+            if (reader != nullptr)
+            {
+                fileSourceSampleRate =  reader->sampleRate;
+            }
+        }
+
+        fileSourceSampleRate = (fileSourceSampleRate <= 1.0) ? 44100.0 : fileSourceSampleRate; // sometimes (very very rarely) sample rate from freesound is zero
+
         // Force a repaint after a brief delay to ensure thumbnail is loaded
         Timer::callAfterDelay(100, [this]() {
             repaint();
@@ -1094,6 +1111,7 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.query = getQuery(); // Get current query from text box
     info.hasValidSample = hasValidSample;
     info.padIndex = 0; // Will be set by SampleGridComponent
+    info.fileSourceSampleRate = fileSourceSampleRate;
     return info;
 }
 
