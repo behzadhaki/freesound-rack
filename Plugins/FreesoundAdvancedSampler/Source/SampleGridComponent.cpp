@@ -1176,6 +1176,8 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.freesoundId = freesoundId;
     info.licenseType = licenseType;
     info.query = getQuery(); // Get current query from text box
+    info.tags = tags;
+    info.description = description;
     info.hasValidSample = hasValidSample;
     info.padIndex = 0; // Will be set by SampleGridComponent
     info.fileSourceSampleRate = fileSourceSampleRate;
@@ -2185,7 +2187,7 @@ Array<SamplePad::SampleInfo> SampleGridComponent::getAllSampleInfo() const
 
 Array<FSSound> SampleGridComponent::searchSingleSound(const String& query)
 {
-    auto [finalSounds, soundInfo] = getSoundsForQuery(query, 1, true);
+    auto [finalSounds, soundInfo] = makeQuerySearchUsingFreesoundAPI(query, 1, true);
     return finalSounds;
 }
 
@@ -3143,7 +3145,7 @@ void SampleGridComponent::executeMasterSearch(const String& masterQuery, const A
 
     int numSoundsNeeded = targetPadIndices.size();
 
-    auto [finalSounds, soundInfo] = getSoundsForQuery(masterQuery, numSoundsNeeded, true);
+    auto [finalSounds, soundInfo] = makeQuerySearchUsingFreesoundAPI(masterQuery, numSoundsNeeded, true);
 
     if (finalSounds.isEmpty())
     {

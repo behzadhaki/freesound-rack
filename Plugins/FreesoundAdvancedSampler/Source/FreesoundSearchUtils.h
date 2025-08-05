@@ -7,7 +7,7 @@
 
 using namespace juce;
 
-inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> getSoundsForQuery (const String& masterQuery, int numSoundsNeeded, bool shuffleResults = true) {
+inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> makeQuerySearchUsingFreesoundAPI (const String& masterQuery, int numSoundsNeeded, bool shuffleResults = true) {
 
   // Use the existing Freesound search system
     FreesoundClient client(FREESOUND_API_KEY);
@@ -59,6 +59,9 @@ inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> getSoundsForQue
             info.add(sounds[sourceIndex].name);
             info.add(sounds[sourceIndex].user);
             info.add(sounds[sourceIndex].license);
+            info.add(sounds[sourceIndex].tags.joinIntoString(", "));
+            info.add(sounds[sourceIndex].description);
+
             info.add(masterQuery); // Store the master query
             soundInfo.push_back(info);
         }
