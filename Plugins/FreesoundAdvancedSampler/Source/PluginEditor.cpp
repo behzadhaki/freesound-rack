@@ -351,24 +351,39 @@ bool FreesoundAdvancedSamplerAudioProcessorEditor::keyPressed(const KeyPress& ke
 {
     int padIndex = getKeyboardPadIndex(key);
 
+    // Check if this is one of our valid sample trigger keys
     if (padIndex >= 0 && padIndex < 16)
     {
-        // Check if this pad has a valid sample by getting info from the grid
+        // This is a valid sample trigger key - check if pad has a sample
         auto padInfo = sampleGridComponent.getPadInfo(padIndex);
         if (padInfo.hasValidSample)
         {
+            // Sample exists - trigger it
             int noteNumber = padIndex + 36;
             processor.addNoteOnToMidiBuffer(noteNumber);
-
-            // Optional: Add some visual feedback
-            repaint();
-
-            return true; // Key was handled
+            repaint(); // Optional visual feedback
         }
+
+        // CRITICAL: Always return true for valid sample keys
+        // This prevents OS click sound even for empty pads
+        return true;
     }
 
-    return Component::keyPressed(key); // Let parent handle unrecognized keys
+    // Handle other common keys that might cause OS clicks
+    int keyCode = key.getKeyCode();
+    if (keyCode == KeyPress::spaceKey ||
+        keyCode == KeyPress::returnKey ||
+        keyCode == KeyPress::escapeKey ||
+        keyCode == KeyPress::tabKey)
+    {
+        // Consume these keys to prevent OS clicks
+        return true;
+    }
+
+    // For any other key, let the parent component handle it
+    return Component::keyPressed(key);
 }
+
 
 int FreesoundAdvancedSamplerAudioProcessorEditor::getKeyboardPadIndex(const KeyPress& key) const
 {
