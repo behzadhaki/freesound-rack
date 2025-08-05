@@ -73,6 +73,9 @@ void BookmarkSamplePad::setPreviewPlaying(bool playing)
 
 void BookmarkSamplePad::setPreviewPlayheadPosition(float position)
 {
+    // adjust position using fileSourceSampleRate and processorSampleRate
+    position = (position * fileSourceSampleRate) / processorSampleRate;
+
     // Ensure GUI updates happen on the message thread
     MessageManager::callAsync([this, position]()
     {
@@ -109,8 +112,6 @@ void BookmarkSamplePad::mouseDown(const MouseEvent& event)
         DBG("  - No valid sample");
         return;
     }
-
-    DBG("STARTING PLAYBACK (FILE ORIGINAL SAMPLE RATE: " + String(fileSourceSampleRate));
 
     // Calculate waveform bounds
     auto bounds = getLocalBounds();
@@ -183,6 +184,9 @@ void BookmarkSamplePad::mouseUp(const MouseEvent& event)
     // Reset state
     mouseDownInWaveform = false;
     previewRequested = false;
+
+    // snapshot the processor sample rate
+    processorSampleRate = processor->getSampleRate();
 
     // Reset cursor if it was changed
     setMouseCursor(MouseCursor::NormalCursor);

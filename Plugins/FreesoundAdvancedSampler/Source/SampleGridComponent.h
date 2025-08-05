@@ -150,6 +150,7 @@ protected:
     String licenseType;
     String padQuery;
     float fileSourceSampleRate = 44100.0f;
+    float processorSampleRate = 44100.0f; // Sample rate of the processor (checked on mouseUp)
     String getKeyboardKeyForPad(int padIndex) const;
 
     float playheadPosition;

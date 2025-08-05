@@ -568,8 +568,6 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    DBG("STARTING PLAYBACK (FILE ORIGINAL SAMPLE RATE: " + String(fileSourceSampleRate));
-
     // Check if clicked in waveform area - for manual triggering (always available)
     auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
@@ -602,6 +600,8 @@ void SamplePad::mouseUp(const MouseEvent& event)
 
         // Or alternatively, if there's a direct way to stop the sample:
         setIsPlaying(false);
+
+        processorSampleRate = processor->getSampleRate();
     }
 
     // Reset any cursor changes
@@ -906,6 +906,9 @@ void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
 
 void SamplePad::setPlayheadPosition(float position)
 {
+    // adjust position using fileSourceSampleRate and processorSampleRate
+    position = (position * fileSourceSampleRate) / processorSampleRate;
+
     // Ensure GUI updates happen on the message thread
     MessageManager::callAsync([this, position]()
     {
@@ -1078,8 +1081,6 @@ void SamplePad::setQuery(const String& query, bool dontUpdatePadInfoQuery)
 
     queryTextBox.setText(query, dontSendNotification);
 }
-
-
 
 String SamplePad::getQuery() const
 {
