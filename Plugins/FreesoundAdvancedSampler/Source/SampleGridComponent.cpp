@@ -145,9 +145,11 @@ void SamplePad::initializeBadges()
 
     // Top-left badges
     if (hasValidSample) {
-        Badge copyBadge("copy", String(CharPointer_UTF8("\xF0\x9F\x91\x86")), Colour(0x80FF8C00));
+        //         Badge copyBadge("copy", String(CharPointer_UTF8("\xF0\x9F\x91\x86")), Colour(0x80FF8C00)); hand icon
+        juce::String dragIcon = juce::String(CharPointer_UTF8("\xF0\x9F\x93\x91"));
+        Badge copyBadge("copy", dragIcon, Colour(0x8000A000).withAlpha(0.0f));
         copyBadge.width = 16; // Fixed width for copy badge
-        copyBadge.fontSize = 11.0f; // Smaller font size for copy badge
+        copyBadge.fontSize = 13.0f; // Smaller font size for copy badge
         copyBadge.onClick = [this]() { handleCopyClick(); };
         copyBadge.onDrag = [this](const MouseEvent& e) {
             if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
@@ -156,7 +158,7 @@ void SamplePad::initializeBadges()
 
         Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
                            processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
-                           Colour(0x80FFD700) : Colour(0x80808080));
+                           Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
         bookmarkBadge.width = 16; // Smaller width for bookmark badge
         bookmarkBadge.onClick = [this]() { handleBookmarkClick(); };
         topLeftBadges.push_back(bookmarkBadge);
