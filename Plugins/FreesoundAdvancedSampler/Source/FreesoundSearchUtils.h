@@ -61,8 +61,8 @@ inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> makeQuerySearch
             info.add(sounds[sourceIndex].license);
             info.add(sounds[sourceIndex].tags.joinIntoString(","));
             info.add(sounds[sourceIndex].description);
-
             info.add(masterQuery); // Store the master query
+
             soundInfo.push_back(info);
         }
     }
