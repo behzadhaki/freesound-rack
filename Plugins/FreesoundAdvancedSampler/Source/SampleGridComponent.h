@@ -176,6 +176,8 @@ protected:
 
     void handleBookmarkClick();
 
+    void performCrossAppDragDrop();
+    void performInternalDragDrop();
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
@@ -187,10 +189,11 @@ private:
 // SampleGridComponent (the grid of sample pads)
 //==============================================================================
 class SampleGridComponent : public Component,
-                           public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
-                           public DragAndDropContainer,
-                           public DragAndDropTarget,
-                           public Timer  // Keep only Timer - no AudioDownloadManager::Listener
+                            public FreesoundAdvancedSamplerAudioProcessor::PlaybackListener,
+                            public DragAndDropContainer,
+                            public DragAndDropTarget,      // for drag and drop between pads or different instances of same VST
+                            public FileDragAndDropTarget,  // Add for external files between different targets or compatible apps
+                            public Timer
 {
 public:
     SampleGridComponent();
@@ -231,12 +234,18 @@ public:
     String getQueryForPad(int padIndex) const;
     void setQueryForPad(int padIndex, const String& query);
 
-    // Add DragAndDropTarget methods
+    // Add DragAndDropTarget methods (for drag and drop between pads or different instances of same VST)
     bool isInterestedInDragSource(const SourceDetails& dragSourceDetails) override;
     void itemDragEnter(const SourceDetails& dragSourceDetails) override;
     void itemDragExit(const SourceDetails& dragSourceDetails) override;
     void itemDropped(const SourceDetails& dragSourceDetails) override;
     void handleEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex);
+
+    // Add file drop methods (cross-platform / cross-app drag and drop)
+    bool isInterestedInFileDrag(const StringArray& files) override;
+    void filesDropped(const StringArray& files, int x, int y) override;
+    void fileDragEnter(const StringArray& files, int x, int y) override;
+    void fileDragExit(const StringArray& files) override;
 
     // Master search management
     void populatePadsFromMasterSearch();
@@ -299,6 +308,7 @@ private:
     void performEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex); // NEW helper method
     void handleFileDrop(const StringArray& filePaths, int targetPadIndex);
     int getPadIndexFromPosition(Point<int> position);
+    void handleCrossAppDrop(const StringArray& files, int targetPadIndex);
 
     // Master search
     void updateProcessorArraysForMasterSearch(const Array<FSSound>& sounds,
