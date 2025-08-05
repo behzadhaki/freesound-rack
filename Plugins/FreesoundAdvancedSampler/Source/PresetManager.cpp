@@ -106,6 +106,9 @@ bool PresetManager::saveCurrentPreset(const String& name, const String& descript
         pad->setProperty("file_size", padInfo.fileSize);
         pad->setProperty("downloaded_at", padInfo.downloadedAt);
         pad->setProperty("freesound_url", "https://freesound.org/s/" + padInfo.freesoundId + "/");
+        pad->setProperty("tags", padInfo.tags);
+        pad->setProperty(description, padInfo.description);
+
 
         padMapping.add(juce::var(pad.get()));
     }
@@ -213,6 +216,9 @@ bool PresetManager::saveToSlot(const File& presetFile, int slotIndex, const Stri
         sampleObj->setProperty("file_size", padInfo.fileSize);
         sampleObj->setProperty("downloaded_at", padInfo.downloadedAt);
         sampleObj->setProperty("freesound_url", "https://freesound.org/s/" + padInfo.freesoundId + "/");
+        sampleObj->setProperty("tags", padInfo.tags);
+        sampleObj->setProperty("description", padInfo.description);
+
 
         samplesArray.add(var(sampleObj.get()));
     }
@@ -379,6 +385,8 @@ bool PresetManager::loadPreset(const File& presetFile, int slotIndex, Array<PadI
         padInfo.duration = sampleVar.getProperty("duration", 0.0);
         padInfo.fileSize = sampleVar.getProperty("file_size", 0);
         padInfo.downloadedAt = sampleVar.getProperty("downloaded_at", "");
+        padInfo.tags = sampleVar.getProperty("tags", "");
+        padInfo.description = sampleVar.getProperty("description", "");
 
         // Validate essential properties
         if (padInfo.freesoundId.isEmpty() || padInfo.padIndex < 0 || padInfo.padIndex >= 16)
@@ -524,6 +532,7 @@ PresetInfo PresetManager::getPresetInfo(const File& presetFile)
     {
         info.name = presetInfoVar.getProperty("name", "");
         info.createdDate = presetInfoVar.getProperty("created_date", "");
+        info.tags = presetInfoVar.getProperty("tags", "");
         info.description = presetInfoVar.getProperty("description", "");
     }
 
@@ -568,6 +577,7 @@ PresetSlotInfo PresetManager::getSlotInfo(const File& presetFile, int slotIndex)
         slotInfo.createdDate = slotInfoVar.getProperty("created_date", "");
         slotInfo.searchQuery = slotInfoVar.getProperty("search_query", "");
         slotInfo.description = slotInfoVar.getProperty("description", "");
+        slotInfo.tags = slotInfoVar.getProperty("description", "");
         slotInfo.sampleCount = slotInfoVar.getProperty("sample_count", 0);
     }
 

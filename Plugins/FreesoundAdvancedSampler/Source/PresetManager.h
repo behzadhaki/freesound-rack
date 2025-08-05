@@ -18,6 +18,7 @@ struct PresetSlotInfo
     String name;
     String createdDate;
     String searchQuery;
+    String tags;
     String description;
     int sampleCount;
     bool hasData;
@@ -29,6 +30,7 @@ struct PresetInfo
 {
     String name;
     String createdDate;
+    String tags;
     String description;
     File presetFile;
     std::array<PresetSlotInfo, 8> slots;
@@ -49,6 +51,8 @@ struct PadInfo
     int fileSize;
     String downloadedAt;
     String searchQuery;
+    String tags;
+    String description;
 
     PadInfo() : padIndex(-1), duration(0.0), fileSize(0) {}
 };

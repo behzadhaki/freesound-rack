@@ -383,6 +383,8 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
             soundXml->setAttribute("license", sound.license);
             soundXml->setAttribute("duration", sound.duration);
             soundXml->setAttribute("filesize", sound.filesize);
+            soundXml->setAttribute("tags", sound.tags.joinIntoString(","));
+            soundXml->setAttribute("description", sound.description);
 
             // Save associated metadata including query from soundsArray
             if (i < soundsArray.size() && soundsArray[i].size() >= 4)
@@ -458,6 +460,8 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
                     sound.license = soundXml->getStringAttribute("license");
                     sound.duration = soundXml->getDoubleAttribute("duration", 0.5);
                     sound.filesize = soundXml->getIntAttribute("filesize", 50000);
+                    sound.tags = soundXml->getStringAttribute("tags");
+                    sound.description = soundXml->getStringAttribute("description");
 
                     currentSoundsArray.set(padIndex, sound);
 
@@ -734,6 +738,8 @@ bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& n
                 padInfo.originalName = sampleInfo.sampleName;
                 padInfo.author = sampleInfo.authorName;
                 padInfo.license = sampleInfo.licenseType;
+                padInfo.tags = sampleInfo.tags;
+                padInfo.description = sampleInfo.description;
 
                 // Get additional info from the existing arrays if available
                 for (int i = 0; i < currentSoundsArray.size(); ++i)
@@ -888,6 +894,8 @@ bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const File& presetFile, 
                 padInfo.originalName = sampleInfo.sampleName;
                 padInfo.author = sampleInfo.authorName;
                 padInfo.license = sampleInfo.licenseType;
+                padInfo.tags = sampleInfo.tags;
+                padInfo.description = sampleInfo.description;
 
                 // Get additional info from the existing arrays
                 for (int i = 0; i < currentSoundsArray.size(); ++i)
@@ -938,6 +946,8 @@ Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() cons
                 padInfo.author = sampleInfo.authorName;
                 padInfo.license = sampleInfo.licenseType;
                 padInfo.searchQuery = sampleInfo.query;  // Get from pad's UI
+                padInfo.tags = sampleInfo.tags;
+                padInfo.description = sampleInfo.description;
 
                 // Get duration and file size from processor arrays if available
                 for (const auto& sound : currentSoundsArray)
@@ -972,6 +982,8 @@ Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() cons
             padInfo.originalName = sound.name;
             padInfo.author = sound.user;
             padInfo.license = sound.license;
+            padInfo.tags = sound.tags.joinIntoString(",");
+            padInfo.description = sound.description;
 
             // Get query from soundsArray 4th element
             padInfo.searchQuery = (soundsArray[i].size() > 3) ? soundsArray[i][3] : "";
@@ -1008,6 +1020,8 @@ Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfosFromGri
                 padInfo.originalName = sampleInfo.sampleName;
                 padInfo.author = sampleInfo.authorName;
                 padInfo.license = sampleInfo.licenseType;
+                padInfo.tags = sampleInfo.tags;
+                padInfo.description = sampleInfo.description;
 
                 // Get additional info from the existing arrays if available
                 for (int i = 0; i < currentSoundsArray.size(); ++i)

@@ -15,6 +15,8 @@ struct BookmarkInfo
     int fileSize;
     String bookmarkedAt;
     String freesoundUrl;
+    String tags;
+    String description;
     
     BookmarkInfo() : duration(0.0), fileSize(0) {}
 };

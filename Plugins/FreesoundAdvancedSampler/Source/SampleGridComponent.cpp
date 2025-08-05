@@ -780,8 +780,9 @@ void SamplePad::performCrossAppDragDrop()
     metadata.getDynamicObject()->setProperty("author_name", authorName);
     metadata.getDynamicObject()->setProperty("license_type", licenseType);
     metadata.getDynamicObject()->setProperty("search_query", getQuery());
-    metadata.getDynamicObject()->setProperty("tags", tagsFS);
-    metadata.getDynamicObject()->setProperty("description", descriptionFS);
+    DBG("CrossApp Drag Drop Tags: " + tags);
+    metadata.getDynamicObject()->setProperty("tags", tags);
+    metadata.getDynamicObject()->setProperty("description", description);
 
     metadata.getDynamicObject()->setProperty("audio_file_path", audioFile.getFullPathName()); // Reference, don't copy
 
@@ -812,8 +813,8 @@ void SamplePad::performInternalDragDrop()
     dataPackage.getDynamicObject()->setProperty("author_name", authorName);
     dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
     dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
-    dataPackage.getDynamicObject()->setProperty("tags", tagsFS);
-    dataPackage.getDynamicObject()->setProperty("description", descriptionFS);
+    dataPackage.getDynamicObject()->setProperty("tags", tags);
+    dataPackage.getDynamicObject()->setProperty("description", description);
     dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
     dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
     dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
@@ -1097,8 +1098,8 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
     freesoundId = fsId;
     licenseType = license;
     padQuery = query; // CRITICAL: Store the query in padQuery field
-    tagsFS = fsTags;
-    descriptionFS = fsDescription;
+    tags = fsTags;
+    description = fsDescription;
 
     // Update query text box with the sample's query (but don't override if connected to master)
     if (!connectedToMaster)
@@ -1183,8 +1184,8 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.freesoundId = freesoundId;
     info.licenseType = licenseType;
     info.query = getQuery(); // Get current query from text box
-    info.tagsFS = tagsFS;
-    info.descriptionFS = descriptionFS;
+    info.tags = tags;
+    info.description = description;
     info.hasValidSample = hasValidSample;
     info.padIndex = 0; // Will be set by SampleGridComponent
     info.fileSourceSampleRate = fileSourceSampleRate;
@@ -1522,6 +1523,8 @@ void SamplePad::handleBookmarkClick()
         bookmark.fileSize = (int)audioFile.getSize();
         bookmark.bookmarkedAt = Time::getCurrentTime().toString(true, true);
         bookmark.freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+        bookmark.tags = tags;
+        bookmark.description = description;
 
         if (bookmarkManager.addBookmark(bookmark))
         {

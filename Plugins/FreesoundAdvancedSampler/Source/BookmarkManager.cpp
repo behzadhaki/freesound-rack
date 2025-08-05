@@ -148,7 +148,9 @@ Array<BookmarkInfo> BookmarkManager::loadBookmarks() const
         bookmark.fileSize = bookmarkVar.getProperty("file_size", 0);
         bookmark.bookmarkedAt = bookmarkVar.getProperty("bookmarked_at", "");
         bookmark.freesoundUrl = bookmarkVar.getProperty("freesound_url", "");
-        
+        bookmark.tags = bookmarkVar.getProperty("tags", "");
+        bookmark.description = bookmarkVar.getProperty("description", "");
+        DBG("loaded bookmar tags: " + bookmark.tags);
         bookmarks.add(bookmark);
     }
     
@@ -209,6 +211,8 @@ bool BookmarkManager::saveBookmarks(const Array<BookmarkInfo>& bookmarks)
         bookmarkObj->setProperty("file_size", bookmark.fileSize);
         bookmarkObj->setProperty("bookmarked_at", bookmark.bookmarkedAt);
         bookmarkObj->setProperty("freesound_url", bookmark.freesoundUrl);
+        bookmarkObj->setProperty("tags", bookmark.tags);
+        bookmarkObj->setProperty("description", bookmark.description);
         
         bookmarksArray.add(var(bookmarkObj.get()));
     }

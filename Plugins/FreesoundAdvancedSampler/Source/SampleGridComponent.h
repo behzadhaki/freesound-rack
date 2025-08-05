@@ -95,10 +95,8 @@ public:
         String freesoundId;
         String licenseType;
         String query;
-        String tagsFS;
-        String tagsUser;
-        String descriptionFS;
-        String descriptionUser;
+        String tags;
+        String description;
         float fileSourceSampleRate = 44100.0f; // Sample rate of the source file
         bool hasValidSample;
         int padIndex;
@@ -152,10 +150,8 @@ protected:
     String freesoundId;
     String licenseType;
     String padQuery;
-    String tagsFS;
-    String descriptionFS;
-    String tagsUser;
-    String descriptionUser;
+    String tags;
+    String description;
     float fileSourceSampleRate = 44100.0f;
     float processorSampleRate = 44100.0f; // Sample rate of the processor (checked on mouseUp)
     String getKeyboardKeyForPad(int padIndex) const;

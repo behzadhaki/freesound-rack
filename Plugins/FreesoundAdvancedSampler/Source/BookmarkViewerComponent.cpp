@@ -16,6 +16,7 @@
 BookmarkSamplePad::BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo)
     : SamplePad(index, false), bookmark(bookmarkInfo) // false = non-searchable
 {
+    DBG("Loaded bookmark with tags" + bookmark.tags);
     padColour = defaultColour.withAlpha(0.2f);
 }
 
