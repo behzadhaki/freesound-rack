@@ -10,6 +10,7 @@
 */
 
 #include "SampleGridComponent.h"
+#include "PluginEditor.h"
 
 //==============================================================================
 // SamplePad Complete Implementation
@@ -307,6 +308,9 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (isDownloading)
         return;
 
+    // Store the current keyboard focus component before we do anything
+    Component* currentKeyboardFocus = Component::getCurrentlyFocusedComponent();
+
     // Check if the click is specifically on the query text box area
     if (queryTextBox.getBounds().contains(event.getPosition()) && padMode == PadMode::Normal)
     {
@@ -315,10 +319,30 @@ void SamplePad::mouseDown(const MouseEvent& event)
         return;
     }
 
-    // For all other clicks, explicitly remove focus from the TextEditor
+    // For all other clicks, we need to be careful about keyboard focus
+    // We want to remove focus from TextEditor but preserve main editor focus
     if (queryTextBox.hasKeyboardFocus(true))
     {
         queryTextBox.giveAwayKeyboardFocus();
+
+        // If the main editor (or plugin editor) had focus before, restore it
+        if (currentKeyboardFocus && currentKeyboardFocus != &queryTextBox)
+        {
+            currentKeyboardFocus->grabKeyboardFocus();
+        }
+        else
+        {
+            // Find and focus the main plugin editor for keyboard sample triggering
+            if (auto* pluginEditor = findParentComponentOfClass<FreesoundAdvancedSamplerAudioProcessorEditor>())
+            {
+                pluginEditor->grabKeyboardFocus();
+            }
+            else if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+            {
+                // Alternatively, focus the grid component if it handles keyboard
+                gridComponent->grabKeyboardFocus();
+            }
+        }
     }
 
     // Reset preview state flags
@@ -352,7 +376,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         {
             // Preview mode: Start preview playback with pointing hand cursor
             mouseDownInWaveform = true;
-            startPreviewPlayback(); // This sets PointingHandCursor internally
+            startPreviewPlayback();
         }
         else if (padMode == PadMode::Normal || padMode == PadMode::NonSearchable)
         {
@@ -371,12 +395,10 @@ void SamplePad::mouseDown(const MouseEvent& event)
     // Edge area interactions - different cursors for different modes
     if (padMode == PadMode::Normal)
     {
-        // Normal mode: Show drag cursor for potential pad swapping
         setMouseCursor(MouseCursor::DraggingHandCursor);
     }
     else if (padMode == PadMode::NonSearchable)
     {
-        // NonSearchable mode: Show copy cursor for drag operations
         setMouseCursor(MouseCursor::CopyingCursor);
     }
 }
