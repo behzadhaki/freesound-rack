@@ -331,13 +331,15 @@ void SamplePad::mouseDown(const MouseEvent& event)
     {
         if (padMode == PadMode::Preview)
         {
-            // Preview mode: Start preview playback
+            // Preview mode: Start preview playback with pointing hand cursor
             mouseDownInWaveform = true;
-            startPreviewPlayback();
+            startPreviewPlayback(); // This sets PointingHandCursor internally
         }
         else if (padMode == PadMode::Normal || padMode == PadMode::NonSearchable)
         {
-            // Normal/NonSearchable mode: Trigger sample playback
+            // Normal/NonSearchable mode: Trigger sample playback with play cursor
+            setMouseCursor(MouseCursor::PointingHandCursor); // Or use a custom play cursor
+
             if (processor)
             {
                 int noteNumber = padIndex + 36;
@@ -345,6 +347,18 @@ void SamplePad::mouseDown(const MouseEvent& event)
             }
         }
         return;
+    }
+
+    // Edge area interactions - different cursors for different modes
+    if (padMode == PadMode::Normal)
+    {
+        // Normal mode: Show drag cursor for potential pad swapping
+        setMouseCursor(MouseCursor::DraggingHandCursor);
+    }
+    else if (padMode == PadMode::NonSearchable)
+    {
+        // NonSearchable mode: Show copy cursor for drag operations
+        setMouseCursor(MouseCursor::CopyingCursor);
     }
 }
 
