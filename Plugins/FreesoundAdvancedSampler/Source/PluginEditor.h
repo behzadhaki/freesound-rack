@@ -74,6 +74,8 @@ private:
     ExpandablePanel bookmarkExpandablePanel;
     BookmarkViewerComponent bookmarkViewerComponent;
 
+    void updateSizeConstraintsForCurrentPanelStates();
+
     int getKeyboardPadIndex(const KeyPress& key) const;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)
 };

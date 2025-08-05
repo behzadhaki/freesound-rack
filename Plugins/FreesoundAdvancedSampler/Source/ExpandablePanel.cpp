@@ -204,3 +204,16 @@ void ExpandablePanel::updateExpandButtonText()
 
     expandButton.setButtonText(buttonText);
 }
+
+void ExpandablePanel::setExpandedWithoutCallback(bool shouldExpand)
+{
+    if (expanded != shouldExpand)
+    {
+        expanded = shouldExpand;
+        updateExpandButtonText();
+        updateContentVisibility();
+        resized();
+        repaint();
+        // NOTE: Does NOT call onExpandedStateChanged callback
+    }
+}

@@ -42,10 +42,13 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     };
 
     // Set up expandable panel with preset browser inside
-    expandablePanelComponent.setOrientation(ExpandablePanel::Orientation::Right); // Right orientation = expands left
+    expandablePanelComponent.setOrientation(ExpandablePanel::Orientation::Right);
     expandablePanelComponent.setContentComponent(&presetBrowserComponent);
-    expandablePanelComponent.setExpandedWidth(220); // Slightly wider for preset browser
+    expandablePanelComponent.setExpandedWidth(220);
+
+    // RESTORE SAVED STATE instead of hardcoded false
     expandablePanelComponent.setExpanded(processor.getPresetPanelExpandedState());
+
     expandablePanelComponent.onExpandedStateChanged = [this](bool expanded) {
         processor.setPresetPanelExpandedState(expanded);
         updateWindowSizeForPanelState();
@@ -53,12 +56,15 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     addAndMakeVisible(expandablePanelComponent);
 
     // Set up bookmark viewer with expandable panel
-    bookmarkExpandablePanel.setOrientation(ExpandablePanel::Orientation::Left); // Left orientation = expands right
+    bookmarkExpandablePanel.setOrientation(ExpandablePanel::Orientation::Left);
     bookmarkExpandablePanel.setContentComponent(&bookmarkViewerComponent);
-    bookmarkExpandablePanel.setExpandedWidth(250); // Width for bookmark viewer
-    bookmarkExpandablePanel.setExpanded(false); // Start collapsed
+    bookmarkExpandablePanel.setExpandedWidth(250);
+
+    // RESTORE SAVED STATE instead of hardcoded false
+    bookmarkExpandablePanel.setExpanded(processor.getBookmarkPanelExpandedState());
+
     bookmarkExpandablePanel.onExpandedStateChanged = [this](bool expanded) {
-        // You can save the state if needed
+        processor.setBookmarkPanelExpandedState(expanded);  // SAVE STATE
         updateWindowSizeForBookmarkPanel();
     };
     addAndMakeVisible(bookmarkExpandablePanel);
@@ -77,18 +83,31 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     sampleGridComponent.setWantsKeyboardFocus(true);
     setWantsKeyboardFocus(true);
 
-    setSize (800, 700);  // Reduced base width since preset browser is now in expandable panel
-    setResizable(true, true);  // Enable resizing
-
-    // Set size constraints (minimum and maximum sizes)
-    // Base constraints without expandable panel
-    int baseMinWidth = 600;  // Reduced since preset browser is collapsible
-    int baseMaxWidth = 1600;
-    setResizeLimits(baseMinWidth, 500, baseMaxWidth, 1200);
-
-    // Restore saved window size
+    // IMPORTANT: Calculate and restore window size AFTER setting panel states
     int savedWidth = processor.getSavedWindowWidth();
     int savedHeight = processor.getSavedWindowHeight();
+
+    // Calculate the actual required width based on panel states
+    int baseWidth = 800; // Base width when no panels expanded
+    int totalPanelWidth = 0;
+
+    if (expandablePanelComponent.isExpanded()) {
+        totalPanelWidth += expandablePanelComponent.getExpandedWidth() - expandablePanelComponent.getCollapsedWidth() + 4;
+    }
+
+    if (bookmarkExpandablePanel.isExpanded()) {
+        totalPanelWidth += bookmarkExpandablePanel.getExpandedWidth() - bookmarkExpandablePanel.getCollapsedWidth() + 4;
+    }
+
+    int calculatedWidth = baseWidth + totalPanelWidth;
+
+    // Use the larger of saved width or calculated minimum width
+    // int finalWidth = jmax(savedWidth, calculatedWidth);
+
+    // setSize(finalWidth, savedHeight);
+
+    // Update size constraints based on current panel states
+    updateSizeConstraintsForCurrentPanelStates();
 
     setSize(savedWidth, savedHeight);
 
@@ -125,6 +144,26 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::paint(Graphics& g)
         Colour(0xff0D0D0D), getWidth(), getHeight(), false));
     g.fillAll();
 }
+
+void FreesoundAdvancedSamplerAudioProcessorEditor::updateSizeConstraintsForCurrentPanelStates()
+{
+    int baseMinWidth = 600;
+    int baseMaxWidth = 1600;
+
+    // Calculate additional width needed for expanded panels
+    int additionalWidth = 0;
+
+    if (expandablePanelComponent.isExpanded()) {
+        additionalWidth += expandablePanelComponent.getExpandedWidth() - expandablePanelComponent.getCollapsedWidth() + 4;
+    }
+
+    if (bookmarkExpandablePanel.isExpanded()) {
+        additionalWidth += bookmarkExpandablePanel.getExpandedWidth() - bookmarkExpandablePanel.getCollapsedWidth() + 4;
+    }
+
+    setResizeLimits(baseMinWidth + additionalWidth, 500, baseMaxWidth + additionalWidth, 1200);
+}
+
 
 void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
 {
@@ -185,28 +224,22 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForPanelState
     int currentWidth = getWidth();
     int currentHeight = getHeight();
 
-    // Calculate the width difference when panel expands/collapses
     int panelWidthDifference = expandablePanelComponent.getExpandedWidth() -
                                expandablePanelComponent.getCollapsedWidth();
 
     if (expandablePanelComponent.isExpanded())
     {
-        // Panel just expanded - increase window width
-        int newWidth = currentWidth + panelWidthDifference + 4; // +4 for spacing
+        int newWidth = currentWidth + panelWidthDifference + 4;
         setSize(newWidth, currentHeight);
-
-        // Update constraints to allow for expanded panel
-        setResizeLimits(600 + panelWidthDifference + 4, 500, 1600 + panelWidthDifference + 4, 1200);
     }
     else
     {
-        // Panel just collapsed - decrease window width
-        int newWidth = currentWidth - panelWidthDifference - 4; // -4 for spacing
+        int newWidth = currentWidth - panelWidthDifference - 4;
         setSize(newWidth, currentHeight);
-
-        // Update constraints back to base size
-        setResizeLimits(600, 500, 1600, 1200);
     }
+
+    // Update constraints for new panel state
+    updateSizeConstraintsForCurrentPanelStates();
 
     // Save the new window size
     processor.setWindowSize(getWidth(), getHeight());
@@ -217,22 +250,22 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::updateWindowSizeForBookmarkPa
     int currentWidth = getWidth();
     int currentHeight = getHeight();
 
-    // Calculate the width difference when panel expands/collapses
     int panelWidthDifference = bookmarkExpandablePanel.getExpandedWidth() -
                                bookmarkExpandablePanel.getCollapsedWidth();
 
     if (bookmarkExpandablePanel.isExpanded())
     {
-        // Panel just expanded - increase window width
-        int newWidth = currentWidth + panelWidthDifference + 4; // +4 for spacing
+        int newWidth = currentWidth + panelWidthDifference + 4;
         setSize(newWidth, currentHeight);
     }
     else
     {
-        // Panel just collapsed - decrease window width
-        int newWidth = currentWidth - panelWidthDifference - 4; // -4 for spacing
+        int newWidth = currentWidth - panelWidthDifference - 4;
         setSize(newWidth, currentHeight);
     }
+
+    // Update constraints for new panel state
+    updateSizeConstraintsForCurrentPanelStates();
 
     // Save the new window size
     processor.setWindowSize(getWidth(), getHeight());
@@ -383,7 +416,6 @@ bool FreesoundAdvancedSamplerAudioProcessorEditor::keyPressed(const KeyPress& ke
     // For any other key, let the parent component handle it
     return Component::keyPressed(key);
 }
-
 
 int FreesoundAdvancedSamplerAudioProcessorEditor::getKeyboardPadIndex(const KeyPress& key) const
 {

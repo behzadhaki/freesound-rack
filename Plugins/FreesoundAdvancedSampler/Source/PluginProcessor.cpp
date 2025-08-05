@@ -364,7 +364,11 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
     xml.setAttribute("windowWidth", savedWindowWidth);
     xml.setAttribute("windowHeight", savedWindowHeight);
 
-    // NEW: Save active preset state
+    // Save panel states
+    xml.setAttribute("presetPanelExpanded", presetPanelExpandedState);
+    xml.setAttribute("bookmarkPanelExpanded", bookmarkPanelExpandedState);
+
+    // Save active preset state
     xml.setAttribute("activePresetFile", presetManager.getActivePresetFile().getFullPathName());
     xml.setAttribute("activeSlotIndex", presetManager.getActiveSlotIndex());
 
@@ -410,6 +414,10 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
     // Load window dimensions
     savedWindowWidth = xml.getIntAttribute("windowWidth", 1000);
     savedWindowHeight = xml.getIntAttribute("windowHeight", 700);
+
+    // Load panel states
+    presetPanelExpandedState = xml.getBoolAttribute("presetPanelExpanded", false);
+    bookmarkPanelExpandedState = xml.getBoolAttribute("bookmarkPanelExpanded", false);  // ADD THIS
 
     // NEW: Load active preset state
     String activePresetPath = xml.getStringAttribute("activePresetFile", "");
@@ -499,7 +507,6 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
         }
     }
 
-    presetPanelExpandedState = xml.getBoolAttribute("presetPanelExpanded", false);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)

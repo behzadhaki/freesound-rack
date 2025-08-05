@@ -59,6 +59,8 @@ public:
     // Callbacks
     std::function<void(bool)> onExpandedStateChanged;
 
+    void setExpandedWithoutCallback(bool shouldExpand);
+
 private:
     // UI Components
     StyledButton expandButton { ">", 12.0f, false };

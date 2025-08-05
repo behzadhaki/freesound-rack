@@ -29,7 +29,7 @@ public:
     FreesoundAdvancedSamplerAudioProcessor();
     ~FreesoundAdvancedSamplerAudioProcessor();
 
-    //==============================================================================
+	//==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
 
@@ -166,7 +166,7 @@ public:
 	Array<PadInfo> getCurrentPadInfos() const;
 	Array<PadInfo> getCurrentPadInfosFromGrid() const;
 
-	// Add these methods:
+	// Window size methods
 	void setWindowSize(int width, int height)
 	{
 		savedWindowWidth = width;
@@ -175,16 +175,24 @@ public:
 
 	int getSavedWindowWidth() const { return savedWindowWidth; }
 	int getSavedWindowHeight() const { return savedWindowHeight; }
+
+	// Panel state methods
 	bool getPresetPanelExpandedState() const { return presetPanelExpandedState; }
 	void setPresetPanelExpandedState(bool state) { presetPanelExpandedState = state; }
 
+	bool getBookmarkPanelExpandedState() const { return bookmarkPanelExpandedState; }  // ADD THIS
+	void setBookmarkPanelExpandedState(bool state) { bookmarkPanelExpandedState = state; }  // ADD THIS
+
+
 	BookmarkManager& getBookmarkManager() { return bookmarkManager; } // Add this method
 
+
 private:
-	// editor size
-	int savedWindowWidth = 1000;   // Default width
-	int savedWindowHeight = 700;   // Default height
+	// Window and panel state
+	int savedWindowWidth = 800;
+	int savedWindowHeight = 600;
 	bool presetPanelExpandedState = false;
+	bool bookmarkPanelExpandedState = false;  // ADD THIS
 
     // Enhanced sampler voice class for playback tracking
     class TrackingSamplerVoice : public SamplerVoice
