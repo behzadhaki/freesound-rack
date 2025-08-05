@@ -50,6 +50,13 @@ SamplePad::SamplePad(int index, PadMode mode)
     queryTextBox.setCaretVisible(padMode == PadMode::Normal);
     queryTextBox.setPopupMenuEnabled(padMode == PadMode::Normal);
 
+    // CRITICAL: Set mouse interaction settings to prevent unwanted caret
+    queryTextBox.setInterceptsMouseClicks(true, false); // Intercept clicks but not child clicks
+    queryTextBox.setClicksOutsideDismissVirtualKeyboard(true);
+
+    // Override the TextEditor's mouse handling to only accept clicks within its bounds
+    queryTextBox.setMouseClickGrabsKeyboardFocus(padMode == PadMode::Normal);
+
     // CONSISTENT styling for all states - dark background with white text
     queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
     queryTextBox.setColour(TextEditor::textColourId, Colours::white);
@@ -58,8 +65,6 @@ SamplePad::SamplePad(int index, PadMode mode)
     queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));
     queryTextBox.setFont(Font(9.0f));
     queryTextBox.setJustification(Justification::topLeft);
-    queryTextBox.setInterceptsMouseClicks(false, false);
-    queryTextBox.setClicksOutsideDismissVirtualKeyboard(true);
 
     // Only add search functionality if in normal mode
     if (padMode == PadMode::Normal)
@@ -302,6 +307,20 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (isDownloading)
         return;
 
+    // Check if the click is specifically on the query text box area
+    if (queryTextBox.getBounds().contains(event.getPosition()) && padMode == PadMode::Normal)
+    {
+        // Allow the TextEditor to handle this click naturally
+        queryTextBox.grabKeyboardFocus();
+        return;
+    }
+
+    // For all other clicks, explicitly remove focus from the TextEditor
+    if (queryTextBox.hasKeyboardFocus(true))
+    {
+        queryTextBox.giveAwayKeyboardFocus();
+    }
+
     // Reset preview state flags
     if (padMode == PadMode::Preview)
     {
@@ -338,7 +357,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
         else if (padMode == PadMode::Normal || padMode == PadMode::NonSearchable)
         {
             // Normal/NonSearchable mode: Trigger sample playback with play cursor
-            setMouseCursor(MouseCursor::PointingHandCursor); // Or use a custom play cursor
+            setMouseCursor(MouseCursor::PointingHandCursor);
 
             if (processor)
             {
