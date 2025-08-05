@@ -58,7 +58,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
     // Set up bookmark viewer with expandable panel
     bookmarkExpandablePanel.setOrientation(ExpandablePanel::Orientation::Left);
     bookmarkExpandablePanel.setContentComponent(&bookmarkViewerComponent);
-    bookmarkExpandablePanel.setExpandedWidth(250);
+    bookmarkExpandablePanel.setExpandedWidth(220);
 
     // RESTORE SAVED STATE instead of hardcoded false
     bookmarkExpandablePanel.setExpanded(processor.getBookmarkPanelExpandedState());

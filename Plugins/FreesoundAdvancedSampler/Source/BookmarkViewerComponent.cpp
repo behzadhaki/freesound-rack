@@ -48,15 +48,11 @@ void BookmarkViewerComponent::paint(Graphics& g)
     // Dark background
     g.setColour(Colour(0xff1A1A1A));
     g.fillAll();
-
-    // Subtle border
-    g.setColour(Colour(0xff404040).withAlpha(0.3f));
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2), 6.0f, 1.0f);
 }
 
 void BookmarkViewerComponent::resized()
 {
-    auto bounds = getLocalBounds().reduced(8);
+    auto bounds = getLocalBounds().reduced(3);
 
     int textHeight = 18; // Height for title and refresh button
     int refreshButtonWidth = 17; // Width for refresh button
@@ -64,18 +60,18 @@ void BookmarkViewerComponent::resized()
 
     // Title takes most of the header
     auto topLine = bounds.removeFromTop(textHeight);
-    auto topLine2 = getLocalBounds().reduced(8).removeFromTop(textHeight);
+    auto topLine2 = getLocalBounds().reduced(3).removeFromTop(textHeight);
     titleLabel.setBounds(topLine);
     refreshButton.setBounds(topLine2.removeFromLeft(refreshButtonWidth));
 
-    bounds.removeFromTop(gapHeight);
-    bounds.removeFromLeft(6);
 
-    // Viewport takes the rest
-    bookmarkViewport.setBounds(bounds);
+    bounds.removeFromTop(gapHeight);
 
     // Update the scrollable area
     updateScrollableArea();
+
+    // Viewport takes the rest
+    bookmarkViewport.setBounds(bounds);
 }
 
 void BookmarkViewerComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
@@ -137,7 +133,7 @@ void BookmarkViewerComponent::createBookmarkPads()
         return;
 
     const int padWidth = 190;
-    const int padHeight = 80;
+    const int padHeight = 100;
     const int padSpacing = 8;
 
     for (int i = 0; i < currentBookmarks.size(); ++i)
@@ -186,7 +182,7 @@ void BookmarkViewerComponent::updateScrollableArea()
     int totalHeight = totalRows * rowHeight;
 
     // Set container size
-    bookmarkContainer.setSize(bookmarkViewport.getWidth() - 20, // Account for scrollbar
+    bookmarkContainer.setSize(bookmarkViewport.getWidth(), // Account for scrollbar
                              jmax(totalHeight, bookmarkViewport.getHeight()));
 }
 
