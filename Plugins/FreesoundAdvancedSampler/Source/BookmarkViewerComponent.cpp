@@ -182,7 +182,7 @@ void BookmarkViewerComponent::updateScrollableArea()
     int totalHeight = totalRows * rowHeight;
 
     // Set container size
-    bookmarkContainer.setSize(bookmarkViewport.getWidth(), // Account for scrollbar
+    bookmarkContainer.setSize(bookmarkViewport.getWidth() - 10, // Account for scrollbar
                              jmax(totalHeight, bookmarkViewport.getHeight()));
 }
 
