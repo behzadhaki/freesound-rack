@@ -12,12 +12,12 @@
 #include "SampleGridComponent.h"
 
 //==============================================================================
-// SamplePad Implementation
+// SamplePad Complete Implementation
 //==============================================================================
 
-// In SamplePad constructor:
-SamplePad::SamplePad(int index, bool isSearchable)
+SamplePad::SamplePad(int index, PadMode mode)
     : padIndex(index)
+    , padMode(mode)
     , processor(nullptr)
     , audioThumbnailCache(5)
     , audioThumbnail(512, formatManager, audioThumbnailCache)
@@ -29,7 +29,6 @@ SamplePad::SamplePad(int index, bool isSearchable)
     , hasValidSample(false)
     , isDragHover(false)
     , currentDownloadProgress(0.0)
-    , isSearchableMode(isSearchable)
 {
     formatManager.registerBasicFormats();
 
@@ -37,31 +36,37 @@ SamplePad::SamplePad(int index, bool isSearchable)
     float hue = (float)padIndex / 16.0f;
     padColour = Colour::fromHSV(hue, 0.3f, 0.8f, 1.0f);
 
-    // Set up query text box with CONSISTENT styling always
+    // Set default colour for preview mode
+    if (padMode == PadMode::Preview)
+    {
+        padColour = defaultColour.withAlpha(0.2f);
+    }
+
+    // Set up query text box based on mode
     queryTextBox.setMultiLine(false);
     queryTextBox.setReturnKeyStartsNewLine(false);
-    queryTextBox.setReadOnly(!isSearchableMode);
+    queryTextBox.setReadOnly(padMode != PadMode::Normal); // Only normal mode is editable
     queryTextBox.setScrollbarsShown(false);
-    queryTextBox.setCaretVisible(isSearchableMode);
-    queryTextBox.setPopupMenuEnabled(isSearchableMode);
+    queryTextBox.setCaretVisible(padMode == PadMode::Normal);
+    queryTextBox.setPopupMenuEnabled(padMode == PadMode::Normal);
 
     // CONSISTENT styling for all states - dark background with white text
     queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
     queryTextBox.setColour(TextEditor::textColourId, Colours::white);
     queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
-    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
-    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
+    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));
+    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));
     queryTextBox.setFont(Font(9.0f));
     queryTextBox.setJustification(Justification::topLeft);
     queryTextBox.setInterceptsMouseClicks(false, false);
     queryTextBox.setClicksOutsideDismissVirtualKeyboard(true);
 
-    // Only add search functionality if searchable
-    if (isSearchableMode)
+    // Only add search functionality if in normal mode
+    if (padMode == PadMode::Normal)
     {
         queryTextBox.onReturnKey = [this]() {
             String query = queryTextBox.getText().trim();
-            if (query.isNotEmpty() && !connectedToMaster) // Don't search if connected to master
+            if (query.isNotEmpty() && !connectedToMaster)
             {
                 if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
                 {
@@ -76,327 +81,27 @@ SamplePad::SamplePad(int index, bool isSearchable)
 
 SamplePad::~SamplePad()
 {
-    stopTimer(); // Stop any running timers
-    cleanupProgressComponents(); // Clean up progress components
-}
+    stopTimer();
+    cleanupProgressComponents();
 
-void SamplePad::resized()
-{
-    auto bounds = getLocalBounds();
-
-    // Position query text box or progress components at the bottom
-    auto bottomBounds = bounds.reduced(3);
-    int bottomHeight = 14;
-    bottomBounds = bottomBounds.removeFromBottom(bottomHeight);
-
-    if (isDownloading && progressBar && progressLabel)
+    // Stop any preview playback if in preview mode
+    if (padMode == PadMode::Preview && (isPreviewPlaying || previewRequested))
     {
-        // Show progress bar and label instead of query text box
-        auto progressArea = bottomBounds.reduced(2);
-        auto labelBounds = progressArea.removeFromBottom(8);
-        progressLabel->setBounds(labelBounds);
-        progressArea.removeFromLeft(42);
-        progressBar->setBounds(progressArea);
+        stopPreviewPlayback();
     }
-    else if (!isDownloading)
-    {
-        // Calculate badge widths manually (since badges aren't initialized yet)
-        int leftBadgesWidth = 0;
-        // int rightBadgesWidth = 0;
-        int spacing = 3;
-
-        // Calculate bottom-left badges width (.wav and  when sample exists)
-        if (hasValidSample) {
-            leftBadgesWidth += 20 + spacing; // .wav
-            if (isSearchable()) leftBadgesWidth += 20 + spacing; // search icon
-        } else {
-            if (isSearchable()) leftBadgesWidth += 20 + spacing; // search icon only
-        }
-
-        // Position query text box in the remaining space between badges
-        auto textBoxBounds = bottomBounds;
-        if (leftBadgesWidth > 0) {
-            textBoxBounds.removeFromLeft(leftBadgesWidth);
-        }
-
-        queryTextBox.setBounds(textBoxBounds);
-    }
-
-    // Layout badges after text box is positioned
-    // Note: We can't call initializeBadges() here as it depends on current state
-    // Badges will be initialized and laid out in paint()
-}
-
-void SamplePad::initializeBadges()
-{
-    // Clear existing badges
-    topLeftBadges.clear();
-    topRightBadges.clear();
-    bottomLeftBadges.clear();
-    // bottomRightBadges.clear();
-
-    // Top-left badges
-    if (hasValidSample) {
-        //         Badge copyBadge("copy", String(CharPointer_UTF8("\xF0\x9F\x91\x86")), Colour(0x80FF8C00)); hand icon
-        juce::String dragIcon = juce::String(CharPointer_UTF8("\xF0\x9F\x93\x91"));
-        Badge copyBadge("copy", dragIcon, Colour(0x8000A000).withAlpha(0.0f));
-        copyBadge.width = 16; // Fixed width for copy badge
-        copyBadge.fontSize = 13.0f; // Smaller font size for copy badge
-        copyBadge.onClick = [this]() { handleCopyClick(); };
-        copyBadge.onDrag = [this](const MouseEvent& e) {
-            if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
-        };
-        topLeftBadges.push_back(copyBadge);
-
-        Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
-                           processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
-                           Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
-        bookmarkBadge.width = 16; // Smaller width for bookmark badge
-        bookmarkBadge.onClick = [this]() { handleBookmarkClick(); };
-        topLeftBadges.push_back(bookmarkBadge);
-
-    }
-
-    // Top-right badges
-    if (hasValidSample) {
-        if (isSearchableMode) {
-            Badge delBadge("delete", String(CharPointer_UTF8("\xE2\x9C\x95")) , Colour(0x80C62828).withAlpha(0.0f));
-            delBadge.textColour = Colours::mediumvioletred.withAlpha(0.8f);
-            delBadge.onClick = [this]() { handleDeleteClick(); };
-            delBadge.fontSize = 14.0f; // Smaller font size for delete badge
-            delBadge.width = 14; // Smaller width for delete badge
-            delBadge.isBold = true;
-            topRightBadges.push_back(delBadge);
-        }
-
-        if (freesoundId.isNotEmpty()) {
-            Badge webBadge("web", String(CharPointer_UTF8("\xF0\x9F\x94\x97")), Colour(0x800277BD).withAlpha(0.0f));
-            webBadge.width = 14; // Fixed width for web badge
-            webBadge.fontSize = 12.0f; // Smaller font size for web badge`
-            webBadge.onDoubleClick = [this]() {
-                URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
-            };
-            topRightBadges.push_back(webBadge);
-        }
-
-        if (licenseType.isNotEmpty()) {
-            Badge licenseBadge("license", getLicenseShortName(licenseType), Colour(0x80EF6C00).withAlpha(0.0f));
-            // get number of characters in licenseType
-            int numChars = getLicenseShortName(licenseType).length();
-            licenseBadge.width = jmax(16, int(numChars * 5.0f)); // Adjust width based on text length
-            licenseBadge.fontSize = 9.0f; // Smaller font size for license badge
-            licenseBadge.isBold = false; // License badge text is not bold
-            licenseBadge.onDoubleClick = [this]() { URL(licenseType).launchInDefaultBrowser(); };
-            topRightBadges.push_back(licenseBadge);
-        }
-
-    }
-
-    // Bottom-left badges
-    if (hasValidSample) {
-        // Badge oggBadge("ogg", "ogg", Colour(0x804ECDC4).withAlpha(0.2f));
-        // oggBadge.width = 20;
-        // oggBadge.fontSize = 10.0f; // Smaller font size for ogg badge
-        // oggBadge.onDrag = [this](const MouseEvent& e) {
-        //     if (e.getDistanceFromDragStart() > 10 && audioFile.existsAsFile()) {
-        //         StringArray filePaths;
-        //         filePaths.add(audioFile.getFullPathName());
-        //         performExternalDragDropOfFiles(filePaths, false);
-        //     }
-        // };
-        // bottomLeftBadges.push_back(oggBadge);
-        //
-        // Badge floppyBadge("save", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x804ECDC4).withAlpha(0.0f));
-        // floppyBadge.width = 8; // Fixed width for floppy badge
-        // floppyBadge.fontSize = 10.0f; // Smaller font size for floppy badge
-        // bottomLeftBadges.push_back(floppyBadge);
-
-        Badge wavBadge("wav", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x806A5ACD).withAlpha(0.0f));
-        wavBadge.width = 20;
-        wavBadge.fontSize = 16.0f; // Smaller font size for ogg badge
-        wavBadge.onClick = [this]() { handleWavCopyClick(); };
-        wavBadge.onDrag = [this](const MouseEvent& e) {
-            if (e.getDistanceFromDragStart() > 10) {
-                File wavFile = getWavFile();
-                if (!wavFile.existsAsFile()) {
-                    if (!convertOggToWav(audioFile, wavFile)) return;
-                }
-                if (wavFile.existsAsFile()) {
-                    StringArray filePaths;
-                    filePaths.add(wavFile.getFullPathName());
-                    performExternalDragDropOfFiles(filePaths, false);
-                }
-            }
-        };
-        bottomLeftBadges.push_back(wavBadge);
-
-        if (isSearchable()) {
-            Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
-            searchBadge.width = 16;
-            searchBadge.fontSize = 16.0f; // Smaller font size for search badge
-            searchBadge.onClick = [this]() {
-                String searchQuery = queryTextBox.getText().trim();
-                if (searchQuery.isEmpty() && processor) {
-                    searchQuery = processor->getQuery();
-                }
-                if (searchQuery.isNotEmpty()) {
-                    queryTextBox.setText(searchQuery);
-                    if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
-                        gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
-                    }
-                } else {
-                    AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                        "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
-                }
-            };
-            bottomLeftBadges.push_back(searchBadge);
-        }
-
-    }
-
-    // Bottom-right badges
-    if (isSearchableMode && !isDownloading) {
-
-    }
-
-    // in empty mode, we only show the search badge
-    if (!hasValidSample && isSearchableMode) // Bottom-left badges
-    {
-        Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
-        searchBadge.width = 16;
-        searchBadge.fontSize = 16.0f; // Smaller font size for search badge
-        searchBadge.onClick = [this]() {
-            String searchQuery = queryTextBox.getText().trim();
-            if (searchQuery.isEmpty() && processor) {
-                searchQuery = processor->getQuery();
-            }
-            if (searchQuery.isNotEmpty()) {
-                queryTextBox.setText(searchQuery);
-                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
-                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
-                }
-            } else {
-                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                    "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
-            }
-        };
-        bottomLeftBadges.push_back(searchBadge);
-    }
-}
-
-void SamplePad::layoutBadges()
-{
-    auto bounds = getLocalBounds().reduced(4);
-    int spacing = 3;
-    int badgeHeight = 14;
-
-    // Layout top-left badges
-    auto topLeftArea = bounds.removeFromTop(badgeHeight);
-    int x = topLeftArea.getX();
-    for (auto& badge : topLeftBadges) {
-        if (badge.visible) {
-            badge.bounds = Rectangle<int>(x, topLeftArea.getY(), badge.width, badgeHeight);
-            x += badge.width + spacing;
-        }
-    }
-
-    // Layout top-right badges (right to left)
-    auto topRightArea = bounds.removeFromTop(0); // Reset to full width
-    topRightArea = getLocalBounds().reduced(4).removeFromTop(badgeHeight);
-    x = topRightArea.getRight();
-    for (auto& badge : topRightBadges) {
-        if (badge.visible) {
-            x -= badge.width;
-            badge.bounds = Rectangle<int>(x, topRightArea.getY(), badge.width, badgeHeight);
-            x -= spacing;
-        }
-    }
-
-    // Layout bottom-left badges
-    auto bottomArea = getLocalBounds().reduced(4);
-    auto bottomLeftArea = bottomArea.removeFromBottom(badgeHeight);
-    x = bottomLeftArea.getX();
-    for (auto& badge : bottomLeftBadges) {
-        if (badge.visible) {
-            badge.bounds = Rectangle<int>(x, bottomLeftArea.getY(), badge.width, badgeHeight);
-            x += badge.width + spacing;
-        }
-    }
-
-    // Layout bottom-right badges (right to left)
-    // x = bottomLeftArea.getRight();
-    // for (auto& badge : bottomRightBadges) {
-    //     if (badge.visible) {
-    //         x -= badge.width;
-    //         badge.bounds = Rectangle<int>(x, bottomLeftArea.getY(), badge.width, badgeHeight);
-    //         x -= spacing;
-    //     }
-    // }
-}
-
-void SamplePad::paintBadges(Graphics& g)
-{
-    auto paintBadgeGroup = [&g](const std::vector<Badge>& badges) {
-        for (const auto& badge : badges) {
-            if (!badge.visible) continue;
-
-            // Draw background gradient
-            g.setGradientFill(ColourGradient(
-                badge.backgroundColour, badge.bounds.getTopLeft().toFloat(),
-                badge.backgroundColour.darker(0.2f), badge.bounds.getBottomRight().toFloat(), false));
-            g.fillRoundedRectangle(badge.bounds.toFloat(), 3.0f);
-
-            // Draw text/icon with custom font size
-            g.setColour(badge.textColour);
-            g.setFont(badge.isBold ? Font(badge.fontSize, Font::bold) : Font(badge.fontSize));
-            g.drawText(badge.icon.isNotEmpty() ? badge.icon : badge.text,
-                      badge.bounds, Justification::centred);
-        }
-    };
-
-    paintBadgeGroup(topLeftBadges);
-    paintBadgeGroup(topRightBadges);
-    paintBadgeGroup(bottomLeftBadges);
-    // paintBadgeGroup(bottomRightBadges);
-}
-
-Badge* SamplePad::findBadgeAtPosition(Point<int> position)
-{
-    auto checkBadgeGroup = [&position](std::vector<Badge>& badges) -> Badge* {
-        for (auto& badge : badges) {
-            if (badge.visible && badge.bounds.contains(position)) {
-                return &badge;
-            }
-        }
-        return nullptr;
-    };
-
-    if (auto* badge = checkBadgeGroup(topLeftBadges)) return badge;
-    if (auto* badge = checkBadgeGroup(topRightBadges)) return badge;
-    if (auto* badge = checkBadgeGroup(bottomLeftBadges)) return badge;
-    // if (auto* badge = checkBadgeGroup(bottomRightBadges)) return badge;
-
-    return nullptr;
 }
 
 void SamplePad::paint(Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // === BACKGROUND WITH MASTER CONNECTION STYLING ===
-    if (isDragHover || isCopyDragHover) // Add isCopyDragHover here
+    // === BACKGROUND WITH MODE-SPECIFIC STYLING ===
+    if (isDragHover || isCopyDragHover)
     {
         g.setColour(padColour.withAlpha(0.3f));
     }
     else if (isPlaying)
     {
-        g.setColour(padColour.withAlpha(0.6f));
-    }
-    else if (isPlaying)
-    {
-        /*g.setGradientFill(ColourGradient(
-            padColour.brighter(0.2f), bounds.getCentre().toFloat(),
-            padColour.darker(0.05f), bounds.getBottomRight().toFloat(), false));*/
         g.setColour(padColour.withAlpha(0.6f));
     }
     else if (isDownloading)
@@ -412,12 +117,28 @@ void SamplePad::paint(Graphics& g)
     }
     else
     {
-        if (hasValidSample && isSearchableMode)
-            g.setColour(padColour.withAlpha(0.15f));
-        else if (hasValidSample && !isSearchableMode)
-            g.setColour(padColour);
-        else
-            g.setColour(Colour(0x801A1A1A));
+        // Mode-specific background colors
+        switch (padMode)
+        {
+            case PadMode::Normal:
+                if (hasValidSample)
+                    g.setColour(padColour.withAlpha(0.15f));
+                else
+                    g.setColour(Colour(0x801A1A1A));
+                break;
+
+            case PadMode::NonSearchable:
+                if (hasValidSample)
+                    g.setColour(padColour);
+                else
+                    g.setColour(Colour(0x801A1A1A));
+                break;
+
+            case PadMode::Preview:
+                // Preview mode uses the current pad colour (updated by preview state)
+                g.setColour(padColour);
+                break;
+        }
     }
 
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
@@ -465,14 +186,20 @@ void SamplePad::paint(Graphics& g)
         // Draw waveform with modern styling
         drawWaveform(g, waveformBounds);
 
-        // Draw playhead if playing
+        // Draw playhead if playing (main playback)
         if (isPlaying)
         {
             drawPlayhead(g, waveformBounds);
         }
 
-        // Overlay MIDI/Keyboard info at top-right of waveform (ONLY for searchable pads)
-        if (isSearchableMode)
+        // Draw preview playhead if in preview mode and preview is playing
+        if (padMode == PadMode::Preview && isPreviewPlaying)
+        {
+            drawPreviewPlayhead(g, waveformBounds);
+        }
+
+        // Overlay MIDI/Keyboard info at top-right of waveform (ONLY for normal mode)
+        if (padMode == PadMode::Normal)
         {
             g.setColour(Colours::white);
             g.setFont(Font(11.0f));
@@ -483,10 +210,10 @@ void SamplePad::paint(Graphics& g)
             String displayText = String(CharPointer_UTF8("\xF0\x9F\x8E\xB9")) + String(midiNote) + " | " +
                                String(CharPointer_UTF8("\xE2\x8C\xA8\xEF\xB8\x8F")) + " " + keyboardKey;
 
-            // Position at top-right corner of waveform area (no background)
+            // Position at top-right corner of waveform area
             auto midiInfoBounds = Rectangle<int>(waveformBounds.getRight() - 60, waveformBounds.getY(), 60, 14);
             if (!isPlaying) {
-                g.setColour(Colour(0x80000000).withAlpha(0.5f)); // Semi-transparent background
+                g.setColour(Colour(0x80000000).withAlpha(0.5f));
                 g.fillRect(midiInfoBounds);
             }
             g.setColour(Colours::white);
@@ -507,10 +234,8 @@ void SamplePad::paint(Graphics& g)
         auto idBounds = waveformBounds.removeFromBottom(14);
         idBounds = Rectangle<int>(idBounds.getRight() - 60, idBounds.getY(), 60, 14);
 
-        // draw the text with a background
-        // get the bounds for the text
-        if (!isPlaying) {
-            g.setColour(Colour(0x80000000).withAlpha(0.5f)); // Semi-transparent background
+        if (!isPlaying && !isPreviewPlaying) {
+            g.setColour(Colour(0x80000000).withAlpha(0.5f));
             g.fillRect(idBounds);
         }
         g.setColour(Colours::white);
@@ -529,42 +254,45 @@ void SamplePad::paint(Graphics& g)
     }
 }
 
-String SamplePad::getKeyboardKeyForPad(int padIndex) const
+void SamplePad::resized()
 {
-    // Map pad indices to keyboard keys (matching the keyPressed mapping in PluginEditor)
-    // Grid layout (bottom row to top row):
-    // Bottom row (pads 0-3): z x c v
-    // Second row (pads 4-7): a s d f
-    // Third row (pads 8-11): q w e r
-    // Top row (pads 12-15): 1 2 3 4
+    auto bounds = getLocalBounds();
 
-    switch (padIndex)
+    // Position query text box or progress components at the bottom
+    auto bottomBounds = bounds.reduced(3);
+    int bottomHeight = 14;
+    bottomBounds = bottomBounds.removeFromBottom(bottomHeight);
+
+    if (isDownloading && progressBar && progressLabel)
     {
-        // Bottom row (pads 0-3)
-        case 0: return "Z";
-        case 1: return "X";
-        case 2: return "C";
-        case 3: return "V";
+        // Show progress bar and label instead of query text box
+        auto progressArea = bottomBounds.reduced(2);
+        auto labelBounds = progressArea.removeFromBottom(8);
+        progressLabel->setBounds(labelBounds);
+        progressArea.removeFromLeft(42);
+        progressBar->setBounds(progressArea);
+    }
+    else if (!isDownloading)
+    {
+        // Calculate badge widths manually (since badges aren't initialized yet)
+        int leftBadgesWidth = 0;
+        int spacing = 3;
 
-        // Second row (pads 4-7)
-        case 4: return "A";
-        case 5: return "S";
-        case 6: return "D";
-        case 7: return "F";
+        // Calculate bottom-left badges width (.wav and search when sample exists)
+        if (hasValidSample) {
+            leftBadgesWidth += 20 + spacing; // .wav
+            if (isSearchable()) leftBadgesWidth += 20 + spacing; // search icon
+        } else {
+            if (isSearchable()) leftBadgesWidth += 20 + spacing; // search icon only
+        }
 
-        // Third row (pads 8-11)
-        case 8: return "Q";
-        case 9: return "W";
-        case 10: return "E";
-        case 11: return "R";
+        // Position query text box in the remaining space between badges
+        auto textBoxBounds = bottomBounds;
+        if (leftBadgesWidth > 0) {
+            textBoxBounds.removeFromLeft(leftBadgesWidth);
+        }
 
-        // Top row (pads 12-15)
-        case 12: return "1";
-        case 13: return "2";
-        case 14: return "3";
-        case 15: return "4";
-
-        default: return "?";
+        queryTextBox.setBounds(textBoxBounds);
     }
 }
 
@@ -573,6 +301,13 @@ void SamplePad::mouseDown(const MouseEvent& event)
     // Don't allow interaction while downloading
     if (isDownloading)
         return;
+
+    // Reset preview state flags
+    if (padMode == PadMode::Preview)
+    {
+        mouseDownInWaveform = false;
+        previewRequested = false;
+    }
 
     // Check if clicked on any badge
     Badge* clickedBadge = findBadgeAtPosition(event.getPosition());
@@ -586,43 +321,53 @@ void SamplePad::mouseDown(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    // Check if clicked in waveform area - for manual triggering (always available)
+    // Check if clicked in waveform area
     auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
-    waveformBounds.removeFromTop(18); // Space for top line badges
-    waveformBounds.removeFromBottom(18); // Space for bottom line
+    waveformBounds.removeFromTop(18);
+    waveformBounds.removeFromBottom(18);
 
     if (waveformBounds.contains(event.getPosition()))
     {
-        // Play the sample (click playback works in both modes)
-        if (processor)
+        if (padMode == PadMode::Preview)
         {
-            int noteNumber = padIndex + 36;
-            processor->addNoteOnToMidiBuffer(noteNumber);
+            // Preview mode: Start preview playback
+            mouseDownInWaveform = true;
+            startPreviewPlayback();
+        }
+        else if (padMode == PadMode::Normal || padMode == PadMode::NonSearchable)
+        {
+            // Normal/NonSearchable mode: Trigger sample playback
+            if (processor)
+            {
+                int noteNumber = padIndex + 36;
+                processor->addNoteOnToMidiBuffer(noteNumber);
+            }
         }
         return;
     }
-
-    // If clicked on edge areas (outside waveform but not on badges), handle edge dragging preparation
-    // This will be handled in mouseDrag if the drag distance threshold is met
 }
 
 void SamplePad::mouseUp(const MouseEvent& event)
 {
-    // Stop playback when mouse is released
-    if (isPlaying && processor)
+    // Preview mode: Always stop preview when mouse is released
+    if (padMode == PadMode::Preview && (previewRequested || isPreviewPlaying))
     {
-        // Find the MIDI note for this pad and send note off
+        stopPreviewPlayback();
+        mouseDownInWaveform = false;
+        previewRequested = false;
+    }
+
+    // Normal/NonSearchable modes: Stop playback when mouse is released
+    if (padMode != PadMode::Preview && isPlaying && processor)
+    {
         int noteNumber = padIndex + 36;
-        processor->addNoteOffToMidiBuffer(noteNumber); // You'll need to implement this method in processor
-
-        // Or alternatively, if there's a direct way to stop the sample:
+        processor->addNoteOffToMidiBuffer(noteNumber);
         setIsPlaying(false);
-
         processorSampleRate = processor->getSampleRate();
     }
 
-    // Reset any cursor changes
+    // Reset cursor
     setMouseCursor(MouseCursor::NormalCursor);
 }
 
@@ -631,7 +376,43 @@ void SamplePad::mouseDrag(const MouseEvent& event)
     if (!hasValidSample)
         return;
 
-    // Check if drag started on a badge that supports dragging
+    // Preview mode: Handle preview drag behavior
+    if (padMode == PadMode::Preview)
+    {
+        if (mouseDownInWaveform && previewRequested)
+        {
+            auto bounds = getLocalBounds();
+            auto waveformBounds = bounds.reduced(8);
+            waveformBounds.removeFromTop(18);
+            waveformBounds.removeFromBottom(18);
+
+            // If mouse moves outside waveform area while dragging, stop preview
+            if (!waveformBounds.contains(event.getPosition()))
+            {
+                stopPreviewPlayback();
+                mouseDownInWaveform = false;
+                return;
+            }
+        }
+        else if (!mouseDownInWaveform)
+        {
+            // Handle potential sample copying drag from edge areas
+            Badge* draggedBadge = findBadgeAtPosition(event.getMouseDownPosition());
+            if (draggedBadge && draggedBadge->onDrag)
+            {
+                draggedBadge->onDrag(event);
+                return;
+            }
+
+            if (event.getDistanceFromDragStart() > 10)
+            {
+                performEnhancedDragDrop();
+            }
+        }
+        return;
+    }
+
+    // Normal/NonSearchable modes: Handle badge dragging and pad swapping
     Badge* draggedBadge = findBadgeAtPosition(event.getMouseDownPosition());
     if (draggedBadge && draggedBadge->onDrag)
     {
@@ -639,7 +420,7 @@ void SamplePad::mouseDrag(const MouseEvent& event)
         return;
     }
 
-    // Check if drag started in waveform area - no dragging allowed here (both modes)
+    // Check if drag started in waveform area - no dragging allowed here
     auto bounds = getLocalBounds();
     auto waveformBounds = bounds.reduced(8);
     waveformBounds.removeFromTop(18);
@@ -647,13 +428,11 @@ void SamplePad::mouseDrag(const MouseEvent& event)
 
     if (waveformBounds.contains(event.getMouseDownPosition()))
     {
-        // No dragging from waveform area - only triggering
-        return;
+        return; // No dragging from waveform area
     }
 
-    // Edge area dragging for pad swapping - Available in BOTH modes
-    // If we get here, drag started in edge area - start swapping drag
-    if (event.getDistanceFromDragStart() > 10)
+    // Edge area dragging for pad swapping (Normal mode only)
+    if (padMode == PadMode::Normal && event.getDistanceFromDragStart() > 10)
     {
         juce::DynamicObject::Ptr dragObject = new juce::DynamicObject();
         dragObject->setProperty("type", "samplePad");
@@ -661,7 +440,6 @@ void SamplePad::mouseDrag(const MouseEvent& event)
 
         var dragData(dragObject.get());
 
-        // Use the parent grid's drag container
         if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
         {
             gridComponent->startDragging(dragData, this);
@@ -681,158 +459,42 @@ void SamplePad::mouseDoubleClick(const MouseEvent& event)
         clickedBadge->onDoubleClick();
         return;
     }
-
-    // No special double-click behavior for other areas currently
 }
 
-void SamplePad::handleCopyClick()
+void SamplePad::mouseEnter(const MouseEvent& event)
 {
-    if (!hasValidSample)
-        return;
-
-    // You could also change the cursor or add visual feedback here
-    setMouseCursor(MouseCursor::CopyingCursor);
-
-    // Start a timer to reset cursor after a few seconds
-    Timer::callAfterDelay(3000, [this]() {
-        setMouseCursor(MouseCursor::NormalCursor);
-    });
+    Component::mouseEnter(event);
 }
 
-void SamplePad::handleDeleteClick()
+void SamplePad::mouseExit(const MouseEvent& event)
 {
-    if (!hasValidSample)
-        return;
-
-    // Confirm with user before deleting
-    AlertWindow::showOkCancelBox(
-        AlertWindow::QuestionIcon,
-        "Delete Sample",
-        "Are you sure you want to delete this sample?",
-        "Yes", "No",
-        nullptr,
-        ModalCallbackFunction::create([this](int result) {
-            if (result == 1) // User clicked "Yes"
-            {
-                // Clear this pad
-                clearSample();
-
-                // Notify parent grid component
-                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
-                {
-                    // Update processor arrays if available
-                    if (processor)
-                    {
-                        // Clear this pad in processor arrays
-                        auto& sounds = processor->getCurrentSoundsArrayReference();
-                        auto& data = processor->getDataReference();
-
-                        if (padIndex < sounds.size())
-                            sounds.set(padIndex, FSSound());
-
-                        if (padIndex < data.size())
-                            data[padIndex] = StringArray();
-
-                        processor->setSources(); // Rebuild sampler
-                    }
-
-                    gridComponent->updateJsonMetadata();
-                }
-            }
-        })
-    );
-}
-
-void SamplePad::performEnhancedDragDrop()
-{
-    if (!hasValidSample || !audioFile.existsAsFile())
-        return;
-
-    // Check if shift key is pressed for cross-app drag
-    bool isShiftPressed = ModifierKeys::getCurrentModifiers().isShiftDown();
-
-    if (isShiftPressed)
+    // Preview mode: Stop preview if mouse exits while playing
+    if (padMode == PadMode::Preview && (previewRequested || isPreviewPlaying))
     {
-        // Cross-app drag: create temp metadata file + reference original audio
-        performCrossAppDragDrop();
+        stopPreviewPlayback();
+        mouseDownInWaveform = false;
+        previewRequested = false;
     }
-    else
+
+    Component::mouseExit(event);
+}
+
+void SamplePad::timerCallback()
+{
+    if (pendingCleanup)
     {
-        // Keep existing internal drag behavior
-        performInternalDragDrop();
+        stopTimer();
+        cleanupProgressComponents();
     }
-}
-
-void SamplePad::performCrossAppDragDrop()
-{
-    // Create temp directory
-    File tempDir = File::getSpecialLocation(File::tempDirectory)
-                      .getChildFile("FreesoundSampler_CrossApp")
-                      .getChildFile(String::toHexString(Time::getCurrentTime().toMilliseconds()));
-
-    if (!tempDir.createDirectory()) return;
-
-    // Create metadata JSON
-    var metadata(new DynamicObject());
-    metadata.getDynamicObject()->setProperty("type", "freesound_sampler_data");
-    metadata.getDynamicObject()->setProperty("freesound_id", freesoundId);
-    metadata.getDynamicObject()->setProperty("sample_name", sampleName);
-    metadata.getDynamicObject()->setProperty("author_name", authorName);
-    metadata.getDynamicObject()->setProperty("license_type", licenseType);
-    metadata.getDynamicObject()->setProperty("search_query", getQuery());
-    DBG("CrossApp Drag Drop Tags: " + tags);
-    metadata.getDynamicObject()->setProperty("tags", tags);
-    metadata.getDynamicObject()->setProperty("description", description);
-
-    metadata.getDynamicObject()->setProperty("audio_file_path", audioFile.getFullPathName()); // Reference, don't copy
-
-    File metadataFile = tempDir.getChildFile("metadata.json");
-    metadataFile.replaceWithText(JSON::toString(metadata, false));
-
-    // Drag both metadata and original audio file
-    StringArray filePaths;
-    filePaths.add(metadataFile.getFullPathName());
-    filePaths.add(audioFile.getFullPathName());
-
-    performExternalDragDropOfFiles(filePaths, false);
-
-    // Cleanup after delay
-    Timer::callAfterDelay(30000, [tempDir]() {
-        tempDir.deleteRecursively();
-    });
-}
-
-void SamplePad::performInternalDragDrop()
-{
-    // Create comprehensive metadata
-    var dataPackage(new DynamicObject());
-    dataPackage.getDynamicObject()->setProperty("type", "freesound_sampler_data");
-    dataPackage.getDynamicObject()->setProperty("version", "1.0");
-    dataPackage.getDynamicObject()->setProperty("freesound_id", freesoundId);
-    dataPackage.getDynamicObject()->setProperty("sample_name", sampleName);
-    dataPackage.getDynamicObject()->setProperty("author_name", authorName);
-    dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
-    dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
-    dataPackage.getDynamicObject()->setProperty("tags", tags);
-    dataPackage.getDynamicObject()->setProperty("description", description);
-    dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
-    dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
-    dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
-
-    String jsonData = JSON::toString(dataPackage, false);
-
-    // Keep existing internal drag behavior
-    var dragDescription(new DynamicObject());
-    dragDescription.getDynamicObject()->setProperty("files", var(StringArray(audioFile.getFullPathName())));
-    dragDescription.getDynamicObject()->setProperty("metadata", jsonData);  // Complete expression
-    dragDescription.getDynamicObject()->setProperty("mime_type", FREESOUND_SAMPLER_MIME_TYPE);
-
-    startDragging(dragDescription, this, ScaledImage(), true);
 }
 
 // DragAndDropTarget implementation
 bool SamplePad::isInterestedInDragSource(const SourceDetails& dragSourceDetails)
 {
+    // Only accept drags in Normal mode
+    if (padMode != PadMode::Normal)
+        return false;
+
     // Accept pad swaps
     if (dragSourceDetails.description.hasProperty("type") &&
         dragSourceDetails.description.getProperty("type", "") == "samplePad")
@@ -920,184 +582,14 @@ void SamplePad::itemDropped(const SourceDetails& dragSourceDetails)
     }
 }
 
-void SamplePad::loadWaveform()
-{
-    if (audioFile.existsAsFile())
-    {
-        // Clear existing thumbnail first
-        audioThumbnail.clear();
-
-        // Create new file input source and set it
-        auto* fileSource = new FileInputSource(audioFile);
-        audioThumbnail.setSource(fileSource);
-
-        // get sample rate of fileSource
-        {
-            juce::AudioFormatManager formatManager;
-            formatManager.registerBasicFormats(); // Registers WAV, AIFF, FLAC, OggVorbis, etc.
-
-            std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(audioFile));
-
-            if (reader != nullptr)
-            {
-                fileSourceSampleRate =  reader->sampleRate;
-            }
-        }
-
-        fileSourceSampleRate = (fileSourceSampleRate <= 1.0) ? 44100.0 : fileSourceSampleRate; // sometimes (very very rarely) sample rate from freesound is zero
-
-        // Force a repaint after a brief delay to ensure thumbnail is loaded
-        Timer::callAfterDelay(100, [this]() {
-            repaint();
-        });
-    }
-}
-
-void SamplePad::drawWaveform(Graphics& g, Rectangle<int> bounds)
-{
-    if (!hasValidSample || audioThumbnail.getTotalLength() == 0.0)
-        return;
-
-    g.setColour(Colours::black.withAlpha(0.2f));
-    g.fillRect(bounds);
-
-    g.setColour(!isPlaying? Colours::lightgrey.withAlpha(0.8f) : Colours::white.withAlpha(0.8f));
-    audioThumbnail.drawChannels(g, bounds, 0.0, audioThumbnail.getTotalLength(), 1.0f);
-}
-
-void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
-{
-    if (!isPlaying || !hasValidSample)
-        return;
-
-    float x = bounds.getX() + (playheadPosition * bounds.getWidth());
-
-    g.setColour(Colours::red);
-    g.drawLine(x, bounds.getY(), x, bounds.getBottom(), 2.0f);
-}
-
-void SamplePad::setPlayheadPosition(float position)
-{
-    // adjust position using fileSourceSampleRate and processorSampleRate
-    position = (position * fileSourceSampleRate) / processorSampleRate;
-
-    // Ensure GUI updates happen on the message thread
-    MessageManager::callAsync([this, position]()
-    {
-        playheadPosition = jlimit(0.0f, 1.0f, position);
-        repaint();
-    });
-}
-
-void SamplePad::setIsPlaying(bool playing)
-{
-    // Ensure GUI updates happen on the message thread
-    MessageManager::callAsync([this, playing]()
-    {
-        isPlaying = playing;
-        repaint();
-    });
-}
-
-void SamplePad::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
-{
-    processor = p;
-}
-
-String SamplePad::getLicenseShortName(const String& license) const
-{
-    // Parse the actual Creative Commons URLs to determine license type
-    String lowerLicense = license.toLowerCase();
-
-    // Extract license version from URLs like /3.0/ or /4.0/
-    String licenseVer = "";
-
-    try
-    {
-        // Use regex-like approach to find version patterns
-        // Look for patterns like /3.0/ or /4.0/ or /2.5/
-        for (int i = 0; i < lowerLicense.length() - 4; ++i)
-        {
-            if (lowerLicense[i] == '/' &&
-                lowerLicense[i + 1] >= '0' && lowerLicense[i + 1] <= '9' &&
-                lowerLicense[i + 2] == '.' &&
-                lowerLicense[i + 3] >= '0' && lowerLicense[i + 3] <= '9')
-            {
-                // Found version pattern like /x.y
-                String version = "";
-                version += lowerLicense[i + 1]; // first digit
-                version += '.';
-                version += lowerLicense[i + 3]; // second digit
-
-                // Check if there's more digits after the decimal
-                int j = i + 4;
-                while (j < lowerLicense.length() &&
-                       lowerLicense[j] >= '0' && lowerLicense[j] <= '9')
-                {
-                    version += lowerLicense[j];
-                    j++;
-                }
-
-                licenseVer = " " + version;
-                break; // Take the first version found
-            }
-        }
-    }
-    catch (...)
-    {
-        // If version extraction fails, continue without version
-        licenseVer = "";
-    }
-
-    // Determine license type
-    try
-    {
-        if (lowerLicense.contains("creativecommons.org/publicdomain/zero") ||
-            lowerLicense.contains("cc0") ||
-            lowerLicense.contains("publicdomain/zero"))
-            return "CC0" + licenseVer;
-        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-sa") ||
-                 lowerLicense.contains("by-nc-sa"))
-            return "BY-NC-SA" + licenseVer;
-        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-nd") ||
-                 lowerLicense.contains("by-nc-nd"))
-            return "BY-NC-ND" + licenseVer;
-        else if (lowerLicense.contains("creativecommons.org/licenses/by-sa") ||
-                 lowerLicense.contains("by-sa"))
-            return "BY-SA" + licenseVer;
-        else if (lowerLicense.contains("creativecommons.org/licenses/by-nd") ||
-                 lowerLicense.contains("by-nd"))
-            return "BY-ND" + licenseVer;
-        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc") ||
-                 lowerLicense.contains("by-nc"))
-            return "BY-NC" + licenseVer;
-        else if (lowerLicense.contains("creativecommons.org/licenses/by/") ||
-                 (lowerLicense.contains("creativecommons.org/licenses/by") && !lowerLicense.contains("-nc")))
-            return "BY" + licenseVer;
-        else if (lowerLicense.contains("sampling+"))
-            return "S+" + licenseVer;
-        else if (lowerLicense.contains("sampling"))
-            return "S" + licenseVer;
-        else if (lowerLicense.contains("public domain") || lowerLicense.contains("publicdomain"))
-            return "PD";
-        else if (lowerLicense.contains("all rights reserved"))
-            return "ARR";
-        else
-            return "???"; // Default to most restrictive for unknown licenses
-    }
-    catch (...)
-    {
-        return "???";
-    }
-}
-
-void SamplePad::setSample(const File& audioFile, const String& name, const String& author, String fsId, String license, String query, String fsTags, String fsDescription)
+void SamplePad::setSample(const File& audioFile, const String& name, const String& author,
+                         String fsId, String license, String query, String fsTags, String fsDescription)
 {
     sampleName = name;
     authorName = author;
     freesoundId = fsId;
     licenseType = license;
-    padQuery = query; // CRITICAL: Store the query in padQuery field
+    padQuery = query;
     tags = fsTags;
     description = fsDescription;
 
@@ -1120,38 +612,40 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
         audioThumbnail.clear();
     }
 
-    resized(); // Recalculate layout
-    repaint();
-
-    // DBG("SamplePad::setSample - Pad " + String(padIndex) + " set with query: '" + query + "' (connected to master: " + String(connectedToMaster ? "YES" : "NO") + ")");
-}
-
-void SamplePad::clearSample()
-{
-    audioFile = File();
-    sampleName = "";
-    authorName = "";
-    freesoundId = String();
-    licenseType = String();
-    padQuery = String(); // Clear the stored query when clearing sample
-    hasValidSample = false;
-    isPlaying = false;
-    playheadPosition = 0.0f;
-    audioThumbnail.clear();
-
-    // Only clear text box if not connected to master - NO color changes
-    if (!connectedToMaster)
-    {
-        queryTextBox.setText("", dontSendNotification);
-    }
-
     resized();
     repaint();
 }
 
+void SamplePad::setPlayheadPosition(float position)
+{
+    // Adjust position using fileSourceSampleRate and processorSampleRate
+    position = (position * fileSourceSampleRate) / processorSampleRate;
+
+    MessageManager::callAsync([this, position]()
+    {
+        playheadPosition = jlimit(0.0f, 1.0f, position);
+        repaint();
+    });
+}
+
+void SamplePad::setIsPlaying(bool playing)
+{
+    MessageManager::callAsync([this, playing]()
+    {
+        isPlaying = playing;
+        repaint();
+    });
+}
+
+void SamplePad::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
+{
+    processor = p;
+}
+
 void SamplePad::setQuery(const String& query, bool dontUpdatePadInfoQuery)
 {
-    if (!dontUpdatePadInfoQuery) padQuery = query;
+    if (!dontUpdatePadInfoQuery)
+        padQuery = query;
 
     queryTextBox.setText(query, dontSendNotification);
 }
@@ -1160,12 +654,10 @@ String SamplePad::getQuery() const
 {
     if (connectedToMaster)
     {
-        // When connected to master, return what's currently in the text box (master query)
         return queryTextBox.getText().trim();
     }
     else
     {
-        // When independent, return the text box content (which should match padQuery)
         return queryTextBox.getText().trim();
     }
 }
@@ -1173,6 +665,51 @@ String SamplePad::getQuery() const
 bool SamplePad::hasQuery() const
 {
     return queryTextBox.getText().trim().isNotEmpty();
+}
+
+void SamplePad::setConnectedToMaster(bool connected)
+{
+    if (connectedToMaster != connected)
+    {
+        connectedToMaster = connected;
+
+        // Only affect normal mode pads
+        if (padMode == PadMode::Normal)
+        {
+            if (connectedToMaster)
+            {
+                queryTextBox.setReadOnly(true);
+                queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff1A1A1A));
+            }
+            else
+            {
+                String queryToRestore;
+                if (hasValidSample)
+                {
+                    queryToRestore = padQuery;
+                }
+                else
+                {
+                    queryToRestore = queryTextBox.getText().trim();
+                }
+
+                queryTextBox.setText(queryToRestore, dontSendNotification);
+                padQuery = queryToRestore;
+                queryTextBox.setReadOnly(false);
+                queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+            }
+        }
+
+        repaint();
+    }
+}
+
+void SamplePad::syncMasterQuery(const String& masterQuery)
+{
+    if (connectedToMaster && padMode == PadMode::Normal)
+    {
+        queryTextBox.setText(masterQuery, dontSendNotification);
+    }
 }
 
 SamplePad::SampleInfo SamplePad::getSampleInfo() const
@@ -1183,25 +720,139 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.authorName = authorName;
     info.freesoundId = freesoundId;
     info.licenseType = licenseType;
-    info.query = getQuery(); // Get current query from text box
+    info.query = getQuery();
     info.tags = tags;
     info.description = description;
     info.hasValidSample = hasValidSample;
-    info.padIndex = 0; // Will be set by SampleGridComponent
+    info.padIndex = padIndex;
     info.fileSourceSampleRate = fileSourceSampleRate;
     return info;
 }
 
+void SamplePad::clearSample()
+{
+    audioFile = File();
+    sampleName = "";
+    authorName = "";
+    freesoundId = String();
+    licenseType = String();
+    padQuery = String();
+    tags = "";
+    description = "";
+    hasValidSample = false;
+    isPlaying = false;
+    playheadPosition = 0.0f;
+    audioThumbnail.clear();
+
+    // Reset preview state if in preview mode
+    if (padMode == PadMode::Preview)
+    {
+        isPreviewPlaying = false;
+        previewPlayheadPosition = 0.0f;
+        previewRequested = false;
+        mouseDownInWaveform = false;
+        padColour = defaultColour.withAlpha(0.2f);
+    }
+
+    // Only clear text box if not connected to master
+    if (!connectedToMaster)
+    {
+        queryTextBox.setText("", dontSendNotification);
+    }
+
+    resized();
+    repaint();
+}
+
+// Preview mode methods
+void SamplePad::setPreviewPlaying(bool playing)
+{
+    if (padMode != PadMode::Preview)
+        return;
+
+    MessageManager::callAsync([this, playing]()
+    {
+        isPreviewPlaying = playing;
+
+        // Update pad color based on playing state
+        if (playing)
+        {
+            padColour = defaultColour.withAlpha(0.5f);
+        }
+        else
+        {
+            padColour = defaultColour.withAlpha(0.2f);
+            previewPlayheadPosition = 0.0f;
+        }
+
+        repaint();
+    });
+}
+
+void SamplePad::setPreviewPlayheadPosition(float position)
+{
+    if (padMode != PadMode::Preview)
+        return;
+
+    // Adjust position using fileSourceSampleRate and processorSampleRate
+    position = (position * fileSourceSampleRate) / processorSampleRate;
+
+    MessageManager::callAsync([this, position]()
+    {
+        previewPlayheadPosition = jlimit(0.0f, 1.0f, position);
+        repaint();
+    });
+}
+
+void SamplePad::startPreviewPlayback()
+{
+    if (padMode != PadMode::Preview || !hasValidSample || !audioFile.existsAsFile() || !processor)
+        return;
+
+    if (previewRequested)
+        return;
+
+    previewRequested = true;
+
+    // Load the sample into the preview sampler
+    processor->loadPreviewSample(audioFile, freesoundId);
+
+    // Small delay to ensure sample is loaded before playing
+    Timer::callAfterDelay(50, [this]() {
+        if (previewRequested && processor)
+        {
+            processor->playPreviewSample();
+            setMouseCursor(MouseCursor::PointingHandCursor);
+        }
+    });
+}
+
+void SamplePad::stopPreviewPlayback()
+{
+    if (padMode != PadMode::Preview)
+        return;
+
+    if (!previewRequested && !isPreviewPlaying)
+        return;
+
+    if (processor)
+    {
+        processor->stopPreviewSample();
+    }
+
+    previewRequested = false;
+    setMouseCursor(MouseCursor::NormalCursor);
+}
+
+// Progress bar methods
 void SamplePad::startDownloadProgress()
 {
-    // Stop any existing timer first
     stopTimer();
 
     isDownloading = true;
     pendingCleanup = false;
     currentDownloadProgress = 0.0;
 
-    // Create progress components on demand
     if (!progressBar)
     {
         progressBar = std::make_unique<ProgressBar>(currentDownloadProgress);
@@ -1215,19 +866,17 @@ void SamplePad::startDownloadProgress()
         progressLabel->setJustificationType(Justification::centred);
     }
 
-    // Add components if not already added
     if (!progressBar->getParentComponent())
         addAndMakeVisible(*progressBar);
     if (!progressLabel->getParentComponent())
         addAndMakeVisible(*progressLabel);
 
-    // Hide query text box and show progress components
     queryTextBox.setVisible(false);
     progressBar->setVisible(true);
     progressLabel->setVisible(true);
 
     progressLabel->setText("Downloading...", dontSendNotification);
-    resized(); // Recalculate layout
+    resized();
     repaint();
 }
 
@@ -1236,7 +885,6 @@ void SamplePad::updateDownloadProgress(double progress, const String& status)
     if (!isDownloading || !progressBar || !progressLabel)
         return;
 
-    // Use WeakReference for safe async calls
     Component::SafePointer<SamplePad> safeThis(this);
 
     MessageManager::callAsync([safeThis, progress, status]()
@@ -1282,9 +930,8 @@ void SamplePad::finishDownloadProgress(bool success, const String& message)
             if (safeThis->progressBar)
                 safeThis->progressBar->repaint();
 
-            // Use timer for cleanup instead of Timer::callAfterDelay
             safeThis->pendingCleanup = true;
-            safeThis->startTimer(1000); // 1 second delay
+            safeThis->startTimer(1000);
         }
         else
         {
@@ -1294,20 +941,10 @@ void SamplePad::finishDownloadProgress(bool success, const String& message)
                 safeThis->progressLabel->setColour(Label::textColourId, Colours::red);
             }
 
-            // Use timer for cleanup instead of Timer::callAfterDelay
             safeThis->pendingCleanup = true;
-            safeThis->startTimer(2000); // 2 second delay for errors
+            safeThis->startTimer(2000);
         }
     });
-}
-
-void SamplePad::timerCallback()
-{
-    if (pendingCleanup)
-    {
-        stopTimer();
-        cleanupProgressComponents();
-    }
 }
 
 void SamplePad::cleanupProgressComponents()
@@ -1315,7 +952,6 @@ void SamplePad::cleanupProgressComponents()
     isDownloading = false;
     pendingCleanup = false;
 
-    // Hide and remove progress components
     if (progressBar)
     {
         progressBar->setVisible(false);
@@ -1325,14 +961,12 @@ void SamplePad::cleanupProgressComponents()
     if (progressLabel)
     {
         progressLabel->setVisible(false);
-        progressLabel->setColour(Label::textColourId, Colours::white); // Reset color
+        progressLabel->setColour(Label::textColourId, Colours::white);
         removeChildComponent(progressLabel.get());
     }
 
-    // Show query text box
     queryTextBox.setVisible(true);
 
-    // Clean up progress components completely
     progressBar.reset();
     progressLabel.reset();
 
@@ -1340,66 +974,606 @@ void SamplePad::cleanupProgressComponents()
     repaint();
 }
 
-void SamplePad::setConnectedToMaster(bool connected)
+// Badge methods
+void SamplePad::initializeBadges()
 {
-    if (connectedToMaster != connected)
+    // Clear existing badges
+    topLeftBadges.clear();
+    topRightBadges.clear();
+    bottomLeftBadges.clear();
+
+    // Top-left badges (only for pads with valid samples)
+    if (hasValidSample)
     {
-        connectedToMaster = connected;
+        // Copy/Drag badge - available in all modes
+        juce::String dragIcon = juce::String(CharPointer_UTF8("\xF0\x9F\x93\x91"));
+        Badge copyBadge("copy", dragIcon, Colour(0x8000A000).withAlpha(0.0f));
+        copyBadge.width = 16;
+        copyBadge.fontSize = 13.0f;
+        copyBadge.onClick = [this]() { handleCopyClick(); };
+        copyBadge.onDrag = [this](const MouseEvent& e) {
+            if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
+        };
+        topLeftBadges.push_back(copyBadge);
 
-        // Change background darkness based on master connection, keep text white
-        if (connectedToMaster)
+        // Bookmark badge - available in all modes
+        Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
+                           processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
+                           Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
+        bookmarkBadge.width = 16;
+        bookmarkBadge.onClick = [this]() { handleBookmarkClick(); };
+        topLeftBadges.push_back(bookmarkBadge);
+    }
+
+    // Top-right badges
+    if (hasValidSample)
+    {
+        // Delete badge - only for Normal mode
+        if (padMode == PadMode::Normal)
         {
-            queryTextBox.setReadOnly(true);
-            queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff1A1A1A)); // Darker when connected to master
+            Badge delBadge("delete", String(CharPointer_UTF8("\xE2\x9C\x95")), Colour(0x80C62828).withAlpha(0.0f));
+            delBadge.textColour = Colours::mediumvioletred.withAlpha(0.8f);
+            delBadge.onClick = [this]() { handleDeleteClick(); };
+            delBadge.fontSize = 14.0f;
+            delBadge.width = 14;
+            delBadge.isBold = true;
+            topRightBadges.push_back(delBadge);
         }
-        else if (isSearchableMode)
+
+        // Web badge - available in all modes if freesoundId exists
+        if (freesoundId.isNotEmpty())
         {
-            // When disconnecting from master, restore appropriate query
-            String queryToRestore;
-
-            if (hasValidSample)
-            {
-                queryToRestore = padQuery;
-                // DBG("Pad " + String(padIndex) + " disconnected - restoring sample query: '" + queryToRestore + "'");
-            }
-            else
-            {
-                queryToRestore = queryTextBox.getText().trim();
-                // DBG("Pad " + String(padIndex) + " disconnected - keeping previous query: '" + queryToRestore + "'");
-            }
-
-            queryTextBox.setText(queryToRestore, dontSendNotification);
-            padQuery = queryToRestore;
-            queryTextBox.setReadOnly(false);
-            queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A)); // Normal background when independent
+            Badge webBadge("web", String(CharPointer_UTF8("\xF0\x9F\x94\x97")), Colour(0x800277BD).withAlpha(0.0f));
+            webBadge.width = 14;
+            webBadge.fontSize = 12.0f;
+            webBadge.onDoubleClick = [this]() {
+                URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
+            };
+            topRightBadges.push_back(webBadge);
         }
 
-        repaint();
+        // License badge - available in all modes if license exists
+        if (licenseType.isNotEmpty())
+        {
+            Badge licenseBadge("license", getLicenseShortName(licenseType), Colour(0x80EF6C00).withAlpha(0.0f));
+            int numChars = getLicenseShortName(licenseType).length();
+            licenseBadge.width = jmax(16, int(numChars * 5.0f));
+            licenseBadge.fontSize = 9.0f;
+            licenseBadge.isBold = false;
+            licenseBadge.onDoubleClick = [this]() { URL(licenseType).launchInDefaultBrowser(); };
+            topRightBadges.push_back(licenseBadge);
+        }
+    }
+
+    // Bottom-left badges
+    if (hasValidSample)
+    {
+        // WAV export badge - available in all modes
+        Badge wavBadge("wav", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x806A5ACD).withAlpha(0.0f));
+        wavBadge.width = 20;
+        wavBadge.fontSize = 16.0f;
+        wavBadge.onClick = [this]() { handleWavCopyClick(); };
+        wavBadge.onDrag = [this](const MouseEvent& e) {
+            if (e.getDistanceFromDragStart() > 10) {
+                File wavFile = getWavFile();
+                if (!wavFile.existsAsFile()) {
+                    if (!convertOggToWav(audioFile, wavFile)) return;
+                }
+                if (wavFile.existsAsFile()) {
+                    StringArray filePaths;
+                    filePaths.add(wavFile.getFullPathName());
+                    performExternalDragDropOfFiles(filePaths, false);
+                }
+            }
+        };
+        bottomLeftBadges.push_back(wavBadge);
+
+        // Search badge - only for Normal mode
+        if (padMode == PadMode::Normal)
+        {
+            Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
+            searchBadge.width = 16;
+            searchBadge.fontSize = 16.0f;
+            searchBadge.onClick = [this]() {
+                String searchQuery = queryTextBox.getText().trim();
+                if (searchQuery.isEmpty() && processor) {
+                    searchQuery = processor->getQuery();
+                }
+                if (searchQuery.isNotEmpty()) {
+                    queryTextBox.setText(searchQuery);
+                    if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
+                        gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                    }
+                } else {
+                    AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                        "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
+                }
+            };
+            bottomLeftBadges.push_back(searchBadge);
+        }
+    }
+
+    // Empty pad search badge - only for Normal mode when no sample
+    if (!hasValidSample && padMode == PadMode::Normal)
+    {
+        Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
+        searchBadge.width = 16;
+        searchBadge.fontSize = 16.0f;
+        searchBadge.onClick = [this]() {
+            String searchQuery = queryTextBox.getText().trim();
+            if (searchQuery.isEmpty() && processor) {
+                searchQuery = processor->getQuery();
+            }
+            if (searchQuery.isNotEmpty()) {
+                queryTextBox.setText(searchQuery);
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>()) {
+                    gridComponent->searchForSinglePadWithQuery(padIndex, searchQuery);
+                }
+            } else {
+                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+                    "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
+            }
+        };
+        bottomLeftBadges.push_back(searchBadge);
     }
 }
 
-void SamplePad::syncMasterQuery(const String& masterQuery)
+void SamplePad::layoutBadges()
 {
-    if (connectedToMaster)
-    {
-        // Update the text box to show master query - NO color changes
-        queryTextBox.setText(masterQuery, dontSendNotification);
+    auto bounds = getLocalBounds().reduced(4);
+    int spacing = 3;
+    int badgeHeight = 14;
 
-        // DON'T update padQuery here - it should preserve the sample's original query
-        // DBG("Pad " + String(padIndex) + " synced master query: '" + masterQuery + "' (sample query preserved: '" + padQuery + "')");
+    // Layout top-left badges
+    auto topLeftArea = bounds.removeFromTop(badgeHeight);
+    int x = topLeftArea.getX();
+    for (auto& badge : topLeftBadges) {
+        if (badge.visible) {
+            badge.bounds = Rectangle<int>(x, topLeftArea.getY(), badge.width, badgeHeight);
+            x += badge.width + spacing;
+        }
+    }
+
+    // Layout top-right badges (right to left)
+    auto topRightArea = bounds.removeFromTop(0);
+    topRightArea = getLocalBounds().reduced(4).removeFromTop(badgeHeight);
+    x = topRightArea.getRight();
+    for (auto& badge : topRightBadges) {
+        if (badge.visible) {
+            x -= badge.width;
+            badge.bounds = Rectangle<int>(x, topRightArea.getY(), badge.width, badgeHeight);
+            x -= spacing;
+        }
+    }
+
+    // Layout bottom-left badges
+    auto bottomArea = getLocalBounds().reduced(4);
+    auto bottomLeftArea = bottomArea.removeFromBottom(badgeHeight);
+    x = bottomLeftArea.getX();
+    for (auto& badge : bottomLeftBadges) {
+        if (badge.visible) {
+            badge.bounds = Rectangle<int>(x, bottomLeftArea.getY(), badge.width, badgeHeight);
+            x += badge.width + spacing;
+        }
     }
 }
 
+void SamplePad::paintBadges(Graphics& g)
+{
+    auto paintBadgeGroup = [&g](const std::vector<Badge>& badges) {
+        for (const auto& badge : badges) {
+            if (!badge.visible) continue;
+
+            g.setGradientFill(ColourGradient(
+                badge.backgroundColour, badge.bounds.getTopLeft().toFloat(),
+                badge.backgroundColour.darker(0.2f), badge.bounds.getBottomRight().toFloat(), false));
+            g.fillRoundedRectangle(badge.bounds.toFloat(), 3.0f);
+
+            g.setColour(badge.textColour);
+            g.setFont(badge.isBold ? Font(badge.fontSize, Font::bold) : Font(badge.fontSize));
+            g.drawText(badge.icon.isNotEmpty() ? badge.icon : badge.text,
+                      badge.bounds, Justification::centred);
+        }
+    };
+
+    paintBadgeGroup(topLeftBadges);
+    paintBadgeGroup(topRightBadges);
+    paintBadgeGroup(bottomLeftBadges);
+}
+
+Badge* SamplePad::findBadgeAtPosition(Point<int> position)
+{
+    auto checkBadgeGroup = [&position](std::vector<Badge>& badges) -> Badge* {
+        for (auto& badge : badges) {
+            if (badge.visible && badge.bounds.contains(position)) {
+                return &badge;
+            }
+        }
+        return nullptr;
+    };
+
+    if (auto* badge = checkBadgeGroup(topLeftBadges)) return badge;
+    if (auto* badge = checkBadgeGroup(topRightBadges)) return badge;
+    if (auto* badge = checkBadgeGroup(bottomLeftBadges)) return badge;
+
+    return nullptr;
+}
+
+// Waveform methods
+void SamplePad::loadWaveform()
+{
+    if (audioFile.existsAsFile())
+    {
+        audioThumbnail.clear();
+
+        auto* fileSource = new FileInputSource(audioFile);
+        audioThumbnail.setSource(fileSource);
+
+        // Get sample rate of file source
+        {
+            juce::AudioFormatManager formatManager;
+            formatManager.registerBasicFormats();
+
+            std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(audioFile));
+
+            if (reader != nullptr)
+            {
+                fileSourceSampleRate = reader->sampleRate;
+            }
+        }
+
+        fileSourceSampleRate = (fileSourceSampleRate <= 1.0) ? 44100.0 : fileSourceSampleRate;
+
+        Timer::callAfterDelay(100, [this]() {
+            repaint();
+        });
+    }
+}
+
+void SamplePad::drawWaveform(Graphics& g, Rectangle<int> bounds)
+{
+    if (!hasValidSample || audioThumbnail.getTotalLength() == 0.0)
+        return;
+
+    g.setColour(Colours::black.withAlpha(0.2f));
+    g.fillRect(bounds);
+
+    g.setColour(!isPlaying ? Colours::lightgrey.withAlpha(0.8f) : Colours::white.withAlpha(0.8f));
+    audioThumbnail.drawChannels(g, bounds, 0.0, audioThumbnail.getTotalLength(), 1.0f);
+}
+
+void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
+{
+    if (!isPlaying || !hasValidSample)
+        return;
+
+    float x = bounds.getX() + (playheadPosition * bounds.getWidth());
+
+    g.setColour(Colours::red);
+    g.drawLine(x, bounds.getY(), x, bounds.getBottom(), 2.0f);
+}
+
+void SamplePad::drawPreviewPlayhead(Graphics& g, Rectangle<int> bounds)
+{
+    if (!isPreviewPlaying || !hasValidSample)
+        return;
+
+    float x = bounds.getX() + (previewPlayheadPosition * bounds.getWidth());
+
+    g.setColour(Colours::orange); // Orange for preview playhead vs red for main
+    g.drawLine(x, bounds.getY(), x, bounds.getBottom(), 2.0f);
+}
+
+String SamplePad::getKeyboardKeyForPad(int padIndex) const
+{
+    switch (padIndex)
+    {
+        // Bottom row (pads 0-3)
+        case 0: return "Z";
+        case 1: return "X";
+        case 2: return "C";
+        case 3: return "V";
+
+        // Second row (pads 4-7)
+        case 4: return "A";
+        case 5: return "S";
+        case 6: return "D";
+        case 7: return "F";
+
+        // Third row (pads 8-11)
+        case 8: return "Q";
+        case 9: return "W";
+        case 10: return "E";
+        case 11: return "R";
+
+        // Top row (pads 12-15)
+        case 12: return "1";
+        case 13: return "2";
+        case 14: return "3";
+        case 15: return "4";
+
+        default: return "?";
+    }
+}
+
+String SamplePad::getLicenseShortName(const String& license) const
+{
+    String lowerLicense = license.toLowerCase();
+    String licenseVer = "";
+
+    try
+    {
+        for (int i = 0; i < lowerLicense.length() - 4; ++i)
+        {
+            if (lowerLicense[i] == '/' &&
+                lowerLicense[i + 1] >= '0' && lowerLicense[i + 1] <= '9' &&
+                lowerLicense[i + 2] == '.' &&
+                lowerLicense[i + 3] >= '0' && lowerLicense[i + 3] <= '9')
+            {
+                String version = "";
+                version += lowerLicense[i + 1];
+                version += '.';
+                version += lowerLicense[i + 3];
+
+                int j = i + 4;
+                while (j < lowerLicense.length() &&
+                       lowerLicense[j] >= '0' && lowerLicense[j] <= '9')
+                {
+                    version += lowerLicense[j];
+                    j++;
+                }
+
+                licenseVer = " " + version;
+                break;
+            }
+        }
+    }
+    catch (...)
+    {
+        licenseVer = "";
+    }
+
+    try
+    {
+        if (lowerLicense.contains("creativecommons.org/publicdomain/zero") ||
+            lowerLicense.contains("cc0") ||
+            lowerLicense.contains("publicdomain/zero"))
+            return "CC0" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-sa") ||
+                 lowerLicense.contains("by-nc-sa"))
+            return "BY-NC-SA" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-nd") ||
+                 lowerLicense.contains("by-nc-nd"))
+            return "BY-NC-ND" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-sa") ||
+                 lowerLicense.contains("by-sa"))
+            return "BY-SA" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nd") ||
+                 lowerLicense.contains("by-nd"))
+            return "BY-ND" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc") ||
+                 lowerLicense.contains("by-nc"))
+            return "BY-NC" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by/") ||
+                 (lowerLicense.contains("creativecommons.org/licenses/by") && !lowerLicense.contains("-nc")))
+            return "BY" + licenseVer;
+        else if (lowerLicense.contains("sampling+"))
+            return "S+" + licenseVer;
+        else if (lowerLicense.contains("sampling"))
+            return "S" + licenseVer;
+        else if (lowerLicense.contains("public domain") || lowerLicense.contains("publicdomain"))
+            return "PD";
+        else if (lowerLicense.contains("all rights reserved"))
+            return "ARR";
+        else
+            return "???";
+    }
+    catch (...)
+    {
+        return "???";
+    }
+}
+
+// Badge callback methods
+void SamplePad::handleCopyClick()
+{
+    if (!hasValidSample)
+        return;
+
+    setMouseCursor(MouseCursor::CopyingCursor);
+
+    Timer::callAfterDelay(3000, [this]() {
+        setMouseCursor(MouseCursor::NormalCursor);
+    });
+}
+
+void SamplePad::handleDeleteClick()
+{
+    if (!hasValidSample || padMode != PadMode::Normal)
+        return;
+
+    AlertWindow::showOkCancelBox(
+        AlertWindow::QuestionIcon,
+        "Delete Sample",
+        "Are you sure you want to delete this sample?",
+        "Yes", "No",
+        nullptr,
+        ModalCallbackFunction::create([this](int result) {
+            if (result == 1)
+            {
+                clearSample();
+
+                if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
+                {
+                    if (processor)
+                    {
+                        auto& sounds = processor->getCurrentSoundsArrayReference();
+                        auto& data = processor->getDataReference();
+
+                        if (padIndex < sounds.size())
+                            sounds.set(padIndex, FSSound());
+
+                        if (padIndex < data.size())
+                            data[padIndex] = StringArray();
+
+                        processor->setSources();
+                    }
+
+                    gridComponent->updateJsonMetadata();
+                }
+            }
+        })
+    );
+}
+
+void SamplePad::handleWavCopyClick()
+{
+    if (!hasValidSample)
+        return;
+
+    File wavFile = getWavFile();
+
+    if (!wavFile.existsAsFile())
+    {
+        if (!convertOggToWav(audioFile, wavFile))
+        {
+            AlertWindow::showMessageBoxAsync(
+                AlertWindow::WarningIcon,
+                "Conversion Failed",
+                "Failed to convert OGG file to WAV format.");
+            return;
+        }
+    }
+
+    setMouseCursor(MouseCursor::CopyingCursor);
+
+    Timer::callAfterDelay(3000, [this]() {
+        setMouseCursor(MouseCursor::NormalCursor);
+    });
+}
+
+void SamplePad::handleBookmarkClick()
+{
+    if (!hasValidSample || !processor)
+        return;
+
+    BookmarkManager& bookmarkManager = processor->getBookmarkManager();
+
+    if (bookmarkManager.isBookmarked(freesoundId))
+    {
+        if (bookmarkManager.removeBookmark(freesoundId))
+        {
+            repaint();
+        }
+    }
+    else
+    {
+        BookmarkInfo bookmark;
+        bookmark.freesoundId = freesoundId;
+        bookmark.sampleName = sampleName;
+        bookmark.authorName = authorName;
+        bookmark.licenseType = licenseType;
+        bookmark.searchQuery = getQuery();
+        bookmark.fileName = audioFile.getFileName();
+        bookmark.duration = 0.5;
+        bookmark.fileSize = (int)audioFile.getSize();
+        bookmark.bookmarkedAt = Time::getCurrentTime().toString(true, true);
+        bookmark.freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
+        bookmark.tags = tags;
+        bookmark.description = description;
+
+        if (bookmarkManager.addBookmark(bookmark))
+        {
+            repaint();
+        }
+    }
+}
+
+// Drag and drop methods
+void SamplePad::performEnhancedDragDrop()
+{
+    if (!hasValidSample || !audioFile.existsAsFile())
+        return;
+
+    bool isShiftPressed = ModifierKeys::getCurrentModifiers().isShiftDown();
+
+    if (isShiftPressed)
+    {
+        performCrossAppDragDrop();
+    }
+    else
+    {
+        performInternalDragDrop();
+    }
+}
+
+void SamplePad::performCrossAppDragDrop()
+{
+    File tempDir = File::getSpecialLocation(File::tempDirectory)
+                      .getChildFile("FreesoundSampler_CrossApp")
+                      .getChildFile(String::toHexString(Time::getCurrentTime().toMilliseconds()));
+
+    if (!tempDir.createDirectory()) return;
+
+    var metadata(new DynamicObject());
+    metadata.getDynamicObject()->setProperty("type", "freesound_sampler_data");
+    metadata.getDynamicObject()->setProperty("freesound_id", freesoundId);
+    metadata.getDynamicObject()->setProperty("sample_name", sampleName);
+    metadata.getDynamicObject()->setProperty("author_name", authorName);
+    metadata.getDynamicObject()->setProperty("license_type", licenseType);
+    metadata.getDynamicObject()->setProperty("search_query", getQuery());
+    metadata.getDynamicObject()->setProperty("tags", tags);
+    metadata.getDynamicObject()->setProperty("description", description);
+    metadata.getDynamicObject()->setProperty("audio_file_path", audioFile.getFullPathName());
+
+    File metadataFile = tempDir.getChildFile("metadata.json");
+    metadataFile.replaceWithText(JSON::toString(metadata, false));
+
+    StringArray filePaths;
+    filePaths.add(metadataFile.getFullPathName());
+    filePaths.add(audioFile.getFullPathName());
+
+    performExternalDragDropOfFiles(filePaths, false);
+
+    Timer::callAfterDelay(30000, [tempDir]() {
+        tempDir.deleteRecursively();
+    });
+}
+
+void SamplePad::performInternalDragDrop()
+{
+    var dataPackage(new DynamicObject());
+    dataPackage.getDynamicObject()->setProperty("type", "freesound_sampler_data");
+    dataPackage.getDynamicObject()->setProperty("version", "1.0");
+    dataPackage.getDynamicObject()->setProperty("freesound_id", freesoundId);
+    dataPackage.getDynamicObject()->setProperty("sample_name", sampleName);
+    dataPackage.getDynamicObject()->setProperty("author_name", authorName);
+    dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
+    dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
+    dataPackage.getDynamicObject()->setProperty("tags", tags);
+    dataPackage.getDynamicObject()->setProperty("description", description);
+    dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
+    dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
+    dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
+
+    String jsonData = JSON::toString(dataPackage, false);
+
+    var dragDescription(new DynamicObject());
+    dragDescription.getDynamicObject()->setProperty("files", var(StringArray(audioFile.getFullPathName())));
+    dragDescription.getDynamicObject()->setProperty("metadata", jsonData);
+    dragDescription.getDynamicObject()->setProperty("mime_type", FREESOUND_SAMPLER_MIME_TYPE);
+
+    startDragging(dragDescription, this, ScaledImage(), true);
+}
+
+// File conversion methods
 File SamplePad::getWavFile() const
 {
     if (!hasValidSample || freesoundId.isEmpty())
         return File();
 
-    // Get the same directory as the OGG file
     File oggFile = audioFile;
     File parentDir = oggFile.getParentDirectory();
-
-    // Create WAV filename: FS_ID_XXXX.wav
     String wavFileName = "FS_ID_" + freesoundId + ".wav";
     return parentDir.getChildFile(wavFileName);
 }
@@ -1409,16 +1583,13 @@ bool SamplePad::convertOggToWav(const File& oggFile, const File& wavFile)
     if (!oggFile.existsAsFile())
         return false;
 
-    // Use JUCE's audio format manager to read OGG and write WAV
     AudioFormatManager formatManager;
     formatManager.registerBasicFormats();
 
-    // Read the OGG file
     std::unique_ptr<AudioFormatReader> reader(formatManager.createReaderFor(oggFile));
     if (!reader)
         return false;
 
-    // Create WAV writer
     WavAudioFormat wavFormat;
     std::unique_ptr<FileOutputStream> outputStream(wavFile.createOutputStream());
     if (!outputStream)
@@ -1428,7 +1599,7 @@ bool SamplePad::convertOggToWav(const File& oggFile, const File& wavFile)
         outputStream.get(),
         reader->sampleRate,
         reader->numChannels,
-        16, // 16-bit
+        16,
         {},
         0
     ));
@@ -1436,10 +1607,8 @@ bool SamplePad::convertOggToWav(const File& oggFile, const File& wavFile)
     if (!writer)
         return false;
 
-    // Release the output stream ownership to the writer
     outputStream.release();
 
-    // Copy audio data
     const int bufferSize = 8192;
     AudioBuffer<float> buffer(reader->numChannels, bufferSize);
 
@@ -1460,77 +1629,7 @@ bool SamplePad::convertOggToWav(const File& oggFile, const File& wavFile)
         samplesRemaining -= samplesToRead;
     }
 
-    // Cleanup is automatic with unique_ptr
     return wavFile.existsAsFile();
-}
-
-void SamplePad::handleWavCopyClick()
-{
-    if (!hasValidSample)
-        return;
-
-    File wavFile = getWavFile();
-
-    // Check if WAV file already exists
-    if (!wavFile.existsAsFile())
-    {
-        // Convert OGG to WAV
-        if (!convertOggToWav(audioFile, wavFile))
-        {
-            AlertWindow::showMessageBoxAsync(
-                AlertWindow::WarningIcon,
-                "Conversion Failed",
-                "Failed to convert OGG file to WAV format.");
-            return;
-        }
-    }
-
-    // Set cursor to indicate WAV dragging
-    setMouseCursor(MouseCursor::CopyingCursor);
-
-    // Reset cursor after delay
-    Timer::callAfterDelay(3000, [this]() {
-        setMouseCursor(MouseCursor::NormalCursor);
-    });
-}
-
-void SamplePad::handleBookmarkClick()
-{
-    if (!hasValidSample || !processor)
-        return;
-
-    BookmarkManager& bookmarkManager = processor->getBookmarkManager();
-
-    if (bookmarkManager.isBookmarked(freesoundId))
-    {
-        // Remove bookmark
-        if (bookmarkManager.removeBookmark(freesoundId))
-        {
-            repaint(); // Update visual state
-        }
-    }
-    else
-    {
-        // Add bookmark
-        BookmarkInfo bookmark;
-        bookmark.freesoundId = freesoundId;
-        bookmark.sampleName = sampleName;
-        bookmark.authorName = authorName;
-        bookmark.licenseType = licenseType;
-        bookmark.searchQuery = getQuery();
-        bookmark.fileName = audioFile.getFileName();
-        bookmark.duration = 0.5; // Default, could get from FSSound if available
-        bookmark.fileSize = (int)audioFile.getSize();
-        bookmark.bookmarkedAt = Time::getCurrentTime().toString(true, true);
-        bookmark.freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
-        bookmark.tags = tags;
-        bookmark.description = description;
-
-        if (bookmarkManager.addBookmark(bookmark))
-        {
-            repaint(); // Update visual state
-        }
-    }
 }
 
 //==============================================================================

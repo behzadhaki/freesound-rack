@@ -17,52 +17,9 @@
 // Add forward declaration
 class FreesoundAdvancedSamplerAudioProcessorEditor;
 
-//==============================================================================
-// Custom Sample Pad for Bookmarks (with mouse-hold preview and playhead)
-//==============================================================================
-class BookmarkSamplePad : public SamplePad
-{
-public:
-    BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo);
-    ~BookmarkSamplePad() override;
-
-    void mouseDown(const MouseEvent& event) override;
-    void mouseDrag(const MouseEvent& event) override;
-    void mouseUp(const MouseEvent& event) override;
-    void mouseEnter(const MouseEvent &event) override;
-    void mouseExit(const MouseEvent &event) override;
-
-    // NEW: Preview playback state methods
-    void setPreviewPlaying(bool playing);
-    void setPreviewPlayheadPosition(float position);
-    String getFreesoundId() const { return bookmark.freesoundId; }
-
-protected:
-    // Override paint to show preview playhead
-    void paint(Graphics& g) override;
-
-private:
-    BookmarkInfo bookmark;
-
-    void startPreviewPlayback();
-    void stopPreviewPlayback();
-
-    bool isPreviewPlaying = false;
-    float previewPlayheadPosition = 0.0f; // NEW: Track preview playhead
-    Colour defaultColour = Colours::darkgrey;
-
-    bool mouseDownInWaveform = false;  // Track where mouse went down
-    bool previewRequested = false;     // Track if we requested preview
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BookmarkSamplePad)
-};
-
-//==============================================================================
-// Bookmark Viewer Component - Now implements PreviewPlaybackListener
-//==============================================================================
 class BookmarkViewerComponent : public Component,
                                public ScrollBar::Listener,
-                               public FreesoundAdvancedSamplerAudioProcessor::PreviewPlaybackListener // NEW
+                               public FreesoundAdvancedSamplerAudioProcessor::PreviewPlaybackListener
 {
 public:
     BookmarkViewerComponent();
@@ -77,7 +34,7 @@ public:
     // ScrollBar::Listener
     void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
 
-    // NEW: PreviewPlaybackListener implementation
+    // PreviewPlaybackListener implementation
     void previewStarted(const String& freesoundId) override;
     void previewStopped(const String& freesoundId) override;
     void previewPlayheadPositionChanged(const String& freesoundId, float position) override;
@@ -91,9 +48,9 @@ private:
     Viewport bookmarkViewport;
     Component bookmarkContainer;
 
-    // Sample pads for bookmarks (non-searchable)
-    OwnedArray<BookmarkSamplePad> bookmarkPads;
-    std::map<String, BookmarkSamplePad*> bookmarkPadMap; // Map for quick access by Freesound ID
+    // Sample pads for bookmarks (using unified SamplePad in Preview mode)
+    OwnedArray<SamplePad> bookmarkPads;
+    std::map<String, SamplePad*> bookmarkPadMap; // Map for quick access by Freesound ID
 
     // Current bookmark data
     Array<BookmarkInfo> currentBookmarks;
@@ -106,10 +63,9 @@ private:
     void createBookmarkPads();
     void clearBookmarkPads();
     void updateScrollableArea();
-    void loadBookmarkIntoSampleGrid(const BookmarkInfo& bookmark);
 
-    // NEW: Helper to find pad by freesound ID
-    BookmarkSamplePad* findPadByFreesoundId(const String& freesoundId);
+    // Helper to find pad by freesound ID
+    SamplePad* findPadByFreesoundId(const String& freesoundId);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BookmarkViewerComponent)
 };

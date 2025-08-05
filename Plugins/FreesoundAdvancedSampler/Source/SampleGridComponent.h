@@ -35,8 +35,8 @@ struct Badge {
     bool visible = true;
     int width = 16;
     int height = 14;
-    float fontSize = 11.0f;  // Add this line
-    bool isBold = true; // Add this line for bold text
+    float fontSize = 11.0f;
+    bool isBold = true;
     Rectangle<int> bounds;
 
     Badge(const String& badgeId, const String& badgeText, Colour bgColor = Colour(0x80404040))
@@ -44,14 +44,20 @@ struct Badge {
 };
 
 //==============================================================================
-// SamplePad Component (a single sample pad in the grid)
+// SamplePad Component (unified implementation with preview mode)
 class SamplePad : public Component,
                   public DragAndDropContainer,
                   public DragAndDropTarget,
-                  public Timer  // Add Timer inheritance for cleanup
+                  public Timer
 {
 public:
-    SamplePad(int index, bool isSearchable = true);
+    enum class PadMode {
+        Normal,     // Standard searchable pad (default)
+        NonSearchable, // Non-searchable pad (for presets/readonly)
+        Preview     // Preview mode (for bookmarks with mouse-hold preview)
+    };
+
+    SamplePad(int index, PadMode mode = PadMode::Normal);
     ~SamplePad() override;
 
     void paint(Graphics& g) override;
@@ -60,20 +66,25 @@ public:
     void mouseUp(const MouseEvent& event) override;
     void mouseDrag(const MouseEvent& event) override;
     void mouseDoubleClick(const MouseEvent& event) override;
-    void timerCallback() override;  // Add timer callback
+    void mouseEnter(const MouseEvent& event) override;
+    void mouseExit(const MouseEvent& event) override;
+    void timerCallback() override;
 
     // DragAndDropTarget implementation
     bool isInterestedInDragSource(const SourceDetails& dragSourceDetails) override;
     void itemDragEnter(const SourceDetails& dragSourceDetails) override;
     void itemDragExit(const SourceDetails& dragSourceDetails) override;
     void itemDropped(const SourceDetails& dragSourceDetails) override;
-    void setSample(const File& audioFile, const String& sampleName, const String& author, String freesoundId = String(), String license = String(), String query = String(), String fsTags= String(), String fsDescription= String());
+
+    void setSample(const File& audioFile, const String& sampleName, const String& author,
+                   String freesoundId = String(), String license = String(), String query = String(),
+                   String fsTags = String(), String fsDescription = String());
     void setPlayheadPosition(float position);
     void setIsPlaying(bool playing);
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
 
     // Query management
-    void setQuery(const String& query, bool dontUpdatePadInfoQuery=false);
+    void setQuery(const String& query, bool dontUpdatePadInfoQuery = false);
     String getQuery() const;
     bool hasQuery() const;
 
@@ -87,6 +98,11 @@ public:
     void updateDownloadProgress(double progress, const String& status = String());
     void finishDownloadProgress(bool success, const String& message = String());
 
+    // Preview mode methods
+    void setPreviewPlaying(bool playing);
+    void setPreviewPlayheadPosition(float position);
+    String getFreesoundId() const { return freesoundId; }
+
     // Sample info struct and method
     struct SampleInfo {
         File audioFile;
@@ -97,7 +113,7 @@ public:
         String query;
         String tags;
         String description;
-        float fileSourceSampleRate = 44100.0f; // Sample rate of the source file
+        float fileSourceSampleRate = 44100.0f;
         bool hasValidSample;
         int padIndex;
     };
@@ -106,13 +122,18 @@ public:
     int getPadIndex() const { return padIndex; }
     int setPadIndex(int index) { padIndex = index; return padIndex; }
 
+    // Mode queries
+    bool isSearchable() const { return padMode == PadMode::Normal; }
+    bool isPreviewMode() const { return padMode == PadMode::Preview; }
+    PadMode getPadMode() const { return padMode; }
+    void setPadMode(PadMode mode) { padMode = mode; }
+
     // Callbacks for badges
     void clearSample();
     void handleDeleteClick();
     void performEnhancedDragDrop();
     void handleCopyClick();
 
-    bool isSearchable() const { return isSearchableMode; }
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
 protected:
@@ -120,7 +141,6 @@ protected:
     std::vector<Badge> topLeftBadges;
     std::vector<Badge> topRightBadges;
     std::vector<Badge> bottomLeftBadges;
-    // std::vector<Badge> bottomRightBadges;
 
     void initializeBadges();
     void layoutBadges();
@@ -132,11 +152,15 @@ protected:
     void loadWaveform();
     void drawWaveform(Graphics& g, Rectangle<int> bounds);
     void drawPlayhead(Graphics& g, Rectangle<int> bounds);
+    void drawPreviewPlayhead(Graphics& g, Rectangle<int> bounds); // NEW: Preview playhead
     String getLicenseShortName(const String& license) const;
     void cleanupProgressComponents();
 
-    bool isSearchableMode;
+    // Preview mode methods
+    void startPreviewPlayback();
+    void stopPreviewPlayback();
 
+    PadMode padMode;
     int padIndex;
 
     AudioFormatManager formatManager;
@@ -153,30 +177,37 @@ protected:
     String tags;
     String description;
     float fileSourceSampleRate = 44100.0f;
-    float processorSampleRate = 44100.0f; // Sample rate of the processor (checked on mouseUp)
+    float processorSampleRate = 44100.0f;
     String getKeyboardKeyForPad(int padIndex) const;
 
+    // Playback state
     float playheadPosition;
     bool isPlaying;
     bool hasValidSample;
-    bool isDragHover;                   // for visual feedback during swapping
-    bool isCopyDragHover = false; // for visual feedback during copy drag
-    bool connectedToMaster = false; // Master search connection state
+    bool isDragHover;
+    bool isCopyDragHover = false;
+    bool connectedToMaster = false;
+
+    // Preview state (only used in preview mode)
+    bool isPreviewPlaying = false;
+    float previewPlayheadPosition = 0.0f;
+    bool mouseDownInWaveform = false;
+    bool previewRequested = false;
 
     Colour padColour;
+    Colour defaultColour = Colours::darkgrey; // For preview mode
     TextEditor queryTextBox;
 
-    // Progress bar components - use smart pointers for safety
+    // Progress bar components
     std::unique_ptr<ProgressBar> progressBar;
     std::unique_ptr<Label> progressLabel;
     bool isDownloading = false;
     bool pendingCleanup = false;
     double currentDownloadProgress = 0.0;
 
-    File getWavFile() const;  // Get corresponding WAV file path
-    bool convertOggToWav(const File& oggFile, const File& wavFile);  // Convert OGG to WAV
-    void handleWavCopyClick();  // Handle WAV drag
-
+    File getWavFile() const;
+    bool convertOggToWav(const File& oggFile, const File& wavFile);
+    void handleWavCopyClick();
     void handleBookmarkClick();
 
     void performCrossAppDragDrop();

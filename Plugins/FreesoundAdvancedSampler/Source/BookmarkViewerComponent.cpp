@@ -10,276 +10,6 @@
 #include "PluginEditor.h"
 
 //==============================================================================
-// BookmarkSamplePad Implementation
-//==============================================================================
-
-BookmarkSamplePad::BookmarkSamplePad(int index, const BookmarkInfo& bookmarkInfo)
-    : SamplePad(index, false), bookmark(bookmarkInfo) // false = non-searchable
-{
-    DBG("Loaded bookmark with tags" + bookmark.tags);
-    padColour = defaultColour.withAlpha(0.2f);
-}
-
-BookmarkSamplePad::~BookmarkSamplePad()
-{
-    // Make sure to stop preview if component is destroyed while playing
-    if (isPreviewPlaying)
-    {
-        stopPreviewPlayback();
-    }
-}
-
-void BookmarkSamplePad::paint(Graphics& g)
-{
-    // Call parent paint first to draw everything normally
-    SamplePad::paint(g);
-
-    // Add preview playhead overlay if playing
-    if (isPreviewPlaying && hasValidSample)
-    {
-        auto bounds = getLocalBounds();
-        auto waveformBounds = bounds.reduced(3);
-        waveformBounds.removeFromTop(18); // Space for top line badges
-        waveformBounds.removeFromBottom(18); // Space for bottom line
-
-        // Draw preview playhead (different color from main playhead)
-        float x = waveformBounds.getX() + (previewPlayheadPosition * waveformBounds.getWidth());
-
-        g.setColour(Colours::orange); // Orange for preview playhead vs red for main
-        g.drawLine(x, waveformBounds.getY(), x, waveformBounds.getBottom(), 2.0f);
-    }
-}
-
-void BookmarkSamplePad::setPreviewPlaying(bool playing)
-{
-    // Ensure GUI updates happen on the message thread
-    MessageManager::callAsync([this, playing]()
-    {
-        isPreviewPlaying = playing;
-
-        // Update pad color based on playing state
-        if (playing)
-        {
-            padColour = defaultColour.withAlpha(0.5f);
-        }
-        else
-        {
-            padColour = defaultColour.withAlpha(0.2f);
-            previewPlayheadPosition = 0.0f; // Reset playhead when stopped
-        }
-
-        repaint();
-    });
-}
-
-void BookmarkSamplePad::setPreviewPlayheadPosition(float position)
-{
-    // adjust position using fileSourceSampleRate and processorSampleRate
-    position = (position * fileSourceSampleRate) / processorSampleRate;
-
-    // Ensure GUI updates happen on the message thread
-    MessageManager::callAsync([this, position]()
-    {
-        previewPlayheadPosition = jlimit(0.0f, 1.0f, position);
-        repaint();
-    });
-}
-
-void BookmarkSamplePad::mouseDown(const MouseEvent& event)
-{
-
-    // Reset flags
-    mouseDownInWaveform = false;
-    previewRequested = false;
-
-    // Don't allow interaction while downloading
-    if (isDownloading)
-    {
-        DBG("  - Download in progress, ignoring");
-        return;
-    }
-
-    // Check if clicked on any badge FIRST
-    Badge* clickedBadge = findBadgeAtPosition(event.getPosition());
-    if (clickedBadge && clickedBadge->onClick)
-    {
-        clickedBadge->onClick();
-        return;
-    }
-
-    // If no valid sample and didn't click a badge, return
-    if (!hasValidSample)
-    {
-        DBG("  - No valid sample");
-        return;
-    }
-
-    // Calculate waveform bounds
-    auto bounds = getLocalBounds();
-    auto waveformBounds = bounds.reduced(8);
-    waveformBounds.removeFromTop(18); // Space for top line badges
-    waveformBounds.removeFromBottom(18); // Space for bottom line
-
-    if (waveformBounds.contains(event.getPosition()))
-    {
-        mouseDownInWaveform = true;
-
-        // Start preview immediately and synchronously
-        startPreviewPlayback();
-        return;
-    }
-    else
-    {
-        // Handle potential drag preparation for other areas
-        // Call parent for badge dragging etc.
-        // SamplePad::mouseDown(event);  // Commented out to avoid conflicts
-    }
-}
-
-void BookmarkSamplePad::mouseDrag(const MouseEvent& event)
-{
-    // If we started preview in waveform, check if we're still in bounds
-    if (mouseDownInWaveform && previewRequested)
-    {
-        auto bounds = getLocalBounds();
-        auto waveformBounds = bounds.reduced(8);
-        waveformBounds.removeFromTop(18);
-        waveformBounds.removeFromBottom(18);
-
-        // If mouse moves outside waveform area while dragging, stop preview
-        if (!waveformBounds.contains(event.getPosition()))
-        {
-            stopPreviewPlayback();
-            mouseDownInWaveform = false;
-            return;
-        }
-    }
-    else if (!mouseDownInWaveform)
-    {
-        // For non-preview drags (like copy badge), call parent implementation
-        // Check if drag started on a badge that supports dragging
-        Badge* draggedBadge = findBadgeAtPosition(event.getMouseDownPosition());
-        if (draggedBadge && draggedBadge->onDrag)
-        {
-            draggedBadge->onDrag(event);
-            return;
-        }
-
-        // Handle potential sample copying drag from edge areas
-        if (hasValidSample && event.getDistanceFromDragStart() > 10)
-        {
-            performEnhancedDragDrop();
-        }
-    }
-}
-
-void BookmarkSamplePad::mouseUp(const MouseEvent& event)
-{
-
-    // Always stop preview when mouse is released, regardless of where
-    if (previewRequested || isPreviewPlaying)
-    {
-        stopPreviewPlayback();
-    }
-
-    // Reset state
-    mouseDownInWaveform = false;
-    previewRequested = false;
-
-    // snapshot the processor sample rate
-    processorSampleRate = processor->getSampleRate();
-
-    // Reset cursor if it was changed
-    setMouseCursor(MouseCursor::NormalCursor);
-}
-
-void BookmarkSamplePad::startPreviewPlayback()
-{
-
-    if (!hasValidSample)
-    {
-        DBG("  - No valid sample, aborting");
-        return;
-    }
-
-    if (!audioFile.existsAsFile())
-    {
-        DBG("  - Audio file doesn't exist: " + audioFile.getFullPathName());
-        return;
-    }
-
-    if (!processor)
-    {
-        DBG("  - No processor, aborting");
-        return;
-    }
-
-    if (previewRequested)
-    {
-        DBG("  - Preview already requested, ignoring");
-        return;
-    }
-
-    previewRequested = true;
-
-    // Load the sample into the preview sampler
-    processor->loadPreviewSample(audioFile, freesoundId);
-
-    // Small delay to ensure sample is loaded before playing
-    Timer::callAfterDelay(50, [this]() {
-        if (previewRequested && processor) // Check if still valid
-        {
-            processor->playPreviewSample();
-
-            // Change cursor to indicate preview mode
-            setMouseCursor(MouseCursor::PointingHandCursor);
-        }
-    });
-}
-
-void BookmarkSamplePad::stopPreviewPlayback()
-{
-
-    if (!previewRequested && !isPreviewPlaying)
-    {
-        DBG("  - No preview to stop");
-        return;
-    }
-
-    if (processor)
-    {
-        processor->stopPreviewSample();
-    }
-
-    previewRequested = false;
-
-    // Reset cursor
-    setMouseCursor(MouseCursor::NormalCursor);
-}
-
-// Also add these debug methods to help troubleshoot:
-
-void BookmarkSamplePad::mouseEnter(const MouseEvent& event)
-{
-    SamplePad::mouseEnter(event);
-}
-
-void BookmarkSamplePad::mouseExit(const MouseEvent& event)
-{
-
-    // Stop preview if mouse exits while playing
-    if (previewRequested || isPreviewPlaying)
-    {
-        stopPreviewPlayback();
-    }
-
-    mouseDownInWaveform = false;
-    previewRequested = false;
-
-    SamplePad::mouseExit(event);
-}
-
-//==============================================================================
 // BookmarkViewerComponent Implementation
 //==============================================================================
 
@@ -329,7 +59,7 @@ void BookmarkViewerComponent::resized()
     auto bounds = getLocalBounds().reduced(8);
 
     int textHeight = 18; // Height for title and refresh button
-    int refreshButtonWidth = 17; // Height for refresh button
+    int refreshButtonWidth = 17; // Width for refresh button
     int gapHeight = 8; // Gap
 
     // Title takes most of the header
@@ -339,9 +69,8 @@ void BookmarkViewerComponent::resized()
     refreshButton.setBounds(topLine2.removeFromLeft(refreshButtonWidth));
 
     bounds.removeFromTop(gapHeight);
-
-
     bounds.removeFromLeft(6);
+
     // Viewport takes the rest
     bookmarkViewport.setBounds(bounds);
 
@@ -398,13 +127,6 @@ void BookmarkViewerComponent::updateBookmarkPads()
     // Create pads for bookmarks
     createBookmarkPads();
 
-    // iterate through pads and add them to the container
-    for (auto* pad : bookmarkPads)
-    {
-        bookmarkContainer.addAndMakeVisible(pad);
-        bookmarkPadMap[pad->getFreesoundId()] = pad; // Map by freesound ID
-    }
-
     // Update scrollable area
     updateScrollableArea();
 }
@@ -422,8 +144,8 @@ void BookmarkViewerComponent::createBookmarkPads()
     {
         const BookmarkInfo& bookmark = currentBookmarks[i];
 
-        // FIXED: Use unique index to avoid conflicts with main grid
-        auto* pad = new BookmarkSamplePad(1000 + i, bookmark);
+        // Create SamplePad in Preview mode with unique index
+        auto* pad = new SamplePad(1000 + i, SamplePad::PadMode::Preview);
         pad->setProcessor(processor);
 
         // Load the bookmark sample if file exists
@@ -431,7 +153,8 @@ void BookmarkViewerComponent::createBookmarkPads()
         if (sampleFile.existsAsFile())
         {
             pad->setSample(sampleFile, bookmark.sampleName, bookmark.authorName,
-                          bookmark.freesoundId, bookmark.licenseType, bookmark.searchQuery);
+                          bookmark.freesoundId, bookmark.licenseType, bookmark.searchQuery,
+                          bookmark.tags, bookmark.description);
         }
 
         // Calculate position (single column)
@@ -442,6 +165,7 @@ void BookmarkViewerComponent::createBookmarkPads()
 
         bookmarkContainer.addAndMakeVisible(pad);
         bookmarkPads.add(pad);
+        bookmarkPadMap[bookmark.freesoundId] = pad; // Map by freesound ID
     }
 }
 
@@ -449,8 +173,6 @@ void BookmarkViewerComponent::clearBookmarkPads()
 {
     bookmarkPads.clear();
     bookmarkContainer.removeAllChildren();
-
-    // Clear the map as well
     bookmarkPadMap.clear();
 }
 
@@ -468,19 +190,13 @@ void BookmarkViewerComponent::updateScrollableArea()
                              jmax(totalHeight, bookmarkViewport.getHeight()));
 }
 
-void BookmarkViewerComponent::loadBookmarkIntoSampleGrid(const BookmarkInfo& bookmark)
-{
-    // This method is no longer used since we removed the click-to-load functionality
-    // Users now drag from the copy badge to load samples
-}
-
 void BookmarkViewerComponent::scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart)
 {
     // The viewport handles scrolling automatically
 }
 
 //==============================================================================
-// NEW: PreviewPlaybackListener Implementation
+// PreviewPlaybackListener Implementation
 //==============================================================================
 
 void BookmarkViewerComponent::previewStarted(const String& freesoundId)
@@ -507,7 +223,7 @@ void BookmarkViewerComponent::previewPlayheadPositionChanged(const String& frees
     }
 }
 
-BookmarkSamplePad* BookmarkViewerComponent::findPadByFreesoundId(const String& freesoundId)
+SamplePad* BookmarkViewerComponent::findPadByFreesoundId(const String& freesoundId)
 {
     return bookmarkPadMap.count(freesoundId) > 0 ? bookmarkPadMap[freesoundId] : nullptr;
 }

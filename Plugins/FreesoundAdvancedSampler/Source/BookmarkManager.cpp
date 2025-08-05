@@ -150,7 +150,6 @@ Array<BookmarkInfo> BookmarkManager::loadBookmarks() const
         bookmark.freesoundUrl = bookmarkVar.getProperty("freesound_url", "");
         bookmark.tags = bookmarkVar.getProperty("tags", "");
         bookmark.description = bookmarkVar.getProperty("description", "");
-        DBG("loaded bookmar tags: " + bookmark.tags);
         bookmarks.add(bookmark);
     }
     
