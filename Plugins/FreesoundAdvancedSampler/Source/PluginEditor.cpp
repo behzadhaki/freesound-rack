@@ -113,8 +113,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
 
     // FIXED: Use a WeakReference instead of Timer::callAfterDelay to prevent crashes
     // The WeakReference will become null if this component is destroyed
-    Component::SafePointer<FreesoundAdvancedSamplerAudioProcessorEditor> safeThis(this);
-
+    Component::SafePointer safeThis(this);
     Timer::callAfterDelay(200, [safeThis]() {
         if (safeThis != nullptr && safeThis->isShowing()) {
             safeThis->grabKeyboardFocus();

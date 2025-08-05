@@ -29,7 +29,7 @@ struct Badge {
     String icon;
     Colour backgroundColour;
     Colour textColour;
-    std::function<void()> onClick;
+    std::function<void(const MouseEvent&)> onClick;
     std::function<void()> onDoubleClick;
     std::function<void(const MouseEvent&)> onDrag;
     bool visible = true;
@@ -41,6 +41,8 @@ struct Badge {
 
     Badge(const String& badgeId, const String& badgeText, Colour bgColor = Colour(0x80404040))
         : id(badgeId), text(badgeText), backgroundColour(bgColor), textColour(Colours::white) {}
+
+
 };
 
 //==============================================================================
@@ -213,6 +215,7 @@ protected:
     void performCrossAppDragDrop();
     void performInternalDragDrop();
 
+    void showDetailedSampleInfo();
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };

@@ -356,7 +356,7 @@ void SamplePad::mouseDown(const MouseEvent& event)
     Badge* clickedBadge = findBadgeAtPosition(event.getPosition());
     if (clickedBadge && clickedBadge->onClick)
     {
-        clickedBadge->onClick();
+        clickedBadge->onClick(event);  // Pass the event
         return;
     }
 
@@ -1045,7 +1045,7 @@ void SamplePad::initializeBadges()
         Badge copyBadge("copy", dragIcon, Colour(0x8000A000).withAlpha(0.0f));
         copyBadge.width = 16;
         copyBadge.fontSize = 13.0f;
-        copyBadge.onClick = [this]() { handleCopyClick(); };
+        copyBadge.onClick = [this](const MouseEvent&) { handleCopyClick(); };
         copyBadge.onDrag = [this](const MouseEvent& e) {
             if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
         };
@@ -1056,7 +1056,7 @@ void SamplePad::initializeBadges()
                            processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
                            Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
         bookmarkBadge.width = 16;
-        bookmarkBadge.onClick = [this]() { handleBookmarkClick(); };
+        bookmarkBadge.onClick = [this](const MouseEvent&) { handleBookmarkClick(); };
         topLeftBadges.push_back(bookmarkBadge);
     }
 
@@ -1068,7 +1068,7 @@ void SamplePad::initializeBadges()
         {
             Badge delBadge("delete", String(CharPointer_UTF8("\xE2\x9C\x95")), Colour(0x80C62828).withAlpha(0.0f));
             delBadge.textColour = Colours::mediumvioletred.withAlpha(0.8f);
-            delBadge.onClick = [this]() { handleDeleteClick(); };
+            delBadge.onClick = [this](const MouseEvent&) { handleDeleteClick(); };
             delBadge.fontSize = 14.0f;
             delBadge.width = 14;
             delBadge.isBold = true;
@@ -1083,6 +1083,13 @@ void SamplePad::initializeBadges()
             webBadge.fontSize = 12.0f;
             webBadge.onDoubleClick = [this]() {
                 URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
+            };
+            webBadge.onClick = [this](const MouseEvent& e) {
+                if (e.mods.isShiftDown()) {
+                    showDetailedSampleInfo();
+                } else {
+                    URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
+                }
             };
             topRightBadges.push_back(webBadge);
         }
@@ -1107,7 +1114,7 @@ void SamplePad::initializeBadges()
         Badge wavBadge("wav", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x806A5ACD).withAlpha(0.0f));
         wavBadge.width = 20;
         wavBadge.fontSize = 16.0f;
-        wavBadge.onClick = [this]() { handleWavCopyClick(); };
+        wavBadge.onClick = [this](const MouseEvent&) { handleWavCopyClick(); };
         wavBadge.onDrag = [this](const MouseEvent& e) {
             if (e.getDistanceFromDragStart() > 10) {
                 File wavFile = getWavFile();
@@ -1129,7 +1136,7 @@ void SamplePad::initializeBadges()
             Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
             searchBadge.width = 16;
             searchBadge.fontSize = 16.0f;
-            searchBadge.onClick = [this]() {
+            searchBadge.onClick = [this](const MouseEvent&) {
                 String searchQuery = queryTextBox.getText().trim();
                 if (searchQuery.isEmpty() && processor) {
                     searchQuery = processor->getQuery();
@@ -1154,7 +1161,7 @@ void SamplePad::initializeBadges()
         Badge searchBadge("search", String(CharPointer_UTF8("\xF0\x9F\x94\x8D")), Colours::grey.withAlpha(0.0f));
         searchBadge.width = 16;
         searchBadge.fontSize = 16.0f;
-        searchBadge.onClick = [this]() {
+        searchBadge.onClick = [this](const MouseEvent&) {
             String searchQuery = queryTextBox.getText().trim();
             if (searchQuery.isEmpty() && processor) {
                 searchQuery = processor->getQuery();
@@ -1171,6 +1178,48 @@ void SamplePad::initializeBadges()
         };
         bottomLeftBadges.push_back(searchBadge);
     }
+}
+
+void SamplePad::showDetailedSampleInfo()
+{
+    if (!hasValidSample) return;
+
+    String infoText;
+    infoText += "Name: " + sampleName + "\n\n";
+    infoText += "Author: " + authorName + "\n\n";
+
+    if (freesoundId.isNotEmpty()) {
+        infoText += "Freesound ID: " + freesoundId + "\n";
+        infoText += "URL: https://freesound.org/s/" + freesoundId + "/\n\n";
+    }
+
+    if (licenseType.isNotEmpty()) {
+        infoText += "License: " + licenseType + "\n\n";
+    }
+
+    if (tags.isNotEmpty()) {
+        infoText += "Tags: " + tags + "\n\n";
+    }
+
+    if (description.isNotEmpty()) {
+        infoText += "Description: " + description + "\n\n";
+    }
+
+    if (audioFile.existsAsFile()) {
+        infoText += "File: " + audioFile.getFileName() + "\n";
+        infoText += "Size: " + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
+    }
+
+    AlertWindow::showMessageBoxAsync(
+        AlertWindow::InfoIcon,
+        "Sample Information",
+        infoText,
+        "OK",
+        nullptr,
+        ModalCallbackFunction::create([this](int) {
+            // Optional callback after window closes
+        })
+    );
 }
 
 void SamplePad::layoutBadges()
