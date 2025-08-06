@@ -3675,8 +3675,8 @@ void SampleGridComponent::refreshFromProcessor()
         updatePadFromCollection(padIndex, freesoundId);
     }
 
-    // CRITICAL: Rebuild sampler to ensure all pads are mapped correctly
-    processor->setSources();
+    // IMPORTANT: do NOT call processor->setSources() here.
+    // Rebuilds happen when state/presets change, not when the editor opens.
 }
 
 // Updated sample loading for master search
