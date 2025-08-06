@@ -178,25 +178,26 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
    bounds.removeFromLeft(margin);
    auto contentBounds = bounds.withTrimmedBottom(margin);
 
-   // LEFT: Bookmark expandable panel
-   int bookmarkPanelWidth = bookmarkExpandablePanel.isExpanded() ?
-                           bookmarkExpandablePanel.getExpandedWidth() :
-                           bookmarkExpandablePanel.getCollapsedWidth();
+    // LEFT: Preset expandable panel
+    int presetPanelWidth = expandablePanelComponent.isExpanded()
+                             ? expandablePanelComponent.getExpandedWidth()
+                             : expandablePanelComponent.getCollapsedWidth();
 
-   auto leftPanelArea = contentBounds.removeFromLeft(bookmarkPanelWidth);
-   if (bookmarkExpandablePanel.isExpanded())
-       leftPanelArea.removeFromRight(spacing);
-   bookmarkExpandablePanel.setBounds(leftPanelArea);
+    auto leftPanelArea = contentBounds.removeFromLeft(presetPanelWidth);
+    if (expandablePanelComponent.isExpanded())
+        leftPanelArea.removeFromRight(spacing);
+    expandablePanelComponent.setBounds(leftPanelArea);
 
-   // RIGHT: Preset expandable panel
-   int presetPanelWidth = expandablePanelComponent.isExpanded() ?
-                         expandablePanelComponent.getExpandedWidth() :
-                         expandablePanelComponent.getCollapsedWidth();
+    // RIGHT: Bookmark expandable panel
+    int bookmarkPanelWidth = bookmarkExpandablePanel.isExpanded()
+                               ? bookmarkExpandablePanel.getExpandedWidth()
+                               : bookmarkExpandablePanel.getCollapsedWidth();
 
-   auto rightPanelArea = contentBounds.removeFromRight(presetPanelWidth);
-   if (expandablePanelComponent.isExpanded())
-       rightPanelArea.removeFromLeft(spacing);
-   expandablePanelComponent.setBounds(rightPanelArea);
+    auto rightPanelArea = contentBounds.removeFromRight(bookmarkPanelWidth);
+    if (bookmarkExpandablePanel.isExpanded())
+        rightPanelArea.removeFromLeft(spacing);
+    bookmarkExpandablePanel.setBounds(rightPanelArea);
+
 
    // CENTER: Sample grid and controls
    contentBounds.removeFromLeft(spacing);
