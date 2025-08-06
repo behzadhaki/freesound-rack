@@ -400,18 +400,14 @@ void PresetBrowserComponent::createNewPresetBank()
     if (!processor || !processor->getCollectionManager())
         return;
 
-    String newName = "Bank " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
-
-    String presetId = processor->getCollectionManager()->createPreset(newName, "New empty bank");
-
+    const String newName  = "Bank " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
+    const int slotIndex   = 0; // Slot 1 (zero-based)
+    const String presetId = processor->saveCurrentAsPreset(newName, "New bank from current grid", slotIndex);
     if (!presetId.isEmpty())
     {
+        // Processor already called setActivePreset(presetId, slotIndex). Refresh + sync UI highlight.
         refreshPresetList();
-
-        Timer::callAfterDelay(1000, [this]() {
-            shouldHighlightFirstSlot = false;
-            repaint();
-        });
+        updateActiveSlotAcrossPresets(presetId, slotIndex);
     }
 }
 
@@ -627,12 +623,17 @@ void PresetBrowserComponent::handleSaveSlotClicked(const String& presetId, int s
     }
 }
 
+// PresetBrowserComponent.cpp
 void PresetBrowserComponent::performSaveToSlot(const String& presetId, int slotIndex, const String& description)
 {
-    // CORRECT: Use the actual saveToSlot method
+    if (!processor) return;
+
     if (processor->saveToSlot(presetId, slotIndex, description))
     {
+        // Make the just-saved slot the active one
+        processor->setActivePreset(presetId, slotIndex); // update processor state
         refreshPresetList();
+        updateActiveSlotAcrossPresets(presetId, slotIndex); // update UI highlight
     }
     else
     {
@@ -640,6 +641,7 @@ void PresetBrowserComponent::performSaveToSlot(const String& presetId, int slotI
             "Save Failed", "Failed to save to slot " + String(slotIndex + 1));
     }
 }
+
 
 void PresetBrowserComponent::handleDeleteSlotClicked(const String& presetId, int slotIndex)
 {
