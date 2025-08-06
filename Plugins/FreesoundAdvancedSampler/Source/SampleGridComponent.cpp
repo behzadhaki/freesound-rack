@@ -1418,6 +1418,7 @@ void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
     if (!isPlaying || !hasValidSample)
         return;
 
+    playheadPosition = processor->getSampleRate() * playheadPosition / fileSourceSampleRate;
     float x = bounds.getX() + (playheadPosition * bounds.getWidth());
 
     g.setColour(padColour.withAlpha(0.8f)); // Use pad colour with alpha for playhead
