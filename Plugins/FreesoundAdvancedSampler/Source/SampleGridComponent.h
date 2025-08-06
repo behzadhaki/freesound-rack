@@ -22,11 +22,19 @@
 static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampler-data"; // for inter plugin drag and drop
 
 //==============================================================================
+enum class SvgFitMode {
+    FillEntireBadge,    // No padding, fills entire badge
+    FillWithPadding,    // Small padding, recommended
+    FitProportionally,  // Maintains aspect ratio
+    Stretch             // May distort SVG
+};
 
 struct Badge {
     String id;
     String text;
     String icon;
+    String svgContent;  // SVG content as string
+    std::unique_ptr<juce::Drawable> svgDrawable;  // Parsed SVG drawable
     Colour backgroundColour;
     Colour textColour;
     std::function<void(const MouseEvent&)> onClick;
@@ -39,10 +47,39 @@ struct Badge {
     bool isBold = true;
     Rectangle<int> bounds;
 
+    // Default constructor
     Badge(const String& badgeId, const String& badgeText, Colour bgColor = Colour(0x80404040))
         : id(badgeId), text(badgeText), backgroundColour(bgColor), textColour(Colours::white) {}
 
+    // SVG constructor
+    Badge(const String& badgeId, const String& svgString, Colour bgColor, bool /*isSvg*/)
+        : id(badgeId), svgContent(svgString), backgroundColour(bgColor), textColour(Colours::white)
+    {
+        if (svgContent.isNotEmpty()) {
+            createSvgDrawable();
+        }
+    }
 
+    // DELETE copy constructor and assignment operator
+    Badge(const Badge&) = delete;
+    Badge& operator=(const Badge&) = delete;
+
+    // DEFAULT move constructor and assignment operator
+    Badge(Badge&&) = default;
+    Badge& operator=(Badge&&) = default;
+
+    // Method to create drawable from SVG string
+    void createSvgDrawable() {
+        if (svgContent.isNotEmpty()) {
+            auto xmlDoc = std::unique_ptr<XmlElement>(XmlDocument::parse(svgContent));
+            if (xmlDoc) {
+                svgDrawable = Drawable::createFromSVG(*xmlDoc);
+            }
+        }
+    }
+
+    // Check if this badge uses SVG
+    bool usesSvg() const { return svgDrawable != nullptr; }
 };
 
 //==============================================================================
@@ -216,6 +253,9 @@ protected:
     void performInternalDragDrop();
 
     void showDetailedSampleInfo();
+
+    void drawSvgBadge(Graphics& g, const Badge& badge, SvgFitMode fitMode = SvgFitMode::FillWithPadding, int reducedBounds = 0);
+
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SamplePad)
 };

@@ -11,6 +11,7 @@
 
 #include "SampleGridComponent.h"
 #include "PluginEditor.h"
+#include "BadgeSVGs.h"
 
 //==============================================================================
 // SamplePad Complete Implementation
@@ -208,7 +209,7 @@ void SamplePad::paint(Graphics& g)
         // Overlay MIDI/Keyboard info at top-right of waveform (ONLY for normal mode)
         if (padMode == PadMode::Normal)
         {
-            g.setColour(Colours::white);
+            g.setColour(padColour);
             g.setFont(Font(11.0f));
 
             // Create MIDI info display
@@ -220,7 +221,7 @@ void SamplePad::paint(Graphics& g)
             // Position at top-right corner of waveform area
             auto midiInfoBounds = Rectangle<int>(waveformBounds.getRight() - 60, waveformBounds.getY(), 60, 14);
             if (!isPlaying) {
-                g.setColour(Colour(0x80000000).withAlpha(0.5f));
+                g.setColour(Colour(0x80000000).withAlpha(0.0f));
                 g.fillRect(midiInfoBounds);
             }
             g.setColour(Colours::white);
@@ -228,7 +229,7 @@ void SamplePad::paint(Graphics& g)
         }
 
         // Draw Freesound ID at bottom-right of waveform
-        g.setColour(Colours::white);
+        g.setColour(padColour);
         g.setFont(Font(10.0f));
 
         String displayText = "FS ID: " + freesoundId;
@@ -242,10 +243,10 @@ void SamplePad::paint(Graphics& g)
         idBounds = Rectangle<int>(idBounds.getRight() - 60, idBounds.getY(), 60, 14);
 
         if (!isPlaying && !isPreviewPlaying) {
-            g.setColour(Colour(0x80000000).withAlpha(0.5f));
+            g.setColour(Colour(0x80000000).withAlpha(0.0f));
             g.fillRect(idBounds);
         }
-        g.setColour(Colours::white);
+        g.setColour(!isPreviewMode()? padColour : Colours::white);
         g.drawText(displayText, idBounds, Justification::centredRight, true);
     }
 
@@ -258,6 +259,13 @@ void SamplePad::paint(Graphics& g)
         emptyBounds.removeFromTop(18);
         emptyBounds.removeFromBottom(18);
         g.drawText("Empty", emptyBounds, Justification::centred);
+    }
+
+    if (hasValidSample) {
+        if (isPlaying)
+            queryTextBox.setColour(TextEditor::backgroundColourId, padColour.withAlpha(0.0f));
+        else
+            queryTextBox.setColour(TextEditor::backgroundColourId, padColour.withAlpha(0.1f));
     }
 }
 
@@ -1032,7 +1040,41 @@ void SamplePad::cleanupProgressComponents()
     repaint();
 }
 
-// Badge methods
+void SamplePad::drawSvgBadge(Graphics& g, const Badge& badge, SvgFitMode fitMode, int reducedBounds)
+{
+    if (!badge.usesSvg() || !badge.svgDrawable) return;
+
+    auto bounds = badge.bounds.toFloat();
+
+    switch (fitMode) {
+        case SvgFitMode::FillEntireBadge:
+            // No padding - SVG fills the entire badge
+                badge.svgDrawable->drawWithin(g, bounds.reduced(reducedBounds),
+                    RectanglePlacement::centred | RectanglePlacement::fillDestination, 0.6f);
+        break;
+
+        case SvgFitMode::FillWithPadding:
+            // Small padding to avoid touching edges
+                bounds = bounds.reduced(1.0f);
+        badge.svgDrawable->drawWithin(g, bounds.reduced(reducedBounds),
+            RectanglePlacement::centred | RectanglePlacement::fillDestination, 0.6f);
+        break;
+
+        case SvgFitMode::FitProportionally:
+            // Maintains aspect ratio, may not fill entire badge
+                bounds = bounds.reduced(2.0f);
+        badge.svgDrawable->drawWithin(g, bounds.reduced(reducedBounds),
+            RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize, 0.6f);
+        break;
+
+        case SvgFitMode::Stretch:
+            // Stretches to exact size (may distort the SVG)
+                badge.svgDrawable->drawWithin(g, bounds.reduced(reducedBounds),
+                    RectanglePlacement::stretchToFit, 0.6f);
+        break;
+    }
+}
+
 void SamplePad::initializeBadges()
 {
     // Clear existing badges
@@ -1043,24 +1085,27 @@ void SamplePad::initializeBadges()
     // Top-left badges (only for pads with valid samples)
     if (hasValidSample)
     {
-        // Copy/Drag badge - available in all modes
-        juce::String dragIcon = juce::String(CharPointer_UTF8("\xF0\x9F\x93\x91"));
-        Badge copyBadge("copy", dragIcon, Colour(0x8000A000).withAlpha(0.0f));
-        copyBadge.width = 16;
-        copyBadge.fontSize = 13.0f;
-        copyBadge.onClick = [this](const MouseEvent&) { handleCopyClick(); };
-        copyBadge.onDrag = [this](const MouseEvent& e) {
-            if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
-        };
-        topLeftBadges.push_back(copyBadge);
+        // Copy/Drag badge - use emplace_back with move
+        {
+            Badge copyBadge("copy", duplicateSVG2, Colour(0x80404040).withAlpha(0.0f), true);
+            copyBadge.width = 16;
+            copyBadge.fontSize = 13.0f;
+            copyBadge.onClick = [this](const MouseEvent&) { handleCopyClick(); };
+            copyBadge.onDrag = [this](const MouseEvent& e) {
+                if (e.getDistanceFromDragStart() > 10) performEnhancedDragDrop();
+            };
+            topLeftBadges.emplace_back(std::move(copyBadge)); // Use emplace_back with move
+        }
 
-        // Bookmark badge - available in all modes
-        Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
-                           processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
-                           Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
-        bookmarkBadge.width = 16;
-        bookmarkBadge.onClick = [this](const MouseEvent&) { handleBookmarkClick(); };
-        topLeftBadges.push_back(bookmarkBadge);
+        // Bookmark badge - use emplace_back with move
+        {
+            Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
+                               processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
+                               Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
+            bookmarkBadge.width = 16;
+            bookmarkBadge.onClick = [this](const MouseEvent&) { handleBookmarkClick(); };
+            topLeftBadges.emplace_back(std::move(bookmarkBadge)); // Use emplace_back with move
+        }
     }
 
     // Top-right badges
@@ -1069,20 +1114,22 @@ void SamplePad::initializeBadges()
         // Delete badge - only for Normal mode
         if (padMode == PadMode::Normal)
         {
-            Badge delBadge("delete", String(CharPointer_UTF8("\xE2\x9C\x95")), Colour(0x80C62828).withAlpha(0.0f));
+
+            // Badge delBadge("delete", String(CharPointer_UTF8("\xE2\x9C\x95")), Colour(0x80C62828).withAlpha(0.0f));
+            Badge delBadge("delete", deleteSVG, Colour(0x80404040).withAlpha(0.0f), true);
             delBadge.textColour = Colours::mediumvioletred.withAlpha(0.8f);
             delBadge.onClick = [this](const MouseEvent&) { handleDeleteClick(); };
             delBadge.fontSize = 14.0f;
-            delBadge.width = 14;
+            delBadge.width = 16;
             delBadge.isBold = true;
-            topRightBadges.push_back(delBadge);
+            topRightBadges.emplace_back(std::move(delBadge)); // Use emplace_back with move
         }
 
         // Web badge - available in all modes if freesoundId exists
         if (freesoundId.isNotEmpty())
         {
             Badge webBadge("web", String(CharPointer_UTF8("\xF0\x9F\x94\x97")), Colour(0x800277BD).withAlpha(0.0f));
-            webBadge.width = 14;
+            webBadge.width = 20;
             webBadge.fontSize = 12.0f;
             webBadge.onDoubleClick = [this]() {
                 URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
@@ -1094,7 +1141,7 @@ void SamplePad::initializeBadges()
                     showDetailedSampleInfo();
                 }
             };
-            topRightBadges.push_back(webBadge);
+            topRightBadges.emplace_back(std::move(webBadge)); // Use emplace_back with move
         }
 
         // License badge - available in all modes if license exists
@@ -1106,32 +1153,34 @@ void SamplePad::initializeBadges()
             licenseBadge.fontSize = 9.0f;
             licenseBadge.isBold = false;
             licenseBadge.onDoubleClick = [this]() { URL(licenseType).launchInDefaultBrowser(); };
-            topRightBadges.push_back(licenseBadge);
+            topRightBadges.emplace_back(std::move(licenseBadge)); // Use emplace_back with move
         }
     }
 
     // Bottom-left badges
     if (hasValidSample)
     {
-        // WAV export badge - available in all modes
-        Badge wavBadge("wav", String(CharPointer_UTF8("\xF0\x9F\x92\xBE")), Colour(0x806A5ACD).withAlpha(0.0f));
-        wavBadge.width = 20;
-        wavBadge.fontSize = 16.0f;
-        wavBadge.onClick = [this](const MouseEvent&) { handleWavCopyClick(); };
-        wavBadge.onDrag = [this](const MouseEvent& e) {
-            if (e.getDistanceFromDragStart() > 10) {
-                File wavFile = getWavFile();
-                if (!wavFile.existsAsFile()) {
-                    if (!convertOggToWav(audioFile, wavFile)) return;
+        // WAV export badge using SVG - use emplace_back with move
+        {
+            Badge wavBadge("wav", wavCircleSVG, Colour(0x80404040), true);
+            wavBadge.width = 16;
+            wavBadge.fontSize = 16.0f;
+            wavBadge.onClick = [this](const MouseEvent&) { handleWavCopyClick(); };
+            wavBadge.onDrag = [this](const MouseEvent& e) {
+                if (e.getDistanceFromDragStart() > 10) {
+                    File wavFile = getWavFile();
+                    if (!wavFile.existsAsFile()) {
+                        if (!convertOggToWav(audioFile, wavFile)) return;
+                    }
+                    if (wavFile.existsAsFile()) {
+                        StringArray filePaths;
+                        filePaths.add(wavFile.getFullPathName());
+                        performExternalDragDropOfFiles(filePaths, false);
+                    }
                 }
-                if (wavFile.existsAsFile()) {
-                    StringArray filePaths;
-                    filePaths.add(wavFile.getFullPathName());
-                    performExternalDragDropOfFiles(filePaths, false);
-                }
-            }
-        };
-        bottomLeftBadges.push_back(wavBadge);
+            };
+            bottomLeftBadges.emplace_back(std::move(wavBadge)); // Use emplace_back with move
+        }
 
         // Search badge - only for Normal mode
         if (padMode == PadMode::Normal)
@@ -1154,7 +1203,7 @@ void SamplePad::initializeBadges()
                         "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
                 }
             };
-            bottomLeftBadges.push_back(searchBadge);
+            bottomLeftBadges.emplace_back(std::move(searchBadge)); // Use emplace_back with move
         }
     }
 
@@ -1179,7 +1228,7 @@ void SamplePad::initializeBadges()
                     "Empty Query", "Please enter a search term in the pad's text box or the main search box.");
             }
         };
-        bottomLeftBadges.push_back(searchBadge);
+        bottomLeftBadges.emplace_back(std::move(searchBadge)); // Use emplace_back with move
     }
 }
 
@@ -1267,19 +1316,27 @@ void SamplePad::layoutBadges()
 
 void SamplePad::paintBadges(Graphics& g)
 {
-    auto paintBadgeGroup = [&g](const std::vector<Badge>& badges) {
+    auto paintBadgeGroup = [this, &g](const std::vector<Badge>& badges) {
         for (const auto& badge : badges) {
             if (!badge.visible) continue;
 
+            // Draw background
             g.setGradientFill(ColourGradient(
                 badge.backgroundColour, badge.bounds.getTopLeft().toFloat(),
                 badge.backgroundColour.darker(0.2f), badge.bounds.getBottomRight().toFloat(), false));
             g.fillRoundedRectangle(badge.bounds.toFloat(), 3.0f);
 
-            g.setColour(badge.textColour);
-            g.setFont(badge.isBold ? Font(badge.fontSize, Font::bold) : Font(badge.fontSize));
-            g.drawText(badge.icon.isNotEmpty() ? badge.icon : badge.text,
-                      badge.bounds, Justification::centred);
+            // Draw content - SVG or text/icon
+            if (badge.usesSvg() && badge.svgDrawable) {
+                // Use the custom SVG drawing method with recommended settings
+                drawSvgBadge(g, badge, SvgFitMode::FillWithPadding, (badge.id == "delete") ? 1 : 0);
+            } else {
+                // Draw text/icon (existing behavior)
+                g.setColour(badge.textColour);
+                g.setFont(badge.isBold ? Font(badge.fontSize, Font::bold) : Font(badge.fontSize));
+                g.drawText(badge.icon.isNotEmpty() ? badge.icon : badge.text,
+                          badge.bounds, Justification::centred);
+            }
         }
     };
 
@@ -1815,34 +1872,13 @@ SampleGridComponent::~SampleGridComponent()
 void SampleGridComponent::paint(Graphics& g)
 {
     // Dark grid background
-    g.setColour(Colour(0x800F0F0F));
+    g.setColour(Colour(0x800F0F0F).withAlpha(0.0f));
     g.fillAll();
-
-    // Add subtle grid lines for visual organization
-    g.setColour(Colour(0x802A2A2A).withAlpha(0.3f));
 
     auto bounds = getLocalBounds();
     int padding = 4;
     int bottomControlsHeight = 90;
     bounds.removeFromBottom(bottomControlsHeight + padding);
-
-    int totalPadding = padding * (GRID_SIZE + 1);
-    int padWidth = (bounds.getWidth() - totalPadding) / GRID_SIZE;
-    int padHeight = (bounds.getHeight() - totalPadding) / GRID_SIZE;
-
-    // Draw vertical grid lines
-    for (int col = 0; col <= GRID_SIZE; ++col)
-    {
-        int x = padding + col * (padWidth + padding) - (padding / 2);
-        g.drawLine(x, bounds.getY(), x, bounds.getBottom(), 1.0f);
-    }
-
-    // Draw horizontal grid lines
-    for (int row = 0; row <= GRID_SIZE; ++row)
-    {
-        int y = padding + row * (padHeight + padding) - (padding / 2);
-        g.drawLine(bounds.getX(), y, bounds.getRight(), y, 1.0f);
-    }
 
     // Add visual feedback for enhanced drag hover
     if (isEnhancedDragHover && dragHoverPadIndex >= 0 && dragHoverPadIndex < TOTAL_PADS)
