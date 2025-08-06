@@ -2164,69 +2164,62 @@ void SampleGridComponent::shuffleSamples()
     if (!processor)
         return;
 
-    // Collect samples WITH their current pad indices
-    Array<std::pair<int, SamplePad::SampleInfo>> samplesWithIndices;
+    // Collect occupied pad indices and their SampleInfo
     Array<int> occupiedPadIndices;
+    Array<SamplePad::SampleInfo> samplesToShuffle;
 
     for (int i = 0; i < TOTAL_PADS; ++i)
     {
-        auto sampleInfo = samplePads[i]->getSampleInfo();
-        if (sampleInfo.hasValidSample)
+        auto info = samplePads[i]->getSampleInfo();
+        if (info.hasValidSample)
         {
-            samplesWithIndices.add({i, sampleInfo});
             occupiedPadIndices.add(i);
+            samplesToShuffle.add(info);
         }
     }
 
-    // If we have no samples or only one sample, nothing to shuffle
-    if (samplesWithIndices.size() <= 1)
+    // Nothing to shuffle?
+    if (samplesToShuffle.size() <= 1)
         return;
 
-    // Extract just the sample info for shuffling
-    Array<SamplePad::SampleInfo> samplesToShuffle;
-    for (const auto& pair : samplesWithIndices)
-    {
-        samplesToShuffle.add(pair.second);
-    }
-
-    // Shuffle the samples array using JUCE's Random class
+    // Fisher–Yates shuffle
     Random random;
     for (int i = samplesToShuffle.size() - 1; i > 0; --i)
     {
-        int j = random.nextInt(i + 1);
+        const int j = random.nextInt(i + 1);
         samplesToShuffle.swap(i, j);
     }
 
-    // Clear only the occupied pads
-    for (int padIndex : occupiedPadIndices)
+    // Re-apply shuffled samples back to the SAME occupied positions
+    for (int i = 0; i < samplesToShuffle.size(); ++i)
     {
-        samplePads[padIndex]->clearSample();
-    }
+        const int padIndex = occupiedPadIndices[i];
+        const auto& s = samplesToShuffle[i];
 
-    // Redistribute shuffled samples back to the SAME occupied positions
-    for (int i = 0; i < samplesToShuffle.size() && i < occupiedPadIndices.size(); ++i)
-    {
-        const auto& sample = samplesToShuffle[i];
-        int targetPadIndex = occupiedPadIndices[i];
-
-        samplePads[targetPadIndex]->setSample(
-            sample.audioFile,
-            sample.sampleName,
-            sample.authorName,
-            sample.freesoundId,
-            sample.licenseType,
-            sample.query  // Preserve the query
+        // Update the pad visually (preserve per-pad query)
+        samplePads[padIndex]->setSample(
+            s.audioFile,
+            s.sampleName,
+            s.authorName,
+            s.freesoundId,
+            s.licenseType,
+            s.query // keep the existing query text
         );
+
+        // CRITICAL: update processor mapping so setSources loads the right files
+        processor->setPadSample(padIndex, s.freesoundId);
+
+        // (Optional, but keeps your arrays/UI in sync)
+        FSSound fs; fs.id = s.freesoundId; fs.name = s.sampleName; fs.user = s.authorName; fs.license = s.licenseType;
+        updateSinglePadInProcessor(padIndex, fs);
     }
 
-    // Update processor arrays to match new order
-    updateProcessorArraysFromGrid();
+    // Rebuild sampler ONCE after the mapping is correct
+    processor->setSources();
 
-    // Reload the sampler with new pad order
-    if (processor)
-    {
-        processor->setSources();
-    }
+    // Refresh visuals
+    for (auto& pad : samplePads)
+        pad->repaint();
 }
 
 void SampleGridComponent::updateProcessorArraysFromGrid()
