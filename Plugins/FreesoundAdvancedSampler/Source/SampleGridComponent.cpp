@@ -1573,6 +1573,7 @@ void SamplePad::handleDeleteClick()
             if (result == 1)
             {
                 clearSample();
+                processor->clearPad(padIndex); // add this to sync state
 
                 if (auto* gridComponent = findParentComponentOfClass<SampleGridComponent>())
                 {
