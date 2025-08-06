@@ -1101,7 +1101,7 @@ void SamplePad::initializeBadges()
         {
             Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
                                processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
-                               Colours::goldenrod : Colour(0x80808080).withAlpha(0.3f));
+                               Colours::goldenrod : Colour(0x80808080).withAlpha(0.0f));
             bookmarkBadge.width = 16;
             bookmarkBadge.onClick = [this](const MouseEvent&) { handleBookmarkClick(); };
             topLeftBadges.emplace_back(std::move(bookmarkBadge)); // Use emplace_back with move
@@ -1162,7 +1162,7 @@ void SamplePad::initializeBadges()
     {
         // WAV export badge using SVG - use emplace_back with move
         {
-            Badge wavBadge("wav", wavCircleSVG, Colour(0x80404040), true);
+            Badge wavBadge("wav", wavCircleSVG, Colour(0x80404040).withAlpha(0.0f), true);
             wavBadge.width = 16;
             wavBadge.fontSize = 16.0f;
             wavBadge.onClick = [this](const MouseEvent&) { handleWavCopyClick(); };
@@ -1417,7 +1417,7 @@ void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
 
     float x = bounds.getX() + (playheadPosition * bounds.getWidth());
 
-    g.setColour(Colours::red);
+    g.setColour(padColour.withAlpha(0.8f)); // Use pad colour with alpha for playhead
     g.drawLine(x, bounds.getY(), x, bounds.getBottom(), 2.0f);
 }
 
