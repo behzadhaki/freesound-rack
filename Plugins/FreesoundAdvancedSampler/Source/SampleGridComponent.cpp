@@ -159,7 +159,7 @@ void SamplePad::paint(Graphics& g)
     else if (isDownloading)
     {
         g.setColour(pluginChoiceColour);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
     else if (isPlaying)
     {
@@ -174,7 +174,7 @@ void SamplePad::paint(Graphics& g)
     else
     {
         g.setColour(Colour(0x802A2A2A));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
     }
 
     // Initialize and paint badges
@@ -1089,9 +1089,9 @@ void SamplePad::initializeBadges()
             };
             webBadge.onClick = [this](const MouseEvent& e) {
                 if (e.mods.isShiftDown()) {
-                    showDetailedSampleInfo();
-                } else {
                     URL("https://freesound.org/s/" + freesoundId + "/").launchInDefaultBrowser();
+                } else {
+                    showDetailedSampleInfo();
                 }
             };
             topRightBadges.push_back(webBadge);
@@ -3663,15 +3663,15 @@ void SampleDragArea::paint(Graphics& g)
     g.setFont(Font(10.0f));
 
     // Draw a modern drag icon (three horizontal lines)
-    auto iconBounds = bounds.removeFromLeft(20);
+    /*auto iconBounds = bounds.removeFromLeft(20);
     int lineY = iconBounds.getCentreY() - 6;
     for (int i = 0; i < 3; ++i)
     {
         g.fillRoundedRectangle(iconBounds.getX() + 4, lineY + i * 4, 12, 2, 1.0f);
-    }
+    }*/
 
     // Draw text
-    g.drawText("Drag\nSamples", bounds, Justification::centred);
+    g.drawText(juce::String(CharPointer_UTF8("\xF0\x9F\x93\x91")) + "\t All Samples", bounds, Justification::centred);
 }
 
 void SampleDragArea::resized()

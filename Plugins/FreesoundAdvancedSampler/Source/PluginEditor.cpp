@@ -210,6 +210,7 @@ void FreesoundAdvancedSamplerAudioProcessorEditor::resized()
     controlArea = controlArea.removeFromBottom(buttonHeight);
 
     // Split control area between drag area and directory button
+    controlArea = controlArea.reduced(4);
     sampleDragArea.setBounds(controlArea.removeFromLeft(buttonWidth));
     directoryOpenButton.setBounds(controlArea.removeFromRight(buttonWidth));
 

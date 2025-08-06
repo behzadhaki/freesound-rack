@@ -287,7 +287,7 @@ void MasterSearchPanel::paint(Graphics& g)
 
     // Subtle border
     g.setColour(Colour(0xff404040).withAlpha(0.6f));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 0.80f);
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 0.4f);
 }
 
 void MasterSearchPanel::resized()
