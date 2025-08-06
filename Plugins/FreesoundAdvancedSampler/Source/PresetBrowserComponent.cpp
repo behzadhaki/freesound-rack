@@ -457,11 +457,11 @@ void PresetBrowserComponent::refreshPresetList()
         // Check which slots have data
         for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
         {
-            Array<String> slotData = processor->getCollectionManager()->getPresetSlot(preset.presetId, slotIndex);
+            Array<SampleCollectionManager::PadSlotData> slotData = processor->getCollectionManager()->getPresetSlot(preset.presetId, slotIndex);
             bool hasData = false;
-            for (const String& freesoundId : slotData)
+            for (const auto& data : slotData)
             {
-                if (freesoundId.isNotEmpty())
+                if (data.freesoundId.isNotEmpty())
                 {
                     hasData = true;
                     break;
@@ -602,17 +602,8 @@ void PresetBrowserComponent::handleSaveSlotClicked(const String& presetId, int s
         return;
 
     // Check if slot already has data
-    Array<String> existingSlotData = processor->getCollectionManager()->getPresetSlot(presetId, slotIndex);
-    bool slotHasData = false;
-
-    for (const String& freesoundId : existingSlotData)
-    {
-        if (freesoundId.isNotEmpty())
-        {
-            slotHasData = true;
-            break;
-        }
-    }
+    Array<SampleCollectionManager::PadSlotData> existingSlotData = processor->getCollectionManager()->getPresetSlot(presetId, slotIndex);
+    bool slotHasData = !existingSlotData.isEmpty();
 
     if (slotHasData)
     {
@@ -638,6 +629,7 @@ void PresetBrowserComponent::handleSaveSlotClicked(const String& presetId, int s
 
 void PresetBrowserComponent::performSaveToSlot(const String& presetId, int slotIndex, const String& description)
 {
+    // CORRECT: Use the actual saveToSlot method
     if (processor->saveToSlot(presetId, slotIndex, description))
     {
         refreshPresetList();
@@ -736,25 +728,25 @@ void PresetBrowserComponent::performRename(const String& presetId, const String&
 
 void PresetBrowserComponent::saveCurrentPreset()
 {
-   if (!processor || !processor->getCollectionManager())
-       return;
+    if (!processor || !processor->getCollectionManager())
+        return;
 
-   String suggestedName = "Preset " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
+    String suggestedName = "Preset " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
 
-   String presetId = processor->saveCurrentAsPreset(suggestedName, "Saved from grid interface");
-   if (!presetId.isEmpty())
-   {
-       refreshPresetList();
-       AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-           "Preset Saved", "Preset saved as \"" + suggestedName + "\" in slot 0");
-   }
-   else
-   {
-       AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-           "Save Failed", "Failed to save preset.");
-   }
+    // CORRECT: Use saveCurrentAsPreset to create new preset
+    String presetId = processor->saveCurrentAsPreset(suggestedName, "Saved from grid interface", 0);
+    if (!presetId.isEmpty())
+    {
+        refreshPresetList();
+        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+            "Preset Saved", "Preset saved as \"" + suggestedName + "\" in slot 0");
+    }
+    else
+    {
+        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+            "Save Failed", "Failed to save preset.");
+    }
 }
-
 void PresetBrowserComponent::scrollBarMoved(ScrollBar*, double) {}
 
 void PresetBrowserComponent::restoreActiveState()
@@ -792,32 +784,32 @@ void PresetBrowserComponent::handleSampleCheckClicked(PresetListItem* item)
    Array<SampleMetadata> allMissingSamples;
    StringArray uniqueMissingSampleIds;
 
-   for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
-   {
-       Array<String> slotFreesoundIds = processor->getCollectionManager()->getPresetSlot(presetId, slotIndex);
+    for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
+    {
+        Array<SampleCollectionManager::PadSlotData> slotData = processor->getCollectionManager()->getPresetSlot(presetId, slotIndex);
 
-       for (const String& freesoundId : slotFreesoundIds)
-       {
-           if (freesoundId.isNotEmpty())
-           {
-               // Add to unique samples list
-               allUniqueSampleIds.addIfNotAlreadyThere(freesoundId);
+        for (const auto& data : slotData)
+        {
+            if (data.freesoundId.isNotEmpty())
+            {
+                // Add to unique samples list
+                allUniqueSampleIds.addIfNotAlreadyThere(data.freesoundId);
 
-               File sampleFile = processor->getCollectionManager()->getSampleFile(freesoundId);
-               if (!sampleFile.existsAsFile())
-               {
-                   // For missing samples, add unique IDs for download
-                   uniqueMissingSampleIds.addIfNotAlreadyThere(freesoundId);
+                File sampleFile = processor->getCollectionManager()->getSampleFile(data.freesoundId);
+                if (!sampleFile.existsAsFile())
+                {
+                    // For missing samples, add unique IDs for download
+                    uniqueMissingSampleIds.addIfNotAlreadyThere(data.freesoundId);
 
-                   SampleMetadata sample = processor->getCollectionManager()->getSample(freesoundId);
-                   if (!sample.freesoundId.isEmpty())
-                   {
-                       allMissingSamples.add(sample);
-                   }
-               }
-           }
-       }
-   }
+                    SampleMetadata sample = processor->getCollectionManager()->getSample(data.freesoundId);
+                    if (!sample.freesoundId.isEmpty())
+                    {
+                        allMissingSamples.add(sample);
+                    }
+                }
+            }
+        }
+    }
 
    int totalUniqueSamples = allUniqueSampleIds.size();
 

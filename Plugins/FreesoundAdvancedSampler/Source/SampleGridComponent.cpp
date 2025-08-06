@@ -2499,25 +2499,23 @@ void SampleGridComponent::handleMasterSearch(const Array<FSSound>& sounds, const
     if (!processor)
         return;
 
-    // Store the master search data for when downloads complete
+    // Store the master search data
     pendingMasterSearchSounds = sounds;
     pendingMasterSearchSoundInfo = soundInfo;
     pendingMasterSearchQuery = masterQuery;
 
-    // If no pending target pads, determine them now
-    if (pendingMasterSearchPads.isEmpty())
+    // FIXED: Get target pads that are connected or empty (allowing duplicates)
+    pendingMasterSearchPads.clear();
+    for (int i = 0; i < TOTAL_PADS; ++i)
     {
-        // Find pads with empty queries or connected to master
-        for (int i = 0; i < TOTAL_PADS; ++i)
+        if (samplePads[i]->isConnectedToMaster() || !samplePads[i]->hasQuery())
         {
-            if (samplePads[i]->isConnectedToMaster() || !samplePads[i]->hasQuery())
-            {
-                pendingMasterSearchPads.add(i);
-            }
+            pendingMasterSearchPads.add(i);
         }
     }
 
-    // DBG("Master search data stored - waiting for download completion to populate " + String(pendingMasterSearchPads.size()) + " pads");
+    // No duplication check - allow same sample on multiple pads
+    // DBG("Master search will populate " + String(pendingMasterSearchPads.size()) + " pads with " + String(sounds.size()) + " sounds");
 }
 
 void SampleGridComponent::populatePadsFromMasterSearch()
@@ -2526,85 +2524,57 @@ void SampleGridComponent::populatePadsFromMasterSearch()
         return;
 
     File downloadDir = processor->getCurrentDownloadLocation();
+    SampleCollectionManager* collectionManager = processor->getCollectionManager();
 
-    // DBG("Populating pads from master search - " + String(pendingMasterSearchPads.size()) + " target pads, " + String(pendingMasterSearchSounds.size()) + " sounds");
+    if (!collectionManager)
+        return;
 
-    // First, get current processor arrays to preserve existing samples
-    auto& currentSounds = processor->getCurrentSoundsArrayReference();
-    auto& soundsData = processor->getDataReference();
-
-    // Ensure arrays are properly sized
-    while (currentSounds.size() < TOTAL_PADS)
-        currentSounds.add(FSSound());
-    while (soundsData.size() < TOTAL_PADS)
-    {
-        StringArray emptyData;
-        emptyData.add(""); emptyData.add(""); emptyData.add(""); emptyData.add("");
-        soundsData.push_back(emptyData);
-    }
-
-    // Distribute sounds to target pads
+    // FIXED: Distribute sounds to pads (allowing duplicates if more pads than sounds)
     int soundIndex = 0;
     for (int padIndex : pendingMasterSearchPads)
     {
-        if (soundIndex >= pendingMasterSearchSounds.size() || padIndex >= TOTAL_PADS)
-            break;
+        if (padIndex >= TOTAL_PADS)
+            continue;
 
-        const FSSound& sound = pendingMasterSearchSounds[soundIndex];
+        // FIXED: Cycle through sounds if more pads than sounds (allows duplicates)
+        const FSSound& sound = pendingMasterSearchSounds[soundIndex % pendingMasterSearchSounds.size()];
 
-        // Create filename using ID-based naming scheme
+        // Add/update sample in collection
+        collectionManager->addOrUpdateSample(sound, pendingMasterSearchQuery);
+
+        // Create expected filename
         String expectedFilename = "FS_ID_" + sound.id + ".ogg";
         File audioFile = downloadDir.getChildFile(expectedFilename);
 
-        // DBG("Looking for file: " + audioFile.getFullPathName() + " (exists: " + String(audioFile.existsAsFile() ? "YES" : "NO") + ")");
-
         if (audioFile.existsAsFile())
         {
-            // Get sample info
-            String sampleName = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 0) ?
-                pendingMasterSearchSoundInfo[soundIndex][0] : sound.name;
-            String authorName = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 1) ?
-                pendingMasterSearchSoundInfo[soundIndex][1] : sound.user;
-            String license = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 2) ?
-                pendingMasterSearchSoundInfo[soundIndex][2] : sound.license;
-            String fsTags = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 3) ?
-                pendingMasterSearchSoundInfo[soundIndex][3] : ""; // Get tags from 5th element
-            String fsDescription = (soundIndex < pendingMasterSearchSoundInfo.size() && pendingMasterSearchSoundInfo[soundIndex].size() > 4) ?
-                pendingMasterSearchSoundInfo[soundIndex][4] : ""; // Get description from 6th element
+            // Get sample info with individual query for this pad
+            String sampleName = (soundIndex % pendingMasterSearchSoundInfo.size() < pendingMasterSearchSoundInfo.size() &&
+                                pendingMasterSearchSoundInfo[soundIndex % pendingMasterSearchSoundInfo.size()].size() > 0) ?
+                pendingMasterSearchSoundInfo[soundIndex % pendingMasterSearchSoundInfo.size()][0] : sound.name;
+            String authorName = (soundIndex % pendingMasterSearchSoundInfo.size() < pendingMasterSearchSoundInfo.size() &&
+                               pendingMasterSearchSoundInfo[soundIndex % pendingMasterSearchSoundInfo.size()].size() > 1) ?
+                pendingMasterSearchSoundInfo[soundIndex % pendingMasterSearchSoundInfo.size()][1] : sound.user;
+            String license = (soundIndex % pendingMasterSearchSoundInfo.size() < pendingMasterSearchSoundInfo.size() &&
+                            pendingMasterSearchSoundInfo[soundIndex % pendingMasterSearchSoundInfo.size()].size() > 2) ?
+                pendingMasterSearchSoundInfo[soundIndex % pendingMasterSearchSoundInfo.size()][2] : sound.license;
 
-            // Update the visual pad
-            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license, pendingMasterSearchQuery, fsTags, fsDescription);
+            // FIXED: Update pad individually with master query
+            samplePads[padIndex]->setSample(audioFile, sampleName, authorName, sound.id, license,
+                                          pendingMasterSearchQuery, sound.tags.joinIntoString(","), sound.description);
 
-            // CRITICAL: Update processor arrays at the correct pad position
-            FSSound processorSound = sound;
-            processorSound.filesize = (int)audioFile.getSize(); // Update file size
-            currentSounds.set(padIndex, processorSound);
-
-            // Update sound info with query
-            StringArray soundData;
-            soundData.add(sampleName);
-            soundData.add(authorName);
-            soundData.add(license);
-            soundData.add(pendingMasterSearchQuery);
-            soundsData[padIndex] = soundData;
-
-            // DBG("Successfully populated pad " + String(padIndex) + " with " + sampleName + " (MIDI note: " + String(36 + padIndex) + ")");
-        }
-        else
-        {
-            // DBG("File not found for pad " + String(padIndex) + ": " + expectedFilename);
+            // CRITICAL: Update processor state for this specific pad
+            processor->setPadSample(padIndex, sound.id);
         }
 
         soundIndex++;
     }
 
-    // CRITICAL: Rebuild the sampler with correct MIDI mappings
+    // CRITICAL: Rebuild sampler to map all pads correctly (including duplicates)
     processor->setSources();
 
     // Clear pending state
     clearPendingMasterSearchState();
-
-    // DBG("Master search population complete - sampler rebuilt");
 }
 
 void SampleGridComponent::clearPendingMasterSearchState()
@@ -3611,25 +3581,34 @@ void SampleGridComponent::updatePadFromCollection(int padIndex, const String& fr
     }
     else
     {
-        // Load sample data from collection
+        // FIXED: Load sample data from collection - works even if duplicate
         SampleMetadata sample = collectionManager->getSample(freesoundId);
         File audioFile = collectionManager->getSampleFile(freesoundId);
 
         if (!sample.freesoundId.isEmpty() && audioFile.existsAsFile())
         {
-            // Update visual pad
+            // Get individual query for this specific pad if available
+            String individualQuery = sample.searchQuery; // Default to sample's query
+
+            // Try to get pad-specific query from UI state if available
+            if (samplePads[padIndex]->hasQuery())
+            {
+                individualQuery = samplePads[padIndex]->getQuery();
+            }
+
+            // Update visual pad with individual data
             samplePads[padIndex]->setSample(
                 audioFile,
                 sample.originalName,
                 sample.authorName,
                 sample.freesoundId,
                 sample.licenseType,
-                sample.searchQuery,
+                individualQuery,  // Use individual query
                 sample.tags,
                 sample.description
             );
 
-            // Update processor state
+            // CRITICAL: Update processor state for this specific pad
             processor->setPadSample(padIndex, freesoundId);
         }
     }
@@ -3641,13 +3620,14 @@ void SampleGridComponent::refreshFromProcessor()
     if (!processor)
         return;
 
+    // FIXED: Update each pad individually, allowing duplicates
     for (int padIndex = 0; padIndex < TOTAL_PADS; ++padIndex)
     {
         String freesoundId = processor->getPadFreesoundId(padIndex);
         updatePadFromCollection(padIndex, freesoundId);
     }
 
-    // Update sampler
+    // CRITICAL: Rebuild sampler to ensure all pads are mapped correctly
     processor->setSources();
 }
 

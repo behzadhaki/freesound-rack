@@ -463,58 +463,72 @@ PresetInfo SampleCollectionManager::getPreset(const String& presetId) const
 // Preset-Sample Associations
 //==============================================================================
 
-bool SampleCollectionManager::setPresetSlot(const String& presetId, int slotIndex, 
-                                           const Array<String>& freesoundIds, 
-                                           const Array<int>& padPositions)
+bool SampleCollectionManager::setPresetSlot(const String& presetId, int slotIndex, const Array<PadSlotData>& padData)
 {
-    if (freesoundIds.size() != padPositions.size())
-        return false;
-    
     // Clear existing slot associations
     clearPresetSlot(presetId, slotIndex);
-    
-    // Add new associations
-    for (int i = 0; i < freesoundIds.size(); ++i)
+
+    // Add new associations - handles duplicates properly
+    for (const auto& data : padData)
     {
-        auto sampleIt = samples.find(freesoundIds[i]);
+        if (data.freesoundId.isEmpty() || data.padIndex < 0 || data.padIndex >= 16)
+            continue;
+
+        auto sampleIt = samples.find(data.freesoundId);
         if (sampleIt != samples.end())
         {
-            String positionKey = makePositionKey(slotIndex, padPositions[i]);
+            String positionKey = makePositionKey(slotIndex, data.padIndex);
             sampleIt->second.addToPreset(presetId, positionKey);
         }
+        else
+        {
+            // Sample not in collection yet - this could happen during save
+            DBG("Sample " + data.freesoundId + " not found in collection when saving preset");
+        }
     }
-    
+
     // Update preset modification time
     auto presetIt = presets.find(presetId);
     if (presetIt != presets.end())
     {
         presetIt->second.modifiedAt = Time::getCurrentTime().toString(true, true);
     }
-    
+
     return saveCollection();
 }
 
-Array<String> SampleCollectionManager::getPresetSlot(const String& presetId, int slotIndex) const
+Array<SampleCollectionManager::PadSlotData> SampleCollectionManager::getPresetSlot(const String& presetId, int slotIndex) const
 {
-    Array<String> result;
-    result.resize(16);
+    Array<PadSlotData> result;
 
+    // Collect all samples that have positions in this preset slot
     for (const auto& samplePair : samples)
     {
         Array<String> positions = samplePair.second.getPositionsInPreset(presetId);
-        
+
         for (const String& positionKey : positions)
         {
             auto [slot, pad] = parsePositionKey(positionKey);
             if (slot == slotIndex && pad >= 0 && pad < 16)
             {
-                result.set(pad, samplePair.second.freesoundId);
+                PadSlotData data;
+                data.padIndex = pad;
+                data.freesoundId = samplePair.second.freesoundId;
+                data.individualQuery = samplePair.second.searchQuery; // Use sample's default query for now
+                result.add(data);
             }
         }
     }
-    
+
+    // Sort by pad index to maintain consistent order
+    std::sort(result.begin(), result.end(),
+              [](const PadSlotData& a, const PadSlotData& b) {
+                  return a.padIndex < b.padIndex;
+              });
+
     return result;
 }
+
 
 bool SampleCollectionManager::clearPresetSlot(const String& presetId, int slotIndex)
 {
@@ -535,34 +549,51 @@ bool SampleCollectionManager::clearPresetSlot(const String& presetId, int slotIn
     return saveCollection();
 }
 
-bool SampleCollectionManager::saveCurrentStateToPreset(const String& presetId, int slotIndex, 
-                                                      const Array<SampleMetadata>& currentSamples, 
+bool SampleCollectionManager::saveCurrentStateToPreset(const String& presetId, int slotIndex,
+                                                      const Array<SampleMetadata>& currentSamples,
                                                       const Array<int>& padPositions)
 {
     if (currentSamples.size() != padPositions.size())
         return false;
-    
+
     Array<String> freesoundIds;
     for (const auto& sample : currentSamples)
     {
         freesoundIds.add(sample.freesoundId);
     }
-    
-    return setPresetSlot(presetId, slotIndex, freesoundIds, padPositions);
+
+    Array<PadSlotData> padData;
+    for (int i = 0; i < freesoundIds.size() && i < padPositions.size(); ++i)
+    {
+        padData.add(PadSlotData(padPositions[i], freesoundIds[i]));
+    }
+    return setPresetSlot(presetId, slotIndex, padData);
 }
 
 Array<SampleMetadata> SampleCollectionManager::loadPresetSlot(const String& presetId, int slotIndex) const
 {
-    Array<SampleMetadata> result; // Initialize with 16 empty metadata objects
-    result.resize(16);
+    Array<SampleMetadata> result;
 
-    Array<String> freesoundIds = getPresetSlot(presetId, slotIndex);
-    
-    for (int i = 0; i < freesoundIds.size(); ++i)
+    // Get pad-specific data
+    Array<PadSlotData> padData = getPresetSlot(presetId, slotIndex);
+
+    // Sort by pad index to maintain order
+    std::sort(padData.begin(), padData.end(),
+              [](const PadSlotData& a, const PadSlotData& b) {
+                  return a.padIndex < b.padIndex;
+              });
+
+    for (const auto& data : padData)
     {
-        if (freesoundIds[i].isNotEmpty())
+        if (data.freesoundId.isNotEmpty())
         {
-            result.set(i, getSample(freesoundIds[i]));
+            SampleMetadata sample = getSample(data.freesoundId);
+            if (!sample.freesoundId.isEmpty())
+            {
+                // Store pad index in the metadata for reference
+                // (You might need to add padIndex to SampleMetadata struct)
+                result.add(sample);
+            }
         }
     }
     
@@ -661,7 +692,7 @@ void SampleCollectionManager::validateSampleFiles()
 bool SampleCollectionManager::saveCollection()
 {
     var collectionJson = createCollectionJson();
-    String jsonString = JSON::toString(collectionJson, true);
+    String jsonString = JSON::toString(collectionJson, false);
     
     return collectionFile.replaceWithText(jsonString);
 }

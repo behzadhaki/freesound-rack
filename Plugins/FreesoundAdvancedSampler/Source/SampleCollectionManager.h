@@ -128,8 +128,20 @@ public:
     PresetInfo getPreset(const String& presetId) const;
     
     // Preset-sample associations
-    bool setPresetSlot(const String& presetId, int slotIndex, const Array<String>& freesoundIds, const Array<int>& padPositions);
-    Array<String> getPresetSlot(const String& presetId, int slotIndex) const; // Returns freesoundIds in pad order
+    struct PadSlotData
+    {
+        int padIndex;
+        String freesoundId;
+        String individualQuery; // Each pad can have its own query even if same sample
+
+        PadSlotData() : padIndex(-1) {}
+        PadSlotData(int pad, const String& id, const String& query = "")
+            : padIndex(pad), freesoundId(id), individualQuery(query) {}
+    };
+
+    bool setPresetSlot(const String& presetId, int slotIndex, const Array<PadSlotData>& padData);
+    Array<PadSlotData> getPresetSlot(const String& presetId, int slotIndex) const;
+
     bool clearPresetSlot(const String& presetId, int slotIndex);
     
     // Preset operations

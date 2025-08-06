@@ -366,7 +366,7 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
     xml.setAttribute("activePresetId", activePresetId);
     xml.setAttribute("activeSlotIndex", activeSlotIndex);
 
-    // Save current pad state
+    // FIXED: Save current pad state with duplicates
     auto* padsXml = xml.createNewChildElement("CurrentPads");
     for (int i = 0; i < 16; ++i)
     {
@@ -376,6 +376,19 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
             auto* padXml = padsXml->createNewChildElement("Pad");
             padXml->setAttribute("index", i);
             padXml->setAttribute("freesoundId", freesoundId);
+
+            // Save individual query if available
+            if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+            {
+                if (i < editor->getSampleGridComponent().samplePads.size())
+                {
+                    String individualQuery = editor->getSampleGridComponent().samplePads[i]->getQuery();
+                    if (individualQuery.isNotEmpty())
+                    {
+                        padXml->setAttribute("query", individualQuery);
+                    }
+                }
+            }
         }
     }
 
@@ -431,7 +444,7 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
     // Clear current state
     clearAllPads();
 
-    // Load pad state
+    // FIXED: Load pad state with duplicates and individual queries
     if (auto* padsXml = xml.getChildByName("CurrentPads"))
     {
         for (auto* padXml : padsXml->getChildIterator())
@@ -440,10 +453,23 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
             {
                 int padIndex = padXml->getIntAttribute("index", -1);
                 String freesoundId = padXml->getStringAttribute("freesoundId", "");
+                String individualQuery = padXml->getStringAttribute("query", "");
 
                 if (padIndex >= 0 && padIndex < 16 && freesoundId.isNotEmpty())
                 {
                     setPadSample(padIndex, freesoundId);
+
+                    // Restore individual query after UI is ready
+                    Timer::callAfterDelay(100, [this, padIndex, individualQuery]() {
+                        if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+                        {
+                            if (padIndex < editor->getSampleGridComponent().samplePads.size() &&
+                                individualQuery.isNotEmpty())
+                            {
+                                editor->getSampleGridComponent().samplePads[padIndex]->setQuery(individualQuery);
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -669,7 +695,7 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
         audioFormatManager.registerBasicFormats();
     }
 
-    // Load samples by pad index using collection manager
+    // FIXED: Load samples by pad index - each pad gets its own sampler sound, even if duplicate
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
         String freesoundId = getPadFreesoundId(padIndex);
@@ -691,7 +717,9 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
                     double releaseTime = 0.1;
                     double maxSampleLength = 10.0;
 
-                    sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote,
+                    // CRITICAL: Use padIndex as name, not freesoundId
+                    // This ensures each pad gets its own sampler sound instance
+                    sampler.addSound(new SamplerSound("pad_" + String(padIndex), *reader, notes, midiNote,
                                                      attackTime, releaseTime, maxSampleLength));
                 }
             }
@@ -767,34 +795,44 @@ String FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String&
     if (!collectionManager)
         return "";
 
-    // Create preset if it doesn't exist
+    // Create new preset
     String presetId = collectionManager->createPreset(name, description);
+    if (presetId.isEmpty())
+        return "";
 
-    // Get current pad state
-    Array<SampleMetadata> currentSamples;
-    Array<int> padPositions;
+    // FIXED: Save current pad-specific state to the new preset
+    Array<SampleCollectionManager::PadSlotData> padData;
 
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
         String freesoundId = getPadFreesoundId(padIndex);
         if (freesoundId.isNotEmpty())
         {
-            SampleMetadata sample = collectionManager->getSample(freesoundId);
-            if (!sample.freesoundId.isEmpty())
+            // Get individual query from the pad UI
+            String individualQuery = "";
+            if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
             {
-                currentSamples.add(sample);
-                padPositions.add(padIndex);
+                auto& gridComponent = editor->getSampleGridComponent();
+                if (padIndex < gridComponent.samplePads.size() && gridComponent.samplePads[padIndex])
+                {
+                    individualQuery = gridComponent.samplePads[padIndex]->getQuery();
+                }
             }
+
+            SampleCollectionManager::PadSlotData data(padIndex, freesoundId, individualQuery);
+            padData.add(data);
         }
     }
 
-    // Save to slot
-    if (collectionManager->saveCurrentStateToPreset(presetId, slotIndex, currentSamples, padPositions))
+    // Save to the specified slot
+    if (collectionManager->setPresetSlot(presetId, slotIndex, padData))
     {
         setActivePreset(presetId, slotIndex);
         return presetId;
     }
 
+    // If saving failed, clean up the preset
+    collectionManager->deletePreset(presetId);
     return "";
 }
 
@@ -803,29 +841,41 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const String& presetId, 
     if (!collectionManager)
         return false;
 
-    // Load samples for this preset slot
-    Array<SampleMetadata> samples = collectionManager->loadPresetSlot(presetId, slotIndex);
+    // FIXED: Load pad-specific data (handles duplicates correctly)
+    Array<SampleCollectionManager::PadSlotData> padData = collectionManager->getPresetSlot(presetId, slotIndex);
 
     // Clear current state
     clearAllPads();
 
-    // Load samples into pads
-    for (int padIndex = 0; padIndex < jmin(samples.size(), 16); ++padIndex)
+    // FIXED: Load each pad individually (allows duplicates)
+    for (const auto& data : padData)
     {
-        const SampleMetadata& sample = samples[padIndex];
-        if (!sample.freesoundId.isEmpty())
+        if (data.padIndex >= 0 && data.padIndex < 16 && data.freesoundId.isNotEmpty())
         {
-            setPadSample(padIndex, sample.freesoundId);
+            setPadSample(data.padIndex, data.freesoundId);
         }
     }
 
-    // Update sampler
+    // Update sampler with new pad assignments
     setSources();
 
-    // Update UI if available
+    // Update UI and restore individual queries
     if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
     {
         editor->getSampleGridComponent().refreshFromProcessor();
+
+        // Restore individual queries after UI refresh
+        Timer::callAfterDelay(100, [editor, padData]() {
+            auto& gridComponent = editor->getSampleGridComponent();
+            for (const auto& data : padData)
+            {
+                if (data.padIndex >= 0 && data.padIndex < gridComponent.samplePads.size() &&
+                    data.individualQuery.isNotEmpty())
+                {
+                    gridComponent.samplePads[data.padIndex]->setQuery(data.individualQuery);
+                }
+            }
+        });
     }
 
     setActivePreset(presetId, slotIndex);
@@ -837,25 +887,31 @@ bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const String& presetId, 
     if (!collectionManager)
         return false;
 
-    // Get current pad state
-    Array<SampleMetadata> currentSamples;
-    Array<int> padPositions;
+    // FIXED: Collect current pad-specific data (allows duplicates)
+    Array<SampleCollectionManager::PadSlotData> padData;
 
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
         String freesoundId = getPadFreesoundId(padIndex);
         if (freesoundId.isNotEmpty())
         {
-            SampleMetadata sample = collectionManager->getSample(freesoundId);
-            if (!sample.freesoundId.isEmpty())
+            // Get individual query from the pad UI
+            String individualQuery = "";
+            if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
             {
-                currentSamples.add(sample);
-                padPositions.add(padIndex);
+                auto& gridComponent = editor->getSampleGridComponent();
+                if (padIndex < gridComponent.samplePads.size() && gridComponent.samplePads[padIndex])
+                {
+                    individualQuery = gridComponent.samplePads[padIndex]->getQuery();
+                }
             }
+
+            SampleCollectionManager::PadSlotData data(padIndex, freesoundId, individualQuery);
+            padData.add(data);
         }
     }
 
-    return collectionManager->saveCurrentStateToPreset(presetId, slotIndex, currentSamples, padPositions);
+    return collectionManager->setPresetSlot(presetId, slotIndex, padData);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::setPadSample(int padIndex, const String& freesoundId)
