@@ -974,15 +974,6 @@ void FreesoundAdvancedSamplerAudioProcessor::clearAllPads()
     }
 }
 
-void FreesoundAdvancedSamplerAudioProcessor::incrementSamplePlayCount(int padIndex)
-{
-    String freesoundId = getPadFreesoundId(padIndex);
-    if (freesoundId.isNotEmpty() && collectionManager)
-    {
-        collectionManager->incrementPlayCount(freesoundId);
-    }
-}
-
 void FreesoundAdvancedSamplerAudioProcessor::setActivePreset(const String& presetId, int slotIndex)
 {
     activePresetId = presetId;

@@ -34,15 +34,12 @@ struct SampleMetadata
     std::map<String, Array<String>> presetAssociations; // e.g. "preset123" -> ["slot_0_pad_5", "slot_1_pad_12"]
     
     // Statistics
-    int playCount;
-    String lastPlayedAt;
     String lastModifiedAt;
     
     SampleMetadata()
         : duration(0.0)
         , fileSize(0)
         , isBookmarked(false)
-        , playCount(0)
     {}
     
     // Create from FSSound
@@ -151,9 +148,7 @@ public:
     //==============================================================================
     // Statistics and Maintenance
     //==============================================================================
-    
-    void incrementPlayCount(const String& freesoundId);
-    void updateLastPlayed(const String& freesoundId);
+
     void cleanupOrphanedSamples(); // Remove samples not in any preset and not bookmarked
     void validateSampleFiles(); // Check if sample files still exist
     

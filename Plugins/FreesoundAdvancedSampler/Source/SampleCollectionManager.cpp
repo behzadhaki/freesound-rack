@@ -45,8 +45,6 @@ var SampleMetadata::toJson() const
     // Usage tracking
     obj->setProperty("is_bookmarked", isBookmarked);
     obj->setProperty("bookmarked_at", bookmarkedAt);
-    obj->setProperty("play_count", playCount);
-    obj->setProperty("last_played_at", lastPlayedAt);
     obj->setProperty("last_modified_at", lastModifiedAt);
     
     // Preset associations
@@ -89,8 +87,6 @@ SampleMetadata SampleMetadata::fromJson(const var& json)
     // Usage tracking
     metadata.isBookmarked = json.getProperty("is_bookmarked", false);
     metadata.bookmarkedAt = json.getProperty("bookmarked_at", "");
-    metadata.playCount = json.getProperty("play_count", 0);
-    metadata.lastPlayedAt = json.getProperty("last_played_at", "");
     metadata.lastModifiedAt = json.getProperty("last_modified_at", "");
     
     // Preset associations
@@ -295,8 +291,6 @@ bool SampleCollectionManager::addOrUpdateSample(const SampleMetadata& metadata)
         SampleMetadata updated = metadata;
         updated.isBookmarked       = it->second.isBookmarked;
         updated.bookmarkedAt       = it->second.bookmarkedAt;
-        updated.playCount          = it->second.playCount;
-        updated.lastPlayedAt       = it->second.lastPlayedAt;
         updated.presetAssociations = it->second.presetAssociations;
 
         // Merge queries (existing + incoming)
@@ -658,30 +652,6 @@ Array<SampleMetadata> SampleCollectionManager::loadPresetSlot(const String& pres
 //==============================================================================
 // Statistics and Maintenance
 //==============================================================================
-
-void SampleCollectionManager::incrementPlayCount(const String& freesoundId)
-{
-    auto it = samples.find(freesoundId);
-    if (it != samples.end())
-    {
-        it->second.playCount++;
-        it->second.lastPlayedAt = Time::getCurrentTime().toString(true, true);
-        it->second.lastModifiedAt = it->second.lastPlayedAt;
-        saveCollection(); // Consider batching this for performance
-    }
-}
-
-void SampleCollectionManager::updateLastPlayed(const String& freesoundId)
-{
-    auto it = samples.find(freesoundId);
-    if (it != samples.end())
-    {
-        it->second.lastPlayedAt = Time::getCurrentTime().toString(true, true);
-        it->second.lastModifiedAt = it->second.lastPlayedAt;
-        saveCollection(); // Consider batching this for performance
-    }
-}
-
 void SampleCollectionManager::cleanupOrphanedSamples()
 {
     Array<String> toRemove;

@@ -174,9 +174,6 @@ public:
    void clearPad(int padIndex);
    void clearAllPads();
 
-   // NEW: Sample Operations
-   void incrementSamplePlayCount(int padIndex);
-
    // Window size methods
    void setWindowSize(int width, int height)
    {

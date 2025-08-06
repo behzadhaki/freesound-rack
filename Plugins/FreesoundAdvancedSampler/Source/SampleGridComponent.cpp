@@ -2402,12 +2402,6 @@ void SampleGridComponent::noteStarted(int noteNumber, float velocity)
     {
         samplePads[padIndex]->setIsPlaying(true);
         samplePads[padIndex]->setPlayheadPosition(0.0f);
-
-        // Track play count in collection manager
-        if (processor)
-        {
-            processor->incrementSamplePlayCount(padIndex);
-        }
     }
 }
 
