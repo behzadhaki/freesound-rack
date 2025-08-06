@@ -173,6 +173,8 @@ public:
     void performEnhancedDragDrop();
     void handleCopyClick();
 
+    void refreshStyleFromPadIndex();
+
     FreesoundAdvancedSamplerAudioProcessor* processor;
 
 protected:

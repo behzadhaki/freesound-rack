@@ -1796,6 +1796,20 @@ bool SamplePad::convertOggToWav(const File& oggFile, const File& wavFile)
     return wavFile.existsAsFile();
 }
 
+void SamplePad::refreshStyleFromPadIndex()
+{
+    // Recompute the per-slot colour
+    if (padMode == PadMode::Preview)
+        padColour = defaultColour.withAlpha(0.2f);
+    else
+        padColour = Colour::fromHSV((float) padIndex / 16.0f, 0.3f, 0.8f, 1.0f);
+
+    // Keep widgets in sync with the new colour
+    queryTextBox.setColour(TextEditor::highlightColourId, padColour.brighter(0.5f));
+
+    repaint();
+}
+
 //==============================================================================
 // SampleGridComponent Implementation
 //==============================================================================
@@ -3699,15 +3713,19 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     samplePads[sourcePadIndex]->setBounds(targetBounds);
     samplePads[targetPadIndex]->setBounds(sourceBounds);
 
-    // Update padIndex of each pad so MIDI note triggering is correct
+    // Update padIndex of each pad so MIDI / overlays are correct
     samplePads[sourcePadIndex]->setPadIndex(sourcePadIndex);
     samplePads[targetPadIndex]->setPadIndex(targetPadIndex);
+
+    // NEW: refresh per-index styling so the colours follow the slot
+    samplePads[sourcePadIndex]->refreshStyleFromPadIndex();
+    samplePads[targetPadIndex]->refreshStyleFromPadIndex();
 
     // Update processor pad assignments
     processor->setPadSample(sourcePadIndex, targetId);
     processor->setPadSample(targetPadIndex, sourceId);
 
-    // Rebuild the sampler to apply updated MIDI mappings
+    // Rebuild the sampler to apply updated mappings
     processor->setSources();
 
     // Repaint both pads
