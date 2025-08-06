@@ -1632,25 +1632,52 @@ void SamplePad::handleBookmarkClick()
     if (!hasValidSample || !processor)
         return;
 
-    SampleCollectionManager* collectionManager = processor->getCollectionManager();
+    auto* collectionManager = processor->getCollectionManager();
     if (!collectionManager)
         return;
 
-    if (collectionManager->isBookmarked(freesoundId))
+    const bool isBookmarked = collectionManager->isBookmarked(freesoundId);
+
+    if (isBookmarked)
     {
-        if (collectionManager->removeBookmark(freesoundId))
+        const bool shiftDown = ModifierKeys::getCurrentModifiers().isShiftDown();
+
+        if (shiftDown)
         {
-            repaint();
+            if (collectionManager->removeBookmark(freesoundId))
+                repaint();
+            return;
         }
+
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Remove Bookmark",
+            "Remove this sample from your bookmarks?",
+            "Remove", "Cancel",
+            nullptr,
+            ModalCallbackFunction::create([this](int result)
+            {
+                if (result == 1) // "Remove"
+                {
+                    if (processor)
+                    {
+                        if (auto* cm = processor->getCollectionManager())
+                        {
+                            if (cm->removeBookmark(freesoundId))
+                                repaint();
+                        }
+                    }
+                }
+            })
+        );
     }
     else
     {
         if (collectionManager->addBookmark(freesoundId))
-        {
             repaint();
-        }
     }
 }
+
 
 // Drag and drop methods
 void SamplePad::performEnhancedDragDrop()

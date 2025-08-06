@@ -59,6 +59,9 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
    bookmarkExpandablePanel.setOrientation(ExpandablePanel::Orientation::Left);
    bookmarkExpandablePanel.setContentComponent(&bookmarkViewerComponent);
    bookmarkExpandablePanel.setExpandedWidth(220);
+    bookmarkExpandablePanel.onExpandedChanged = [this](bool expanded){
+        if (expanded) {bookmarkViewerComponent.refreshBookmarks(); bookmarkExpandablePanel.repaint();}
+    };
 
    // RESTORE SAVED STATE instead of hardcoded false
    bookmarkExpandablePanel.setExpanded(processor.getBookmarkPanelExpandedState());

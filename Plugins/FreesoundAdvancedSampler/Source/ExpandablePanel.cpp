@@ -174,6 +174,7 @@ void ExpandablePanel::setExpanded(bool shouldExpand)
 void ExpandablePanel::handleExpandButtonClicked()
 {
     setExpanded(!expanded);
+    if (onExpandedChanged) onExpandedChanged(expanded); // invoke callback if provided
 }
 
 void ExpandablePanel::updateContentVisibility()
