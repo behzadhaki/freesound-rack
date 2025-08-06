@@ -75,9 +75,10 @@ private:
     Orientation orientation = Orientation::Left;
 
     // Styling
-    Colour expandedBgColour = Colour(0xff1A1A1A);
-    Colour collapsedBgColour = Colour(0xff2A2A2A);
+    Colour expandedBgColour = Colour(0xff1A1A1A).withAlpha(0.0f);
+    Colour collapsedBgColour = Colour(0xff2A2A2A).withAlpha(0.0f);
     Colour borderColour = Colour(0xff404040);
+    float boarderLineWidth = 0.8f;
 
     void handleExpandButtonClicked();
     void updateContentVisibility();

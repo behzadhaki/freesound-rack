@@ -51,7 +51,7 @@ public:
             g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
             g.setColour(isDangerButton ? dangerTextColourOff : textColourOff);
         }
-        g.setFont(Font(fontSize, Font::bold));
+        g.setFont(Font(fontSize));
         g.drawText(getButtonText(), bounds, Justification::centred);
 
     }

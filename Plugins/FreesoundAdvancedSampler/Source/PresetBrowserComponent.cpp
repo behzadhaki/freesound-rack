@@ -55,12 +55,12 @@ void SlotButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted, bo
     // Border intensity based on selection
     if (hasDataFlag)
     {
-        g.setColour(Colours::white.withAlpha(0.4f));
+        g.setColour(Colours::white.withAlpha(0.0f));
         g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Normal border
     }
     else
     {
-        g.setColour(Colours::white.withAlpha(0.2f));
+        g.setColour(Colours::white.withAlpha(0.0f));
         g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Dim border
     }
 
@@ -131,10 +131,10 @@ PresetListItem::PresetListItem(const PresetInfo& info)
     renameEditor.setJustification(Justification::centredLeft);
     renameEditor.setSelectAllWhenFocused(true);
     renameEditor.setFont(Font(20.0f, Font::bold)); // Reduced from 10.0f to 9.0f
-    renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+    renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).brighter(0.0f));
     renameEditor.setColour(TextEditor::textColourId, Colours::white);
-    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
-    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
+    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.0f));           // Normal border
+    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060).withAlpha(0.0f));   // Lighter grey when focused
     renameEditor.onReturnKey = [this]() { confirmRename(); };
     addAndMakeVisible(renameEditor);
 
@@ -163,12 +163,12 @@ void PresetListItem::paint(Graphics& g)
     const int lineHeight = bounds.getHeight() / 3;
 
     // Background
-    g.setColour(Colour(0xff2A2A2A).withAlpha(0.0f)); // Slightly transparent dark background
+    g.setColour(Colours::darkgrey.withAlpha(0.2f)); // Slightly transparent dark background
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
     // Border - use same color but different thickness for selection
-    g.setColour(Colour(0xff404040)); // Same color for both selected and unselected
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, isSelectedState ? 2.0f : 0.5f); // Thicker when selected
+    g.setColour(Colour(0xff404040).withAlpha(0.0f)); // Same color for both selected and unselected
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, isSelectedState ? 0.5f : 0.0f); // Thicker when selected
 
     // Line 2: Info
     auto infoLine = bounds.withHeight(lineHeight).translated(0, lineHeight);
@@ -379,10 +379,11 @@ PresetBrowserComponent::PresetBrowserComponent()
 
     // Dark rename editor
     renameEditor.setVisible(false);
-    renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+    renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
     renameEditor.setColour(TextEditor::textColourId, Colours::white);
     renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
     renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
+    renameEditor.setColour(TextEditor::highlightedTextColourId, Colours::black);
     renameEditor.onReturnKey = [this]() { hideInlineRenameEditor(true); };
     renameEditor.onEscapeKey = [this]() { hideInlineRenameEditor(false); };
     renameEditor.onFocusLost = [this]() { hideInlineRenameEditor(true); };
@@ -402,7 +403,7 @@ PresetBrowserComponent::~PresetBrowserComponent() {}
 void PresetBrowserComponent::paint(Graphics& g)
 {
     // Dark preset browser background
-    g.setColour(Colour(0xff1A1A1A));
+    g.setColour(Colour(0xff1A1A1A).withAlpha(0.9f));
     g.fillAll();
 
     // Modern border
@@ -479,7 +480,7 @@ void PresetBrowserComponent::refreshPresetList()
 
     int yPosition = 0;
     const int itemHeight = 85;
-    const int spacing = 3;
+    const int spacing = 8;
     const int fixedItemWidth = 180;
 
     for (const auto& presetInfo : presets)

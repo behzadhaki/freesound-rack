@@ -59,13 +59,14 @@ SamplePad::SamplePad(int index, PadMode mode)
     queryTextBox.setMouseClickGrabsKeyboardFocus(padMode == PadMode::Normal);
 
     // CONSISTENT styling for all states - dark background with white text
-    queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
-    queryTextBox.setColour(TextEditor::textColourId, Colours::white);
-    queryTextBox.setColour(TextEditor::highlightColourId, Colours::blue.withAlpha(0.3f));
-    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));
-    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));
-    queryTextBox.setFont(Font(9.0f));
-    queryTextBox.setJustification(Justification::topLeft);
+    queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.5f));
+    queryTextBox.setColour(TextEditor::textColourId, Colours::lightgrey);
+    queryTextBox.setColour(TextEditor::highlightColourId, padColour.brighter(0.5f));
+    queryTextBox.setColour(TextEditor::highlightedTextColourId, Colour(0xff2A2A2A));
+    queryTextBox.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.0f));
+    queryTextBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060).withAlpha(0.0f));
+    queryTextBox.setFont(Font(11.0f));
+    queryTextBox.setJustification(Justification::centredLeft);
 
     // Only add search functionality if in normal mode
     if (padMode == PadMode::Normal)
@@ -118,8 +119,8 @@ void SamplePad::paint(Graphics& g)
     {
         // Special styling for master-connected pads
         g.setGradientFill(ColourGradient(
-            Colour(0xff00D9FF).withAlpha(0.1f), bounds.getTopLeft().toFloat(),
-            Colour(0xff0099CC).withAlpha(0.1f), bounds.getBottomRight().toFloat(), false));
+            pluginChoiceColour.withAlpha(0.2f), bounds.getTopLeft().toFloat(),
+            pluginChoiceColour.withAlpha(0.2f), bounds.getBottomRight().toFloat(), false));
     }
     else
     {
@@ -173,7 +174,7 @@ void SamplePad::paint(Graphics& g)
     else
     {
         g.setColour(Colour(0x802A2A2A));
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 2.0f);
     }
 
     // Initialize and paint badges
@@ -252,7 +253,7 @@ void SamplePad::paint(Graphics& g)
     if (!hasValidSample && !isDownloading)
     {
         g.setColour(Colour(0x80666666));
-        g.setFont(Font(12.0f, Font::bold));
+        g.setFont(Font(10.0f, Font::bold));
         auto emptyBounds = bounds.reduced(8);
         emptyBounds.removeFromTop(18);
         emptyBounds.removeFromBottom(18);
@@ -266,7 +267,7 @@ void SamplePad::resized()
 
     // Position query text box or progress components at the bottom
     auto bottomBounds = bounds.reduced(3);
-    int bottomHeight = 14;
+    int bottomHeight = 18;
     bottomBounds = bottomBounds.removeFromBottom(bottomHeight);
 
     if (isDownloading && progressBar && progressLabel)
@@ -297,8 +298,8 @@ void SamplePad::resized()
         if (leftBadgesWidth > 0) {
             textBoxBounds.removeFromLeft(leftBadgesWidth);
         }
-
-        queryTextBox.setBounds(textBoxBounds);
+        queryTextBox.setJustification(Justification::topLeft);
+        queryTextBox.setBounds(textBoxBounds.reduced(2));
     }
 }
 
@@ -734,7 +735,7 @@ void SamplePad::setConnectedToMaster(bool connected)
             if (connectedToMaster)
             {
                 queryTextBox.setReadOnly(true);
-                queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff1A1A1A));
+                queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff1A1A1A).withAlpha(0.0f));
             }
             else
             {
@@ -751,7 +752,7 @@ void SamplePad::setConnectedToMaster(bool connected)
                 queryTextBox.setText(queryToRestore, dontSendNotification);
                 padQuery = queryToRestore;
                 queryTextBox.setReadOnly(false);
-                queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
+                queryTextBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
             }
         }
 
@@ -926,11 +927,11 @@ void SamplePad::startDownloadProgress()
     if (!progressLabel->getParentComponent())
         addAndMakeVisible(*progressLabel);
 
-    queryTextBox.setVisible(false);
+    queryTextBox.setVisible(true);
     progressBar->setVisible(true);
     progressLabel->setVisible(true);
 
-    progressLabel->setText("Downloading...", dontSendNotification);
+    progressLabel->setText("", dontSendNotification);
     resized();
     repaint();
 }
@@ -949,9 +950,10 @@ void SamplePad::updateDownloadProgress(double progress, const String& status)
 
         safeThis->currentDownloadProgress = jlimit(0.0, 1.0, progress);
 
-        String progressText = status.isEmpty() ?
-            "Downloading... " + String((int)(progress * 100)) + "%" :
-            status;
+        // String progressText = status.isEmpty() ?
+        //     "Downloading... " + String((int)(progress * 100)) + "%" :
+        //     status;
+        String progressText = "";
 
         if (safeThis->progressLabel)
         {
@@ -980,7 +982,8 @@ void SamplePad::finishDownloadProgress(bool success, const String& message)
         if (success)
         {
             if (safeThis->progressLabel)
-                safeThis->progressLabel->setText("Complete!", dontSendNotification);
+                // safeThis->progressLabel->setText("Complete!", dontSendNotification);
+                safeThis->progressLabel->setText("", dontSendNotification);
             safeThis->currentDownloadProgress = 1.0;
             if (safeThis->progressBar)
                 safeThis->progressBar->repaint();
@@ -1339,11 +1342,15 @@ void SamplePad::drawWaveform(Graphics& g, Rectangle<int> bounds)
     if (!hasValidSample || audioThumbnail.getTotalLength() == 0.0)
         return;
 
-    g.setColour(Colours::black.withAlpha(0.2f));
+    g.setColour(Colours::black.withAlpha(0.0f));
     g.fillRect(bounds);
 
-    g.setColour(!isPlaying ? Colours::lightgrey.withAlpha(0.8f) : Colours::white.withAlpha(0.8f));
-    audioThumbnail.drawChannels(g, bounds, 0.0, audioThumbnail.getTotalLength(), 1.0f);
+    if (isPreviewMode()) {
+        g.setColour(Colours::white.withAlpha(0.5f));
+    } else {
+        g.setColour(!isPlaying? padColour.brighter(0.1f) :padColour.brighter(0.3f));
+    }
+    audioThumbnail.drawChannels(g, bounds, 0.0, audioThumbnail.getTotalLength(), 0.5f);
 }
 
 void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
@@ -3653,7 +3660,7 @@ void SampleDragArea::paint(Graphics& g)
 
     // Modern icon and text styling
     g.setColour(Colours::white);
-    g.setFont(Font(10.0f, Font::bold));
+    g.setFont(Font(10.0f));
 
     // Draw a modern drag icon (three horizontal lines)
     auto iconBounds = bounds.removeFromLeft(20);
@@ -3791,7 +3798,7 @@ void DirectoryOpenButton::paint(Graphics &g) {
     }
 
     g.setColour(Colours::white);
-    g.setFont(Font(10.0f, Font::bold));
+    g.setFont(Font(10.0f));
     g.drawText("View Resources", bounds, Justification::centred);
 
 

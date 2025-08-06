@@ -46,7 +46,7 @@ BookmarkViewerComponent::~BookmarkViewerComponent()
 void BookmarkViewerComponent::paint(Graphics& g)
 {
     // Dark background
-    g.setColour(Colour(0xff1A1A1A));
+    g.setColour(Colour(0xff1A1A1A).withAlpha(0.9f));
     g.fillAll();
 }
 

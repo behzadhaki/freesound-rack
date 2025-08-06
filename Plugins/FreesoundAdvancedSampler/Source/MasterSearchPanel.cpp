@@ -39,7 +39,7 @@ void MiniPadButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted,
     }
     else
     {
-        bgColour = Colour(0xff404040).withAlpha(0.6f); // Dark gray for disconnected
+        bgColour = Colour(0xff404040).withAlpha(0.0f); // Dark gray for disconnected
     }
 
     if (shouldDrawButtonAsHighlighted)
@@ -51,12 +51,12 @@ void MiniPadButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted,
     g.fillRoundedRectangle(bounds, 3.0f);
 
     // Border
-    g.setColour(Colour(0xff666666));
+    g.setColour(Colour(0xff666666).withAlpha(0.5f));
     g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f);
 
     // Position number (1-16, bottom-left = 1)
-    g.setColour(isConnectedToMaster ? Colours::white : Colour(0xff999999));
-    g.setFont(Font(8.0f, Font::bold));
+    g.setColour(isConnectedToMaster ? Colours::lightgrey : Colour(0xff999999));
+    g.setFont(Font(8.0f));
 
     int positionNumber = getVisualPosition() + 1; // 1-based for display
     g.drawText(String(positionNumber), bounds.toNearestInt(), Justification::centred);
@@ -105,7 +105,7 @@ void PadSelectionGrid::paint(Graphics& g)
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
     // Border
-    g.setColour(Colour(0xff404040));
+    g.setColour(Colour(0xff404040).withAlpha(0.0f));
     g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
 }
 
@@ -235,10 +235,10 @@ MasterSearchPanel::MasterSearchPanel()
     masterQueryEditor.setMultiLine(false);
     masterQueryEditor.setReturnKeyStartsNewLine(false);
     masterQueryEditor.setScrollbarsShown(false);
-    masterQueryEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
-    masterQueryEditor.setColour(TextEditor::textColourId, Colours::white);
-    masterQueryEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
-    masterQueryEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
+    masterQueryEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(.7f));
+    masterQueryEditor.setColour(TextEditor::textColourId, Colours::lightgrey);
+    masterQueryEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.0f));           // Normal border
+    masterQueryEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060).withAlpha(0.0f));   // Lighter grey when focused
     masterQueryEditor.setFont(Font(10.0f));
     masterQueryEditor.setTextToShowWhenEmpty("Enter search query for connected pads...", Colours::grey);
 
@@ -287,7 +287,7 @@ void MasterSearchPanel::paint(Graphics& g)
 
     // Subtle border
     g.setColour(Colour(0xff404040).withAlpha(0.6f));
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 1.0f);
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, 0.80f);
 }
 
 void MasterSearchPanel::resized()
@@ -315,9 +315,9 @@ void MasterSearchPanel::resized()
     // Text editor at top of controls area
     auto lineHeight = controlsArea.getHeight() / 3; // Adjust height for text editor
     auto textArea = controlsArea.removeFromTop(lineHeight);
-    searchSelectedButton.setBounds(textArea.removeFromRight(buttonWidth));
+    searchSelectedButton.setBounds(textArea.removeFromRight(buttonWidth).reduced(2));
     textArea.removeFromRight(buttonSpacing); // spacing after search button
-    masterQueryEditor.setBounds(textArea);
+    masterQueryEditor.setBounds(textArea.reduced(2));
 
     controlsArea.removeFromTop(3); // spacing
 
@@ -327,9 +327,9 @@ void MasterSearchPanel::resized()
     // Left side: Detach/Attach All buttons (stacked vertically)
     auto buttonArea = bottomArea.removeFromLeft(smallButtonWidth);
     int buttonHeight = 20;
-    noneSelectionButton.setBounds(buttonArea.removeFromTop(buttonHeight));
+    noneSelectionButton.setBounds(buttonArea.removeFromTop(buttonHeight).reduced(2));
     buttonArea.removeFromTop(3); // small spacing between buttons
-    allSelectionButton.setBounds(buttonArea.removeFromTop(buttonHeight));
+    allSelectionButton.setBounds(buttonArea.removeFromTop(buttonHeight).reduced(2));
 
     bottomArea.removeFromLeft(buttonSpacing); // spacing after buttons
 

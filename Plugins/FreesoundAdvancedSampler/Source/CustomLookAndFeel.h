@@ -14,7 +14,7 @@
 
 using namespace juce;
 
-inline const Colour pluginChoiceColour =  Colour(0x8000D9FF);
+inline const Colour pluginChoiceColour =  Colour(0xD8D4D3).darker(0.5f); // Colour(0x9D9999); 0xBAB6B6
 
 class CustomLookAndFeel : public LookAndFeel_V4
 {
@@ -75,7 +75,7 @@ public:
     Font alertTitleFont = Font(16.0f, Font::bold);
     Font alertMessageFont = Font(14.0f);
     Font alertFont = Font(12.0f);
-    Font progressBarTextFont = Font(11.0f, Font::bold);
+    Font progressBarTextFont = Font(9.0f, Font::bold);
     Font labelFont = Font(14.0f, Font::bold);
 
     // Justification configuration
@@ -245,6 +245,12 @@ public:
         // Draw the text
         g.setColour(alert.findColour(AlertWindow::textColourId));
         textLayout.draw(g, textArea.toFloat());
+    }
+
+    void fillTextEditorBackground (juce::Graphics& g, int width, int height, juce::TextEditor& textEditor) override
+    {
+        g.setColour (textEditor.findColour (juce::TextEditor::backgroundColourId));
+        g.fillRoundedRectangle (0, 0, width, height, 2.0f); // 10.0f is the corner radius
     }
 
 private:

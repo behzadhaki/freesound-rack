@@ -49,16 +49,13 @@ void ExpandablePanel::paint(Graphics& g)
 
         // Modern border
         g.setColour(borderColour);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(2), 6.0f, 1.5f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(2), 4.0f, boarderLineWidth);
     }
     else
     {
         // Collapsed state background
-        g.setColour(collapsedBgColour.withAlpha(0.8f));
+        g.setColour(collapsedBgColour.withAlpha(0.0f)); // Transparent background
         g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
-
-        g.setColour(borderColour);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(1), 4.0f, 1.0f);
     }
 }
 
