@@ -3136,82 +3136,67 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
     performEnhancedDrop(jsonMetadata, filePaths, targetPadIndex);
 }
 
-void SampleGridComponent::performEnhancedDrop(const String& jsonMetadata, const StringArray& filePaths, int targetPadIndex)
+void SampleGridComponent::performEnhancedDrop(const String& jsonMetadata,
+                                              const StringArray& filePaths,
+                                              int targetPadIndex)
 {
-    // Parse the metadata
+    if (!processor || targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS)
+        return;
+
+    // Parse metadata
     var metadata = JSON::parse(jsonMetadata);
     if (!metadata.isObject())
         return;
 
-    // Extract sample information
-    String freesoundId = metadata.getProperty("freesound_id", "");
-    String sampleName = metadata.getProperty("sample_name", "Unknown");
-    String authorName = metadata.getProperty("author_name", "Unknown");
-    String licenseType = metadata.getProperty("license_type", "");
-    String searchQuery = metadata.getProperty("search_query", "");
-    String originalFileName = metadata.getProperty("file_name", "");
-    String tags = metadata.getProperty("tags", "");
-    String description = metadata.getProperty("description", "");
+    // Extract sample info
+    String freesoundId   = metadata.getProperty("freesound_id", "");
+    String sampleName    = metadata.getProperty("sample_name", "Unknown");
+    String authorName    = metadata.getProperty("author_name", "Unknown");
+    String licenseType   = metadata.getProperty("license_type", "");
+    String searchQuery   = metadata.getProperty("search_query", "");
+    String tags          = metadata.getProperty("tags", "");
+    String description   = metadata.getProperty("description", "");
 
-    // Copy the file to our samples directory if it's not already there
-    File sourceFile(filePaths[0]);
-    if (!sourceFile.existsAsFile())
+    if (freesoundId.isEmpty() || filePaths.isEmpty())
         return;
 
-    // Determine target file location
-    File samplesDir = processor->getCurrentDownloadLocation();
-    String targetFileName = "FS_ID_" + freesoundId + ".ogg";
-    File targetFile = samplesDir.getChildFile(targetFileName);
+    // Files: copy dropped audio into the collection's samples folder
+    SampleCollectionManager* cm = processor->getCollectionManager();
+    if (!cm) return;
 
-    // Copy file if it doesn't exist
+    File sourceFile(filePaths[0]);
+    if (!sourceFile.existsAsFile()) return;
+
+    File targetFile = cm->getSampleFile(freesoundId); // .../samples/FS_ID_<id>.ogg
     if (!targetFile.existsAsFile())
     {
         if (!sourceFile.copyFileTo(targetFile))
             return;
     }
 
-    // Create FSSound object for processor
+    // Build FSSound (used by UI arrays / metadata)
     FSSound sound;
-    sound.id = freesoundId;
-    sound.name = sampleName;
-    sound.user = authorName;
-    sound.license = licenseType;
-    sound.duration = 0.5; // Default values
-    sound.filesize = (int)targetFile.getSize();
-    sound.tags = tags;
+    sound.id          = freesoundId;
+    sound.name        = sampleName;
+    sound.user        = authorName;
+    sound.license     = licenseType;
+    sound.duration    = 0.5; // if unknown
+    sound.filesize    = (int) targetFile.getSize();
+    sound.tags        = tags;
     sound.description = description;
 
-    // Update the target pad with full metadata
-    samplePads[targetPadIndex]->setSample(targetFile, sampleName, authorName, freesoundId, licenseType, searchQuery, tags, description);
+    // 1) Ensure the sample exists in the collection (so it's written to collection_meta.json)
+    cm->addOrUpdateSample(sound, searchQuery);
 
-    // Update processor arrays
+    // 2) Keep editor arrays in sync (optional but keeps legacy UI data consistent)
     updateSinglePadInProcessor(targetPadIndex, sound);
+    setQueryForPad(targetPadIndex, searchQuery);
 
-    // Update processor's soundsArray with query
-    auto& soundsData = processor->getDataReference();
-    while (soundsData.size() <= targetPadIndex)
-    {
-        StringArray emptyData;
-        emptyData.add(""); emptyData.add(""); emptyData.add(""); emptyData.add("");
-        soundsData.push_back(emptyData);
-    }
+    // 3) Wire the pad -> freesoundId mapping & update the pad from the collection
+    updatePadFromCollection(targetPadIndex, freesoundId);  // this calls processor->setPadSample(...)
 
-    if (soundsData[targetPadIndex].size() < 4)
-    {
-        while (soundsData[targetPadIndex].size() < 4)
-            soundsData[targetPadIndex].add("");
-    }
-
-    soundsData[targetPadIndex].set(0, sampleName);
-    soundsData[targetPadIndex].set(1, authorName);
-    soundsData[targetPadIndex].set(2, licenseType);
-    soundsData[targetPadIndex].set(3, searchQuery);
-
-    // Reload sampler
-    if (processor)
-    {
-        processor->setSources();
-    }
+    // 4) Rebuild sampler so the new pad actually plays
+    processor->setSources();
 }
 
 // Handle regular file drops (existing functionality)
@@ -3508,15 +3493,18 @@ void SampleGridComponent::filesDropped(const StringArray& files, int x, int y)
 
 void SampleGridComponent::handleCrossAppDrop(const StringArray& files, int targetPadIndex)
 {
+    if (!processor || targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS) return;
+
     File metadataFile, audioFile;
 
     // Find metadata and audio files
     for (const String& path : files)
     {
-        File file(path);
-        if (file.getFileName() == "metadata.json") metadataFile = file;
-        else if (file.hasFileExtension("ogg") || file.hasFileExtension("wav") ||
-                 file.hasFileExtension("mp3") || file.hasFileExtension("aiff")) audioFile = file;
+        File f(path);
+        if (f.getFileName() == "metadata.json") metadataFile = f;
+        else if (f.hasFileExtension("ogg") || f.hasFileExtension("wav") ||
+                 f.hasFileExtension("mp3") || f.hasFileExtension("aiff"))
+            audioFile = f;
     }
 
     if (!metadataFile.existsAsFile() || !audioFile.existsAsFile()) return;
@@ -3527,29 +3515,48 @@ void SampleGridComponent::handleCrossAppDrop(const StringArray& files, int targe
 
     // Extract info
     String freesoundId = metadata.getProperty("freesound_id", "");
-    String sampleName = metadata.getProperty("sample_name", "");
-    String authorName = metadata.getProperty("author_name", "");
+    String sampleName  = metadata.getProperty("sample_name", "");
+    String authorName  = metadata.getProperty("author_name", "");
     String licenseType = metadata.getProperty("license_type", "");
     String searchQuery = metadata.getProperty("search_query", "");
-    String fsTags = metadata.getProperty("tags", "");
-    String fsDescription = metadata.getProperty("description", "");
+    String fsTags      = metadata.getProperty("tags", "");
+    String fsDesc      = metadata.getProperty("description", "");
 
-    // Load sample directly from original location
-    samplePads[targetPadIndex]->setSample(audioFile, sampleName, authorName, freesoundId, licenseType, searchQuery, fsTags, fsDescription);
+    if (freesoundId.isEmpty()) return;
 
-    // Create FSSound from metadata
+    // Copy the audio into the collection's samples folder (we load from there)
+    SampleCollectionManager* cm = processor->getCollectionManager();
+    if (!cm) return;
+
+    File targetFile = cm->getSampleFile(freesoundId);
+    if (!targetFile.existsAsFile())
+    {
+        if (!audioFile.copyFileTo(targetFile))
+            return;
+    }
+
+    // Create FSSound
     FSSound sound;
-    sound.id = freesoundId;
-    sound.name = sampleName;
-    sound.user = authorName;
-    sound.license = licenseType;
-    sound.duration = 0.5; // Default
-    sound.filesize = (int)audioFile.getSize();
-    sound.tags = fsTags;
-    sound.description = fsDescription;
+    sound.id          = freesoundId;
+    sound.name        = sampleName;
+    sound.user        = authorName;
+    sound.license     = licenseType;
+    sound.duration    = 0.5;
+    sound.filesize    = (int) targetFile.getSize();
+    sound.tags        = fsTags;
+    sound.description = fsDesc;
 
-    // Update processor arrays
-    updateSinglePadInProcessor(targetPadIndex, sound);  // Complete expression
+    // 1) Ensure collection has this sample (so it’s persisted)
+    cm->addOrUpdateSample(sound, searchQuery);
+
+    // 2) Keep editor arrays in sync
+    updateSinglePadInProcessor(targetPadIndex, sound);
+    setQueryForPad(targetPadIndex, searchQuery);
+
+    // 3) Wire the pad -> freesoundId mapping & update the UI from the collection
+    updatePadFromCollection(targetPadIndex, freesoundId);  // sets visuals and calls setPadSample(...)
+
+    // 4) Rebuild sampler so the pad plays
     processor->setSources();
 }
 
