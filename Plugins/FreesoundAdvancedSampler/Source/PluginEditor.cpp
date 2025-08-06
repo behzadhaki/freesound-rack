@@ -60,7 +60,7 @@ FreesoundAdvancedSamplerAudioProcessorEditor::FreesoundAdvancedSamplerAudioProce
    bookmarkExpandablePanel.setContentComponent(&bookmarkViewerComponent);
    bookmarkExpandablePanel.setExpandedWidth(220);
     bookmarkExpandablePanel.onExpandedChanged = [this](bool expanded){
-        if (expanded) {bookmarkViewerComponent.refreshBookmarks(); bookmarkExpandablePanel.repaint();}
+        if (expanded) {bookmarkViewerComponent.refreshBookmarks();}
     };
 
    // RESTORE SAVED STATE instead of hardcoded false
