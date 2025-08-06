@@ -240,26 +240,81 @@ bool SampleCollectionManager::addOrUpdateSample(const SampleMetadata& metadata)
 {
     if (metadata.freesoundId.isEmpty())
         return false;
-    
-    // If sample exists, preserve some existing data
+
+    const String nowStr = Time::getCurrentTime().toString(true, true);
+
+    auto mergeQueries = [](const String& existing, const String& incoming) -> String
+    {
+        // Split by comma, trim, unique (case-insensitive), preserve order.
+        StringArray out;
+
+        auto pushUnique = [&out](const String& s)
+        {
+            const String t = s.trim();
+            if (t.isNotEmpty())
+                out.addIfNotAlreadyThere(t, /*ignoreCase*/ true);
+        };
+
+        // 1) add existing tokens (normalized + deduped)
+        {
+            StringArray tokens = StringArray::fromTokens(existing, ",", "");
+            for (const auto& tok : tokens)
+                pushUnique(tok);
+        }
+
+        // 2) add incoming tokens if they’re not already present in the text
+        {
+            StringArray tokens = StringArray::fromTokens(incoming, ",", "");
+            for (const auto& tok : tokens)
+            {
+                const String t = tok.trim();
+                if (t.isEmpty()) continue;
+
+                bool present = out.contains(t, /*ignoreCase*/ true);
+                if (!present)
+                {
+                    const auto tLower = t.toLowerCase();
+                    for (int i = 0; i < out.size(); ++i)
+                    {
+                        if (out[i].toLowerCase().contains(tLower)) { present = true; break; }
+                    }
+                }
+
+                if (!present)
+                    out.add(t);
+            }
+        }
+
+        return out.joinIntoString(", ");
+    };
+
     auto it = samples.find(metadata.freesoundId);
     if (it != samples.end())
     {
-        // Preserve usage data when updating
-        SampleMetadata updatedMetadata = metadata;
-        updatedMetadata.isBookmarked = it->second.isBookmarked;
-        updatedMetadata.bookmarkedAt = it->second.bookmarkedAt;
-        updatedMetadata.playCount = it->second.playCount;
-        updatedMetadata.lastPlayedAt = it->second.lastPlayedAt;
-        updatedMetadata.presetAssociations = it->second.presetAssociations;
-        
-        samples[metadata.freesoundId] = updatedMetadata;
+        // Start from fresh metadata but preserve usage + associations
+        SampleMetadata updated = metadata;
+        updated.isBookmarked       = it->second.isBookmarked;
+        updated.bookmarkedAt       = it->second.bookmarkedAt;
+        updated.playCount          = it->second.playCount;
+        updated.lastPlayedAt       = it->second.lastPlayedAt;
+        updated.presetAssociations = it->second.presetAssociations;
+
+        // Merge queries (existing + incoming)
+        updated.searchQuery    = mergeQueries(it->second.searchQuery, metadata.searchQuery);
+        updated.lastModifiedAt = nowStr;
+
+        samples[metadata.freesoundId] = std::move(updated);
     }
     else
     {
-        samples[metadata.freesoundId] = metadata;
+        // New entry: normalize query list (trim/dedupe) for cleanliness
+        SampleMetadata fresh = metadata;
+        fresh.searchQuery    = mergeQueries("", metadata.searchQuery);
+        fresh.lastModifiedAt = nowStr;
+
+        samples[metadata.freesoundId] = std::move(fresh);
     }
-    
+
     return saveCollection();
 }
 

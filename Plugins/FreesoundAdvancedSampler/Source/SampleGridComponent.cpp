@@ -1662,11 +1662,11 @@ void SamplePad::performEnhancedDragDrop()
 
     if (isShiftPressed)
     {
-        performCrossAppDragDrop();
+        performInternalDragDrop();
     }
     else
     {
-        performInternalDragDrop();
+        performCrossAppDragDrop();
     }
 }
 
