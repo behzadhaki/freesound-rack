@@ -32,6 +32,7 @@ target_sources(${BaseTargetName} PRIVATE
         Source/MasterSearchPanel.cpp
         Source/BookmarkManager.cpp
         Source/BookmarkViewerComponent.cpp
+        Source/SampleCollectionManager.cpp
 )
 
 target_compile_definitions(${BaseTargetName}
