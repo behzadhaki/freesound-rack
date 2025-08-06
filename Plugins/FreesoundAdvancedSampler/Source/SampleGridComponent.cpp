@@ -1666,6 +1666,33 @@ void SamplePad::performEnhancedDragDrop()
     }
 }
 
+void SamplePad::performInternalDragDrop()
+{
+    // Create a complete data package including all metadata
+    var dataPackage(new DynamicObject());
+    dataPackage.getDynamicObject()->setProperty("type", "freesound_sampler_data");
+    dataPackage.getDynamicObject()->setProperty("version", "1.0");
+    dataPackage.getDynamicObject()->setProperty("freesound_id", freesoundId);
+    dataPackage.getDynamicObject()->setProperty("sample_name", sampleName);
+    dataPackage.getDynamicObject()->setProperty("author_name", authorName);
+    dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
+    dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
+    dataPackage.getDynamicObject()->setProperty("tags", tags);
+    dataPackage.getDynamicObject()->setProperty("description", description);
+    dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
+    dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
+    dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
+
+    String jsonData = JSON::toString(dataPackage, false);
+
+    var dragDescription(new DynamicObject());
+    dragDescription.getDynamicObject()->setProperty("files", var(StringArray(audioFile.getFullPathName())));
+    dragDescription.getDynamicObject()->setProperty("metadata", jsonData);
+    dragDescription.getDynamicObject()->setProperty("mime_type", FREESOUND_SAMPLER_MIME_TYPE);
+
+    startDragging(dragDescription, this, ScaledImage(), true);
+}
+
 void SamplePad::performCrossAppDragDrop()
 {
     File tempDir = File::getSpecialLocation(File::tempDirectory)
@@ -1697,32 +1724,6 @@ void SamplePad::performCrossAppDragDrop()
     Timer::callAfterDelay(30000, [tempDir]() {
         tempDir.deleteRecursively();
     });
-}
-
-void SamplePad::performInternalDragDrop()
-{
-    var dataPackage(new DynamicObject());
-    dataPackage.getDynamicObject()->setProperty("type", "freesound_sampler_data");
-    dataPackage.getDynamicObject()->setProperty("version", "1.0");
-    dataPackage.getDynamicObject()->setProperty("freesound_id", freesoundId);
-    dataPackage.getDynamicObject()->setProperty("sample_name", sampleName);
-    dataPackage.getDynamicObject()->setProperty("author_name", authorName);
-    dataPackage.getDynamicObject()->setProperty("license_type", licenseType);
-    dataPackage.getDynamicObject()->setProperty("search_query", getQuery());
-    dataPackage.getDynamicObject()->setProperty("tags", tags);
-    dataPackage.getDynamicObject()->setProperty("description", description);
-    dataPackage.getDynamicObject()->setProperty("file_name", audioFile.getFileName());
-    dataPackage.getDynamicObject()->setProperty("original_pad_index", padIndex);
-    dataPackage.getDynamicObject()->setProperty("exported_at", Time::getCurrentTime().toString(true, true));
-
-    String jsonData = JSON::toString(dataPackage, false);
-
-    var dragDescription(new DynamicObject());
-    dragDescription.getDynamicObject()->setProperty("files", var(StringArray(audioFile.getFullPathName())));
-    dragDescription.getDynamicObject()->setProperty("metadata", jsonData);
-    dragDescription.getDynamicObject()->setProperty("mime_type", FREESOUND_SAMPLER_MIME_TYPE);
-
-    startDragging(dragDescription, this, ScaledImage(), true);
 }
 
 // File conversion methods

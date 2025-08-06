@@ -27,10 +27,8 @@ target_sources(${BaseTargetName} PRIVATE
         Source/AudioDownloadManager.cpp
         Source/SampleGridComponent.cpp
         Source/PresetBrowserComponent.cpp
-        Source/PresetManager.cpp
         Source/ExpandablePanel.cpp
         Source/MasterSearchPanel.cpp
-        Source/BookmarkManager.cpp
         Source/BookmarkViewerComponent.cpp
         Source/SampleCollectionManager.cpp
 )
