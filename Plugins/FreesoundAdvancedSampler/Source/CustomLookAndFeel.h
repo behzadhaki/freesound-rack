@@ -52,11 +52,11 @@ public:
     Colour alertTextColour = Colours::white;
     Colour alertOutlineColour = Colour(0xff404040);
 
-    Colour buttonColour = Colour(0xff404040);
+    Colour buttonColour = Colour(0x804040);
     Colour buttonOnColour = Colour(0xff606060);
     Colour buttonTextOffColour = Colours::white;
     Colour buttonTextOnColour = Colours::white;
-    Colour buttonHoverColour = Colour(0xff00D9FF);
+    Colour buttonHoverColour = pluginChoiceColour.withAlpha(0.3f);
 
     Colour comboBoxOutlineColour = Colour(0xff404040);
 
