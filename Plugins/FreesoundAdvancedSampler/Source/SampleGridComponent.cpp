@@ -824,6 +824,8 @@ void SamplePad::clearSample()
         queryTextBox.setText("", dontSendNotification);
     }
 
+    processor->clearPad(padIndex);
+
     resized();
     repaint();
 }
@@ -2105,12 +2107,13 @@ void SampleGridComponent::clearSamples()
     for (auto& pad : samplePads)
     {
         pad->clearSample();
-
+        processor->clearPad(pad->getPadIndex()); // add this to sync state
     }
 
     for (auto& pad : samplePads)
     {
         pad->clearSample();
+        processor->clearPad(pad->getPadIndex()); // add this to sync state
         pad->setQuery(""); // Also clear any individual pad queries
     }
 }
