@@ -334,6 +334,10 @@ public:
     static constexpr int TOTAL_PADS = GRID_SIZE * GRID_SIZE;
     std::array<std::unique_ptr<SamplePad>, TOTAL_PADS> samplePads;
 
+    void refreshFromProcessor();
+    void clearSampleFromPad(int padIndex);
+    void updatePadFromCollection(int padIndex, const String& freesoundId);
+
 private:
 
     FreesoundAdvancedSamplerAudioProcessor* processor;

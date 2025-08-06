@@ -2,7 +2,7 @@
 
 #include "shared_plugin_helpers/shared_plugin_helpers.h"
 #include "PluginProcessor.h"
-#include "PresetManager.h"
+#include "SampleCollectionManager.h"
 #include "CustomButtonStyle.h"
 #include "FreesoundKeys.h"
 
@@ -30,12 +30,30 @@ private:
 };
 
 //==============================================================================
+// Preset List Item Info (keeping this structure for UI compatibility)
+//==============================================================================
+struct PresetListItemInfo
+{
+    String presetId;
+    String name;
+    String description;
+    String createdDate;
+    std::array<bool, 8> slotHasData;
+    int activeSlot = -1;
+
+    PresetListItemInfo()
+    {
+        slotHasData.fill(false);
+    }
+};
+
+//==============================================================================
 // Preset List Item with Slots
 //==============================================================================
 class PresetListItem : public Component
 {
 public:
-    PresetListItem(const PresetInfo& info);
+    PresetListItem(const PresetListItemInfo& info);
     ~PresetListItem() override;
 
     void paint(Graphics& g) override;
@@ -44,29 +62,31 @@ public:
     void mouseDown(const MouseEvent& event) override;
     void mouseDoubleClick(const MouseEvent& event) override;
 
-    const PresetInfo& getPresetInfo() const { return presetInfo; }
+    const PresetListItemInfo& getPresetListItemInfo() const { return itemInfo; }
     void setSelected(bool selected);
     bool isSelected() const { return isSelectedState; }
 
+    // Consistent callback signatures using String presetId
+    std::function<void(const String&, int)> onLoadSlotClicked;      // presetId, slotIndex
+    std::function<void(const String&, int)> onSaveSlotClicked;      // presetId, slotIndex
+    std::function<void(const String&, int)> onDeleteSlotClicked;    // presetId, slotIndex
+    std::function<void(const String&)> onDeleteClicked;             // presetId
+    std::function<void(const String&, const String&)> onRenameConfirmed; // presetId, newName
+
     std::function<void(PresetListItem*)> onItemClicked;
     std::function<void(PresetListItem*)> onItemDoubleClicked;
-    std::function<void(PresetListItem*)> onDeleteClicked;
-    std::function<void(const PresetInfo&, const String&)> onRenameConfirmed;
-    std::function<void(const PresetInfo&, int)> onLoadSlotClicked;
-    std::function<void(const PresetInfo&, int)> onSaveSlotClicked;
-    std::function<void(const PresetInfo&, int)> onDeleteSlotClicked;
-
-    void updateActiveSlot(int slotIndex);
-    void refreshSlotStates(const PresetInfo& updatedInfo);
-
     std::function<void(PresetListItem*)> onSampleCheckClicked;
 
+    const String& getPresetId() const { return itemInfo.presetId; }
+    void updateActiveSlot(int slotIndex);
+    void refreshSlotStates(const PresetListItemInfo& updatedInfo);
+
 private:
-    PresetInfo presetInfo;
+    PresetListItemInfo itemInfo;
     bool isSelectedState = false;
 
     StyledButton deleteButton {String(CharPointer_UTF8("\xF0\x9F\x97\x91")), 8.0f, true};
-    StyledButton sampleCheckButton {String(CharPointer_UTF8("\xE2\xAC\x87")), 8.0f, false}; // U+2B07 HEAVY BLACK DOWNWARDS ARROW
+    StyledButton sampleCheckButton {String(CharPointer_UTF8("\xE2\xAC\x87")), 8.0f, false};
 
     TextEditor renameEditor;
     std::array<std::unique_ptr<SlotButton>, 8> slotButtons;
@@ -93,12 +113,11 @@ public:
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
     void refreshPresetList();
 
-    std::function<void(const PresetInfo&, int)> onPresetLoadRequested;
+    // Updated callback signature to use String presetId
+    std::function<void(const String&, int)> onPresetLoadRequested; // presetId, slotIndex
 
     void scrollBarMoved(ScrollBar* scrollBarThatHasMoved, double newRangeStart) override;
-
     void createNewPresetBank();
-
     void restoreActiveState();
 
 private:
@@ -113,37 +132,30 @@ private:
     OwnedArray<PresetListItem> presetItems;
 
     PresetListItem* selectedItem = nullptr;
-
     TextEditor renameEditor;
     PresetListItem* renamingItem = nullptr;
 
+    // Updated method signatures to use String presetId instead of PresetListItemInfo
     void handleItemClicked(PresetListItem* item);
     void handleItemDoubleClicked(PresetListItem* item);
     void handleDeleteClicked(PresetListItem* item);
     void handleRenameClicked(PresetListItem* item);
-    void handleLoadSlotClicked(const PresetInfo& presetInfo, int slotIndex);
-    void handleSaveSlotClicked(const PresetInfo& presetInfo, int slotIndex);
-    void handleDeleteSlotClicked(const PresetInfo& presetInfo, int slotIndex);
+    void handleLoadSlotClicked(const String& presetId, int slotIndex);
+    void handleSaveSlotClicked(const String& presetId, int slotIndex);
+    void handleDeleteSlotClicked(const String& presetId, int slotIndex);
 
     void showInlineRenameEditor(PresetListItem* item);
     void hideInlineRenameEditor(bool applyRename);
 
-    void performRename(const PresetInfo& presetInfo, const String& newName);
+    void performRename(const String& presetId, const String& newName);
     void saveCurrentPreset();
     void updatePresetList();
 
-    void updateActiveSlotAcrossPresets(const PresetInfo& activePresetInfo, int activeSlotIndex);
-    void performSaveToSlot(const PresetInfo& presetInfo, int slotIndex,
-                              const Array<PadInfo>& padInfos, const String& description,
-                              const String& query);
-    bool isContentDifferent(const Array<PadInfo>& newPadInfos,
-                           const Array<PadInfo>& existingPadInfos,
-                           const String& newQuery,
-                           const PresetInfo& presetInfo,
-                           int slotIndex) const;
+    void updateActiveSlotAcrossPresets(const String& presetId, int activeSlotIndex);
+    void performSaveToSlot(const String& presetId, int slotIndex, const String& description);
 
     void handleSampleCheckClicked(PresetListItem* item);
-    void downloadMissingSamples(const Array<PadInfo>& missingPadInfos);
+    void downloadMissingSamples(const Array<SampleMetadata>& missingSamples);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetBrowserComponent)
 };

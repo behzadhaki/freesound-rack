@@ -1,7 +1,7 @@
 /*
   ==============================================================================
 
-    BookmarkViewerComponent.cpp - Updated with Preview Playback Tracking
+    BookmarkViewerComponent.cpp - Updated with Collection Manager Integration
 
   ==============================================================================
 */
@@ -64,7 +64,6 @@ void BookmarkViewerComponent::resized()
     titleLabel.setBounds(topLine);
     refreshButton.setBounds(topLine2.removeFromLeft(refreshButtonWidth));
 
-
     bounds.removeFromTop(gapHeight);
 
     // Update the scrollable area
@@ -96,17 +95,11 @@ void BookmarkViewerComponent::setProcessor(FreesoundAdvancedSamplerAudioProcesso
 
 void BookmarkViewerComponent::refreshBookmarks()
 {
-    if (!processor)
+    if (!processor || !processor->getCollectionManager())
         return;
 
-    // Get all bookmarks from the bookmark manager
-    currentBookmarks = processor->getBookmarkManager().getAllBookmarks();
-
-    // Sort by bookmarked date (newest first)
-    std::sort(currentBookmarks.begin(), currentBookmarks.end(),
-              [](const BookmarkInfo& a, const BookmarkInfo& b) {
-                  return a.bookmarkedAt > b.bookmarkedAt;
-              });
+    // Get bookmarked samples directly from collection manager
+    currentBookmarks = processor->getCollectionManager()->getBookmarkedSamples();
 
     // Update the display
     updateBookmarkPads();
@@ -138,17 +131,17 @@ void BookmarkViewerComponent::createBookmarkPads()
 
     for (int i = 0; i < currentBookmarks.size(); ++i)
     {
-        const BookmarkInfo& bookmark = currentBookmarks[i];
+        const SampleMetadata& bookmark = currentBookmarks[i];
 
         // Create SamplePad in Preview mode with unique index
         auto* pad = new SamplePad(1000 + i, SamplePad::PadMode::Preview);
         pad->setProcessor(processor);
 
         // Load the bookmark sample if file exists
-        File sampleFile = processor->getPresetManager().getSampleFile(bookmark.freesoundId);
+        File sampleFile = processor->getCollectionManager()->getSampleFile(bookmark.freesoundId);
         if (sampleFile.existsAsFile())
         {
-            pad->setSample(sampleFile, bookmark.sampleName, bookmark.authorName,
+            pad->setSample(sampleFile, bookmark.originalName, bookmark.authorName,
                           bookmark.freesoundId, bookmark.licenseType, bookmark.searchQuery,
                           bookmark.tags, bookmark.description);
         }

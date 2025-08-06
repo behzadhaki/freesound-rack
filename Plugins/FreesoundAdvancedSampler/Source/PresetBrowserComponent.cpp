@@ -28,20 +28,17 @@ void SlotButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted, bo
         {
             // Selected slot: full opacity bright mustard gold
             bgColour = Colours::darkgoldenrod.brighter(0.2f).withAlpha(1.0f);
-            // DBG("Drawing slot " + String(slotIndex) + " as ACTIVE (bright mustard)");
         }
         else
         {
             // Non-selected slots with data: very low alpha mustard gold
             bgColour = Colours::darkgoldenrod.withAlpha(0.25f);
-            // DBG("Drawing slot " + String(slotIndex) + " as INACTIVE (dim mustard)");
         }
     }
     else
     {
         // Empty slots remain grey with low alpha
         bgColour = Colours::grey.withAlpha(0.2f);
-        // DBG("Drawing slot " + String(slotIndex) + " as EMPTY (grey)");
     }
 
     if (shouldDrawButtonAsHighlighted)
@@ -53,31 +50,23 @@ void SlotButton::paintButton(Graphics& g, bool shouldDrawButtonAsHighlighted, bo
     g.fillRoundedRectangle(bounds, 3.0f);
 
     // Border intensity based on selection
-    if (hasDataFlag)
-    {
-        g.setColour(Colours::white.withAlpha(0.0f));
-        g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Normal border
-    }
-    else
-    {
-        g.setColour(Colours::white.withAlpha(0.0f));
-        g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f); // Dim border
-    }
+    g.setColour(Colours::white.withAlpha(hasDataFlag ? 0.0f : 0.0f));
+    g.drawRoundedRectangle(bounds.reduced(0.5f), 3.0f, 1.0f);
 
     // Text contrast based on selection
     if (isActiveFlag && hasDataFlag)
     {
-        g.setColour(Colours::black.withAlpha(0.9f)); // Dark text on bright background
-        g.setFont(Font(12.0f, Font::bold)); // Bold for selected
+        g.setColour(Colours::black.withAlpha(0.9f));
+        g.setFont(Font(12.0f, Font::bold));
     }
     else if (hasDataFlag)
     {
-        g.setColour(Colours::white.withAlpha(0.7f)); // Light text on dim background
+        g.setColour(Colours::white.withAlpha(0.7f));
         g.setFont(12.0f);
     }
     else
     {
-        g.setColour(Colours::darkgrey.withAlpha(0.5f)); // Very dim for empty
+        g.setColour(Colours::darkgrey.withAlpha(0.5f));
         g.setFont(12.0f);
     }
 
@@ -98,7 +87,6 @@ void SlotButton::setIsActive(bool isActive)
     if (isActiveFlag != isActive)
     {
         isActiveFlag = isActive;
-        // DBG("SlotButton " + String(slotIndex) + " setIsActive: " + String(isActive ? "TRUE" : "FALSE"));
         repaint();
     }
 }
@@ -107,8 +95,8 @@ void SlotButton::setIsActive(bool isActive)
 // PresetListItem Implementation
 //==============================================================================
 
-PresetListItem::PresetListItem(const PresetInfo& info)
-   : presetInfo(info)
+PresetListItem::PresetListItem(const PresetListItemInfo& info)
+   : itemInfo(info)
 {
     setSize(200, 85);
 
@@ -119,32 +107,32 @@ PresetListItem::PresetListItem(const PresetInfo& info)
     };
     addAndMakeVisible(sampleCheckButton);
 
-    // Delete Button - smaller size
+    // Delete Button
     deleteButton.onClick = [this]() {
         if (onDeleteClicked)
-            onDeleteClicked(this);
+            onDeleteClicked(itemInfo.presetId);
     };
     addAndMakeVisible(deleteButton);
 
-    // Rename Editor - consistent styling with smaller font
-    renameEditor.setText(presetInfo.name, dontSendNotification);
+    // Rename Editor
+    renameEditor.setText(itemInfo.name, dontSendNotification);
     renameEditor.setJustification(Justification::centredLeft);
     renameEditor.setSelectAllWhenFocused(true);
-    renameEditor.setFont(Font(20.0f, Font::bold)); // Reduced from 10.0f to 9.0f
+    renameEditor.setFont(Font(10.0f, Font::bold));
     renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).brighter(0.0f));
     renameEditor.setColour(TextEditor::textColourId, Colours::white);
-    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.0f));           // Normal border
-    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060).withAlpha(0.0f));   // Lighter grey when focused
+    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040).withAlpha(0.0f));
+    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060).withAlpha(0.0f));
     renameEditor.onReturnKey = [this]() { confirmRename(); };
     addAndMakeVisible(renameEditor);
 
-    // Create slot buttons - smaller size
+    // Create slot buttons
     for (int i = 0; i < 8; ++i)
     {
         slotButtons[i] = std::make_unique<SlotButton>(i);
-        slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
-        slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
-        slotButtons[i]->setSize(16, 16); // Reduced from 20x20 to 16x16
+        slotButtons[i]->setHasData(itemInfo.slotHasData[i]);
+        slotButtons[i]->setIsActive(itemInfo.activeSlot == i);
+        slotButtons[i]->setSize(16, 16);
 
         slotButtons[i]->onClick = [this, i]() {
             ModifierKeys modifiers = ModifierKeys::getCurrentModifiers();
@@ -163,28 +151,26 @@ void PresetListItem::paint(Graphics& g)
     const int lineHeight = bounds.getHeight() / 3;
 
     // Background
-    g.setColour(Colours::darkgrey.withAlpha(0.2f)); // Slightly transparent dark background
+    g.setColour(Colours::darkgrey.withAlpha(0.2f));
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
 
-    // Border - use same color but different thickness for selection
-    g.setColour(Colour(0xff404040).withAlpha(0.0f)); // Same color for both selected and unselected
-    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, isSelectedState ? 0.5f : 0.0f); // Thicker when selected
+    // Border
+    g.setColour(Colour(0xff404040).withAlpha(0.0f));
+    g.drawRoundedRectangle(bounds.toFloat().reduced(1), 6.0f, isSelectedState ? 0.5f : 0.0f);
 
     // Line 2: Info
     auto infoLine = bounds.withHeight(lineHeight).translated(0, lineHeight);
     bool hasData = false;
-    int totalSamples = 0;
-    for (const auto& slot : presetInfo.slots) {
-        if (slot.hasData) {
+    for (bool slotHasData : itemInfo.slotHasData) {
+        if (slotHasData) {
             hasData = true;
-            totalSamples += slot.sampleCount;
+            break;
         }
     }
 
     g.setFont(Font(10.0f, hasData ? Font::plain : Font::italic));
     g.setColour(hasData ? Colours::white : Colours::grey);
-    g.drawText(hasData ? "  " + presetInfo.createdDate
-                       : "Empty bank",
+    g.drawText(hasData ? "  " + itemInfo.createdDate : "Empty bank",
                infoLine.reduced(6, 0), Justification::left, true);
 }
 
@@ -193,15 +179,15 @@ void PresetListItem::resized()
     auto bounds = getLocalBounds();
     const int lineHeight = bounds.getHeight() / 3;
 
-    // Line 1: Name editor, sample check button, and delete button with more margin
+    // Line 1: Name editor, sample check button, and delete button
     auto topLine = bounds.withHeight(lineHeight);
 
     // Delete button
     auto deleteBounds = topLine.removeFromRight(30).reduced(5, 8);
     deleteButton.setBounds(deleteBounds);
 
-    // Sample Check button (leftmost)
-    topLine.removeFromRight(15); // Leave space for delete button
+    // Sample Check button
+    topLine.removeFromRight(15);
     auto sampleCheckBounds = topLine.removeFromRight(30).reduced(5, 8);
     sampleCheckButton.setBounds(sampleCheckBounds);
 
@@ -212,11 +198,10 @@ void PresetListItem::resized()
     editorBounds.setHeight(editorHeight);
     renameEditor.setBounds(editorBounds);
 
-    // Set font again in resized to ensure it takes effect
     renameEditor.setFont(Font(10.0f, Font::bold));
     renameEditor.setIndents(8, (renameEditor.getHeight() - renameEditor.getTextHeight()) / 2);
 
-    // Line 3: Centered slot buttons (unchanged)
+    // Line 3: Centered slot buttons
     auto slotsBounds = bounds.withHeight(lineHeight).translated(0, lineHeight*2);
 
     const int slotSize = 16;
@@ -233,14 +218,14 @@ void PresetListItem::resized()
 
 void PresetListItem::mouseDown(const MouseEvent& event)
 {
-    // if (onItemClicked)
-    //     onItemClicked(this);
+    if (onItemClicked)
+        onItemClicked(this);
 }
 
 void PresetListItem::mouseDoubleClick(const MouseEvent& event)
 {
-    // if (onItemDoubleClicked)
-    //     onItemDoubleClicked(this);
+    if (onItemDoubleClicked)
+        onItemDoubleClicked(this);
 }
 
 void PresetListItem::setSelected(bool selected)
@@ -256,24 +241,22 @@ void PresetListItem::confirmRename()
 {
     const String newName = renameEditor.getText().trim();
 
-    if (newName.isEmpty() || newName == presetInfo.name || !onRenameConfirmed)
+    if (newName.isEmpty() || newName == itemInfo.name || !onRenameConfirmed)
         return;
 
-    MessageManager::callAsync([info = presetInfo, newName, cb = onRenameConfirmed]() {
-        cb(info, newName);
+    MessageManager::callAsync([presetId = itemInfo.presetId, newName, cb = onRenameConfirmed]() {
+        cb(presetId, newName);
     });
 }
 
 void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifiers)
 {
-    bool hasData = presetInfo.slots[slotIndex].hasData;
-
-    // DBG("Slot " + String(slotIndex) + " clicked, hasData: " + String(hasData ? "YES" : "NO"));
+    bool hasData = itemInfo.slotHasData[slotIndex];
 
     if (modifiers.isShiftDown() && !modifiers.isCommandDown())
     {
         if (onSaveSlotClicked)
-            onSaveSlotClicked(presetInfo, slotIndex);
+            onSaveSlotClicked(itemInfo.presetId, slotIndex);
     }
     else if (modifiers.isCommandDown() && modifiers.isShiftDown())
     {
@@ -288,37 +271,26 @@ void PresetListItem::handleSlotClicked(int slotIndex, const ModifierKeys& modifi
                 nullptr,
                 ModalCallbackFunction::create([this, slotIndex](int result) {
                     if (result == 1 && onDeleteSlotClicked)
-                        onDeleteSlotClicked(presetInfo, slotIndex);
+                        onDeleteSlotClicked(itemInfo.presetId, slotIndex);
                 })
             );
         }
     }
     else
     {
-        // Regular click: Load slot - let the browser handle the visual update
-        // DBG("Regular click on slot " + String(slotIndex));
-
+        // Regular click: Load slot
         if (hasData)
         {
-            // DON'T call updateActiveSlot here - let handleLoadSlotClicked do it
-            // updateActiveSlot(slotIndex);  // REMOVE THIS LINE
-
             if (onLoadSlotClicked)
-                onLoadSlotClicked(presetInfo, slotIndex);
-        }
-        else
-        {
-            // DBG("Slot has no data, not loading");
+                onLoadSlotClicked(itemInfo.presetId, slotIndex);
         }
     }
 }
 
 void PresetListItem::updateActiveSlot(int slotIndex)
 {
-    // DBG("PresetListItem::updateActiveSlot called with slotIndex: " + String(slotIndex));
-
     // Update the stored preset info
-    presetInfo.activeSlot = slotIndex;
+    itemInfo.activeSlot = slotIndex;
 
     // Update all slot button states
     for (int i = 0; i < 8; ++i)
@@ -326,15 +298,13 @@ void PresetListItem::updateActiveSlot(int slotIndex)
         if (slotButtons[i])
         {
             bool shouldBeActive = (i == slotIndex);
-            // DBG("Setting slot " + String(i) + " active state to: " + String(shouldBeActive ? "TRUE" : "FALSE"));
             slotButtons[i]->setIsActive(shouldBeActive);
         }
     }
 
-    // Force a complete repaint
     repaint();
 
-    // Also force repaint of each slot button individually
+    // Force repaint of each slot button
     for (int i = 0; i < 8; ++i)
     {
         if (slotButtons[i])
@@ -344,17 +314,17 @@ void PresetListItem::updateActiveSlot(int slotIndex)
     }
 }
 
-void PresetListItem::refreshSlotStates(const PresetInfo& updatedInfo)
+void PresetListItem::refreshSlotStates(const PresetListItemInfo& updatedInfo)
 {
-    presetInfo = updatedInfo;
+    itemInfo = updatedInfo;
 
     // Update all slot buttons with new info
     for (int i = 0; i < 8; ++i)
     {
         if (slotButtons[i])
         {
-            slotButtons[i]->setHasData(presetInfo.slots[i].hasData);
-            slotButtons[i]->setIsActive(presetInfo.activeSlot == i);
+            slotButtons[i]->setHasData(itemInfo.slotHasData[i]);
+            slotButtons[i]->setIsActive(itemInfo.activeSlot == i);
         }
     }
 
@@ -368,28 +338,28 @@ void PresetListItem::refreshSlotStates(const PresetInfo& updatedInfo)
 PresetBrowserComponent::PresetBrowserComponent()
     : processor(nullptr)
 {
-    // Dark styling for title
+    // Title styling
     titleLabel.setText("Presets", dontSendNotification);
     addAndMakeVisible(titleLabel);
 
-    // Dark viewport styling
+    // Viewport styling
     presetViewport.setViewedComponent(&presetListContainer, false);
     presetViewport.setScrollBarsShown(true, false);
     addAndMakeVisible(presetViewport);
 
-    // Dark rename editor
+    // Rename editor (hidden by default)
     renameEditor.setVisible(false);
     renameEditor.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A).withAlpha(0.0f));
     renameEditor.setColour(TextEditor::textColourId, Colours::white);
-    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));           // Normal border
-    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));   // Lighter grey when focused
+    renameEditor.setColour(TextEditor::outlineColourId, Colour(0xff404040));
+    renameEditor.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060));
     renameEditor.setColour(TextEditor::highlightedTextColourId, Colours::black);
     renameEditor.onReturnKey = [this]() { hideInlineRenameEditor(true); };
     renameEditor.onEscapeKey = [this]() { hideInlineRenameEditor(false); };
     renameEditor.onFocusLost = [this]() { hideInlineRenameEditor(true); };
     addAndMakeVisible(renameEditor);
 
-    // New add bank button at bottom
+    // Add bank button
     addBankButton.onClick = [this]() {
         createNewPresetBank();
         shouldHighlightFirstSlot = true;
@@ -402,7 +372,7 @@ PresetBrowserComponent::~PresetBrowserComponent() {}
 
 void PresetBrowserComponent::paint(Graphics& g)
 {
-    // Dark preset browser background
+    // Dark background
     g.setColour(Colour(0xff1A1A1A).withAlpha(0.9f));
     g.fillAll();
 
@@ -421,28 +391,23 @@ void PresetBrowserComponent::resized()
     // Preset viewport takes most space
     presetViewport.setBounds(bounds.removeFromTop(bounds.getHeight() - 40));
 
-    // Add button at bottom (full width)
+    // Add button at bottom
     addBankButton.setBounds(bounds.withHeight(30));
-
-    // No need to call updatePresetList() or force resized() on items
-    // since we're using fixed widths now
 }
 
 void PresetBrowserComponent::createNewPresetBank()
 {
-    if (!processor) return;
+    if (!processor || !processor->getCollectionManager())
+        return;
 
     String newName = "Bank " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
 
-    // Create empty array for pad infos
-    Array<PadInfo> emptyPadInfos;
+    String presetId = processor->getCollectionManager()->createPreset(newName, "New empty bank");
 
-    if (processor->getPresetManager().saveCurrentPreset(
-        newName, "New empty bank", emptyPadInfos, "", 0))
+    if (!presetId.isEmpty())
     {
         refreshPresetList();
 
-        // Reset highlight after delay
         Timer::callAfterDelay(1000, [this]() {
             shouldHighlightFirstSlot = false;
             repaint();
@@ -454,10 +419,7 @@ void PresetBrowserComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor
 {
     processor = p;
 
-    // Ensure the processor is valid and directories exist
     if (processor) {
-
-        // Delay the refresh slightly to ensure UI is ready
         MessageManager::callAsync([this]() {
             refreshPresetList();
         });
@@ -466,28 +428,57 @@ void PresetBrowserComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor
 
 void PresetBrowserComponent::refreshPresetList()
 {
-    if (!processor)
+    if (!processor || !processor->getCollectionManager())
         return;
 
     presetItems.clear();
     selectedItem = nullptr;
 
-    Array<PresetInfo> presets = processor->getPresetManager().getAvailablePresets();
+    // Get all presets from collection manager
+    Array<PresetInfo> presets = processor->getCollectionManager()->getAllPresets();
 
-    // Get current active preset info
-    File activePresetFile = processor->getPresetManager().getActivePresetFile();
-    int activeSlotIndex = processor->getPresetManager().getActiveSlotIndex();
+    // Get current active preset
+    String activePresetId = processor->getActivePresetId();
+    int activeSlotIndex = processor->getActiveSlotIndex();
 
     int yPosition = 0;
     const int itemHeight = 85;
     const int spacing = 8;
     const int fixedItemWidth = 180;
 
-    for (const auto& presetInfo : presets)
+    for (const auto& preset : presets)
     {
-        auto* item = new PresetListItem(presetInfo);
+        PresetListItemInfo itemInfo;
+        itemInfo.presetId = preset.presetId;
+        itemInfo.name = preset.name;
+        itemInfo.description = preset.description;
+        itemInfo.createdDate = preset.createdAt;
 
-        // Set up callbacks...
+        // Check which slots have data
+        for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
+        {
+            Array<String> slotData = processor->getCollectionManager()->getPresetSlot(preset.presetId, slotIndex);
+            bool hasData = false;
+            for (const String& freesoundId : slotData)
+            {
+                if (freesoundId.isNotEmpty())
+                {
+                    hasData = true;
+                    break;
+                }
+            }
+            itemInfo.slotHasData[slotIndex] = hasData;
+        }
+
+        // Set active slot if this is the active preset
+        if (preset.presetId == activePresetId)
+        {
+            itemInfo.activeSlot = activeSlotIndex;
+        }
+
+        auto* item = new PresetListItem(itemInfo);
+
+        // Set up all callbacks
         item->onItemClicked = [this](PresetListItem* clickedItem) {
             handleItemClicked(clickedItem);
         };
@@ -496,32 +487,32 @@ void PresetBrowserComponent::refreshPresetList()
             handleItemDoubleClicked(clickedItem);
         };
 
-        item->onDeleteClicked = [this](PresetListItem* clickedItem) {
-            handleDeleteClicked(clickedItem);
+        item->onDeleteClicked = [this, item](const String& presetId) {
+            handleDeleteClicked(item);
         };
 
-        item->onRenameConfirmed = [this](const PresetInfo& originalInfo, const String& newName) {
-            performRename(originalInfo, newName);
+        item->onRenameConfirmed = [this](const String& presetId, const String& newName) {
+            performRename(presetId, newName);
         };
 
-        item->onLoadSlotClicked = [this](const PresetInfo& info, int slotIndex) {
-            handleLoadSlotClicked(info, slotIndex);
+        item->onLoadSlotClicked = [this](const String& presetId, int slotIndex) {
+            handleLoadSlotClicked(presetId, slotIndex);
         };
 
-        item->onSaveSlotClicked = [this](const PresetInfo& info, int slotIndex) {
-            handleSaveSlotClicked(info, slotIndex);
+        item->onSaveSlotClicked = [this](const String& presetId, int slotIndex) {
+            handleSaveSlotClicked(presetId, slotIndex);
         };
 
-        item->onDeleteSlotClicked = [this](const PresetInfo& info, int slotIndex) {
-            handleDeleteSlotClicked(info, slotIndex);
+        item->onDeleteSlotClicked = [this](const String& presetId, int slotIndex) {
+            handleDeleteSlotClicked(presetId, slotIndex);
         };
 
         item->onSampleCheckClicked = [this](PresetListItem* clickedItem) {
             handleSampleCheckClicked(clickedItem);
         };
 
-        // Check if this is the currently active preset and set active slot
-        if (presetInfo.presetFile == activePresetFile && activeSlotIndex >= 0)
+        // Set active state
+        if (preset.presetId == activePresetId && activeSlotIndex >= 0)
         {
             item->updateActiveSlot(activeSlotIndex);
             selectedItem = item;
@@ -541,7 +532,6 @@ void PresetBrowserComponent::refreshPresetList()
 
 void PresetBrowserComponent::updatePresetList()
 {
-    // FIXED: Use same width as refreshPresetList
     const int fixedItemWidth = 180;
 
     for (int i = 0; i < presetItems.size(); ++i)
@@ -559,7 +549,6 @@ void PresetBrowserComponent::updatePresetList()
     if (presetItems.size() > 0 && presetItems.getLast() != nullptr)
         totalHeight = presetItems.getLast()->getBottom() + 5;
 
-    // FIXED: Container width matches
     presetListContainer.setSize(fixedItemWidth + 10, totalHeight);
 }
 
@@ -575,48 +564,81 @@ void PresetBrowserComponent::handleItemClicked(PresetListItem* item)
 void PresetBrowserComponent::handleItemDoubleClicked(PresetListItem* item)
 {
     // Load first available slot
-    const auto& presetInfo = item->getPresetInfo();
+    const auto& itemInfo = item->getPresetListItemInfo();
     for (int i = 0; i < 8; ++i)
     {
-        if (presetInfo.slots[i].hasData)
+        if (itemInfo.slotHasData[i])
         {
-            handleLoadSlotClicked(presetInfo, i);
+            handleLoadSlotClicked(itemInfo.presetId, i);
             break;
         }
     }
 }
 
-void PresetBrowserComponent::handleLoadSlotClicked(const PresetInfo& presetInfo, int slotIndex)
+void PresetBrowserComponent::handleLoadSlotClicked(const String& presetId, int slotIndex)
 {
-    // Update active slot tracking across all presets
-    updateActiveSlotAcrossPresets(presetInfo, slotIndex);
+    updateActiveSlotAcrossPresets(presetId, slotIndex);
 
     if (onPresetLoadRequested)
-        onPresetLoadRequested(presetInfo, slotIndex);
+        onPresetLoadRequested(presetId, slotIndex);
 }
 
-void PresetBrowserComponent::updateActiveSlotAcrossPresets(const PresetInfo& activePresetInfo, int activeSlotIndex)
+void PresetBrowserComponent::updateActiveSlotAcrossPresets(const String& activePresetId, int activeSlotIndex)
 {
-    // DBG("updateActiveSlotAcrossPresets called for slot " + String(activeSlotIndex));
-
-    // Find and update only the target preset
     for (auto* item : presetItems)
     {
-        if (item && item->getPresetInfo().presetFile == activePresetInfo.presetFile)
+        if (item && item->getPresetId() == activePresetId)
         {
-            // DBG("Found matching preset, setting active slot to " + String(activeSlotIndex));
             item->updateActiveSlot(activeSlotIndex);
-            handleItemClicked(item); // Also select the preset item
+            handleItemClicked(item);
             break;
         }
     }
 }
 
-void PresetBrowserComponent::performSaveToSlot(const PresetInfo& presetInfo, int slotIndex,
-                                              const Array<PadInfo>& padInfos, const String& description,
-                                              const String& query)
+void PresetBrowserComponent::handleSaveSlotClicked(const String& presetId, int slotIndex)
 {
-    if (processor->getPresetManager().saveToSlot(presetInfo.presetFile, slotIndex, description, padInfos, query))
+    if (!processor || !processor->getCollectionManager())
+        return;
+
+    // Check if slot already has data
+    Array<String> existingSlotData = processor->getCollectionManager()->getPresetSlot(presetId, slotIndex);
+    bool slotHasData = false;
+
+    for (const String& freesoundId : existingSlotData)
+    {
+        if (freesoundId.isNotEmpty())
+        {
+            slotHasData = true;
+            break;
+        }
+    }
+
+    if (slotHasData)
+    {
+        AlertWindow::showOkCancelBox(
+            AlertWindow::QuestionIcon,
+            "Overwrite Slot",
+            "Slot " + String(slotIndex + 1) + " already contains data. Do you want to overwrite it?",
+            "Yes, Overwrite", "No, Cancel",
+            nullptr,
+            ModalCallbackFunction::create([this, presetId, slotIndex](int result) {
+                if (result == 1)
+                {
+                    performSaveToSlot(presetId, slotIndex, "Saved from grid interface");
+                }
+            })
+        );
+    }
+    else
+    {
+        performSaveToSlot(presetId, slotIndex, "Saved from grid interface");
+    }
+}
+
+void PresetBrowserComponent::performSaveToSlot(const String& presetId, int slotIndex, const String& description)
+{
+    if (processor->saveToSlot(presetId, slotIndex, description))
     {
         refreshPresetList();
     }
@@ -627,186 +649,35 @@ void PresetBrowserComponent::performSaveToSlot(const PresetInfo& presetInfo, int
     }
 }
 
-bool PresetBrowserComponent::isContentDifferent(const Array<PadInfo>& newPadInfos,
-                                               const Array<PadInfo>& existingPadInfos,
-                                               const String& newQuery,
-                                               const PresetInfo& presetInfo,
-                                               int slotIndex) const
+void PresetBrowserComponent::handleDeleteSlotClicked(const String& presetId, int slotIndex)
 {
-    // First check if queries are different
-    String existingQuery = presetInfo.slots[slotIndex].searchQuery;
-    if (newQuery != existingQuery)
-    {
-        // DBG("Query different: '" + newQuery + "' vs '" + existingQuery + "'");
-        return true;
-    }
-
-    // Check if number of samples is different
-    if (newPadInfos.size() != existingPadInfos.size())
-    {
-        // DBG("Sample count different: " + String(newPadInfos.size()) + " vs " + String(existingPadInfos.size()));
-        return true;
-    }
-
-    // Create maps for easy lookup by pad index
-    std::map<int, const PadInfo*> newPadMap;
-    std::map<int, const PadInfo*> existingPadMap;
-
-    // Fill the maps
-    for (const auto& pad : newPadInfos)
-    {
-        newPadMap[pad.padIndex] = &pad;
-    }
-
-    for (const auto& pad : existingPadInfos)
-    {
-        existingPadMap[pad.padIndex] = &pad;
-    }
-
-    // Compare all 16 possible pad positions (0-15)
-    for (int padIndex = 0; padIndex < 16; ++padIndex)
-    {
-        bool newHasPad = newPadMap.find(padIndex) != newPadMap.end();
-        bool existingHasPad = existingPadMap.find(padIndex) != existingPadMap.end();
-
-        // Check if one has a sample at this position and the other doesn't
-        if (newHasPad != existingHasPad)
-        {
-            return true;
-        }
-
-        // If both have samples at this position, compare them
-        if (newHasPad && existingHasPad)
-        {
-            const PadInfo* newPad = newPadMap[padIndex];
-            const PadInfo* existingPad = existingPadMap[padIndex];
-
-            if (newPad->freesoundId != existingPad->freesoundId)
-            {
-                // DBG("Freesound ID different at pad " + String(padIndex) + ": '" + newPad->freesoundId + "' vs '" + existingPad->freesoundId + "'");
-                return true;
-            }
-
-            if (newPad->originalName != existingPad->originalName)
-            {
-                // DBG("Sample name different at pad " + String(padIndex) + ": '" + newPad->originalName + "' vs '" + existingPad->originalName + "'");
-                return true;
-            }
-
-            if (newPad->author != existingPad->author)
-            {
-                // DBG("Author different at pad " + String(padIndex) + ": '" + newPad->author + "' vs '" + existingPad->author + "'");
-                return true;
-            }
-
-            if (newPad->searchQuery != existingPad->searchQuery)
-            {
-                // DBG("Search query different at pad " + String(padIndex) + ": '" + newPad->searchQuery + "' vs '" + existingPad->searchQuery + "'");
-                return true;
-            }
-        }
-    }
-
-    // DBG("Content is identical - no overwrite warning needed");
-    return false; // Content is identical
-}
-
-void PresetBrowserComponent::handleSaveSlotClicked(const PresetInfo& presetInfo, int slotIndex)
-{
-    if (!processor)
+    if (!processor || !processor->getCollectionManager())
         return;
 
-    // Get current pad infos that we want to save
-    Array<PadInfo> newPadInfos = processor->getCurrentPadInfos();
-    String newDescription = "Saved to slot " + String(slotIndex + 1);
-    String newQuery = processor->getQuery();
-
-    // Check if slot already has data
-    if (presetInfo.slots[slotIndex].hasData)
+    if (processor->getCollectionManager()->clearPresetSlot(presetId, slotIndex))
     {
-        // Load existing data from the slot to compare
-        Array<PadInfo> existingPadInfos;
-        if (processor->getPresetManager().loadPreset(presetInfo.presetFile, slotIndex, existingPadInfos))
-        {
-            // Compare the content
-            bool contentIsDifferent = isContentDifferent(newPadInfos, existingPadInfos, newQuery, presetInfo, slotIndex);
-
-            if (contentIsDifferent)
-            {
-                // Show warning dialog
-                AlertWindow::showOkCancelBox(
-                    AlertWindow::QuestionIcon,
-                    "Overwrite Slot",
-                    "Slot " + String(slotIndex + 1) + " contains different content. Do you want to overwrite it?",
-                    "Yes, Overwrite", "No, Cancel",
-                    nullptr,
-                    ModalCallbackFunction::create([this, presetInfo, slotIndex, newPadInfos, newDescription, newQuery](int result) {
-                        if (result == 1) // User clicked "Yes, Overwrite"
-                        {
-                            performSaveToSlot(presetInfo, slotIndex, newPadInfos, newDescription, newQuery);
-                        }
-                        // If result == 0, user clicked "No, Cancel" - do nothing
-                    })
-                );
-                return; // Exit early, let the callback handle the save
-            }
-            // If content is the same, fall through to save without warning
-        }
-    }
-
-    // Save directly (either slot is empty or content is identical)
-    performSaveToSlot(presetInfo, slotIndex, newPadInfos, newDescription, newQuery);
-}
-
-void PresetBrowserComponent::handleDeleteSlotClicked(const PresetInfo& presetInfo, int slotIndex)
-{
-    if (!processor)
-        return;
-
-    // Check if this is the last remaining slot with data
-    bool hasOtherSlotsWithData = false;
-    for (int i = 0; i < 8; ++i) {
-        if (i != slotIndex && presetInfo.slots[i].hasData) {
-            hasOtherSlotsWithData = true;
-            break;
-        }
-    }
-
-    if (!hasOtherSlotsWithData) {
-        // This is the only slot with data - ask if they want to delete the whole preset
-        AlertWindow::showOkCancelBox(
-            AlertWindow::QuestionIcon,
-            "Delete Last Slot",
-            "This is the last slot with data. Delete the entire preset instead?",
-            "Delete Preset",
-            "Cancel",
-            nullptr,
-            ModalCallbackFunction::create([this, presetInfo](int result) {
-                if (result == 1) { // User clicked "Delete Preset"
-                    processor->getPresetManager().deletePreset(presetInfo.presetFile);
-                    refreshPresetList();
-                }
-            })
-        );
-    }
-    else {
-        // There are other slots with data - proceed with normal slot deletion
-        if (processor->getPresetManager().deleteSlot(presetInfo.presetFile, slotIndex)) {
-            refreshPresetList();
-        }
+        refreshPresetList();
     }
 }
 
 void PresetBrowserComponent::handleDeleteClicked(PresetListItem* item)
 {
+    if (!processor || !processor->getCollectionManager() || !item)
+        return;
+
+    String presetId = item->getPresetId();
+    String presetName = item->getPresetListItemInfo().name;
+
     AlertWindow::showOkCancelBox(AlertWindow::QuestionIcon,
-        "Delete Preset", "Are you sure you want to delete \"" + item->getPresetInfo().name + "\"?",
+        "Delete Preset", "Are you sure you want to delete \"" + presetName + "\"?",
         "Yes", "No", this,
-        ModalCallbackFunction::create([this, item](int result) {
-            if (result == 1 && processor)
+        ModalCallbackFunction::create([this, presetId](int result) {
+            if (result == 1)
             {
-                processor->getPresetManager().deletePreset(item->getPresetInfo().presetFile);
-                refreshPresetList();
+                if (processor->getCollectionManager()->deletePreset(presetId))
+                {
+                    refreshPresetList();
+                }
             }
         }));
 }
@@ -824,271 +695,232 @@ void PresetBrowserComponent::showInlineRenameEditor(PresetListItem* item)
     auto globalTop = item->getY() + presetListContainer.getY();
     auto editorBounds = Rectangle<int>(itemBounds.getX() + 10, globalTop - 28, itemBounds.getWidth() - 20, 24);
 
-    renameEditor.setBounds(editorBounds);
-    renameEditor.setText(item->getPresetInfo().name, dontSendNotification);
-    renameEditor.setVisible(true);
-    renameEditor.grabKeyboardFocus();
-    renameEditor.selectAll();
+   renameEditor.setBounds(editorBounds);
+   renameEditor.setText(item->getPresetListItemInfo().name, dontSendNotification);
+   renameEditor.setVisible(true);
+   renameEditor.grabKeyboardFocus();
+   renameEditor.selectAll();
 }
 
 void PresetBrowserComponent::hideInlineRenameEditor(bool applyRename)
 {
-    renameEditor.setVisible(false);
+   renameEditor.setVisible(false);
 
-    if (applyRename && renamingItem)
-    {
-        String newName = renameEditor.getText().trim();
-        if (newName.isNotEmpty() && newName != renamingItem->getPresetInfo().name)
-        {
-            performRename(renamingItem->getPresetInfo(), newName);
-        }
-    }
+   if (applyRename && renamingItem)
+   {
+       String newName = renameEditor.getText().trim();
+       if (newName.isNotEmpty() && newName != renamingItem->getPresetListItemInfo().name)
+       {
+           performRename(renamingItem->getPresetId(), newName);
+       }
+   }
 
-    renamingItem = nullptr;
+   renamingItem = nullptr;
 }
 
-void PresetBrowserComponent::performRename(const PresetInfo& presetInfo, const String& newName)
+void PresetBrowserComponent::performRename(const String& presetId, const String& newName)
 {
-    if (newName.isEmpty() || newName == presetInfo.name || !processor)
-        return;
+   if (newName.isEmpty() || !processor || !processor->getCollectionManager())
+       return;
 
-    Array<PresetInfo> existingPresets = processor->getPresetManager().getAvailablePresets();
-    for (const auto& preset : existingPresets)
-    {
-        if (preset.name == newName && preset.presetFile != presetInfo.presetFile)
-        {
-            AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                "Name Exists", "A preset with the name \"" + newName + "\" already exists.");
-            return;
-        }
-    }
-
-    // Load the existing preset data completely
-    String jsonText = presetInfo.presetFile.loadFileAsString();
-    var parsedJson = JSON::parse(jsonText);
-
-    if (parsedJson.isObject())
-    {
-        auto* rootObject = parsedJson.getDynamicObject();
-        if (rootObject)
-        {
-            // Update the preset info name
-            var presetInfoVar = parsedJson.getProperty("preset_info", var());
-            if (presetInfoVar.isObject())
-            {
-                auto* presetInfoObj = presetInfoVar.getDynamicObject();
-                if (presetInfoObj)
-                {
-                    presetInfoObj->setProperty("name", newName);
-                }
-            }
-
-            // Create new file with sanitized name
-            String newFileName = processor->getPresetManager().sanitizeFileName(newName) + ".json";
-            File newPresetFile = processor->getPresetManager().getPresetsFolder().getChildFile(newFileName);
-
-            // Save to new file
-            String newJsonString = JSON::toString(parsedJson, true);
-            if (newPresetFile.replaceWithText(newJsonString))
-            {
-                // Delete old file
-                presetInfo.presetFile.deleteFile();
-                refreshPresetList();
-            }
-            else
-            {
-                AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-                    "Rename Failed", "Failed to save preset with new name.");
-            }
-        }
-    }
+   if (processor->getCollectionManager()->renamePreset(presetId, newName))
+   {
+       refreshPresetList();
+   }
+   else
+   {
+       AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+           "Rename Failed", "Failed to rename preset.");
+   }
 }
 
 void PresetBrowserComponent::saveCurrentPreset()
 {
-    if (!processor)
-        return;
+   if (!processor || !processor->getCollectionManager())
+       return;
 
-    String suggestedName = processor->getPresetManager().generatePresetName(processor->getQuery());
+   String suggestedName = "Preset " + Time::getCurrentTime().formatted("%Y-%m-%d %H.%M");
 
-    if (processor->saveCurrentAsPreset(suggestedName, "Saved from grid interface"))
-    {
-        refreshPresetList();
-        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "Preset Saved", "Preset saved as \"" + suggestedName + "\" in slot 1");
-    }
-    else
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Save Failed", "Failed to save preset.");
-    }
+   String presetId = processor->saveCurrentAsPreset(suggestedName, "Saved from grid interface");
+   if (!presetId.isEmpty())
+   {
+       refreshPresetList();
+       AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+           "Preset Saved", "Preset saved as \"" + suggestedName + "\" in slot 0");
+   }
+   else
+   {
+       AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+           "Save Failed", "Failed to save preset.");
+   }
 }
 
 void PresetBrowserComponent::scrollBarMoved(ScrollBar*, double) {}
 
 void PresetBrowserComponent::restoreActiveState()
 {
-    if (!processor)
-        return;
+   if (!processor)
+       return;
 
-    File activePresetFile = processor->getPresetManager().getActivePresetFile();
-    int activeSlotIndex = processor->getPresetManager().getActiveSlotIndex();
+   String activePresetId = processor->getActivePresetId();
+   int activeSlotIndex = processor->getActiveSlotIndex();
 
-    if (!activePresetFile.existsAsFile() || activeSlotIndex < 0)
-        return;
+   if (activePresetId.isEmpty() || activeSlotIndex < 0)
+       return;
 
-    // DBG("Restoring active state: " + activePresetFile.getFileName() + ", slot " + String(activeSlotIndex));
-
-    // Find the matching preset item and update its active slot
-    for (auto* item : presetItems)
-    {
-        if (item && item->getPresetInfo().presetFile == activePresetFile)
-        {
-            item->updateActiveSlot(activeSlotIndex);
-            handleItemClicked(item); // Also select the preset item
-            break;
-        }
-    }
+   // Find the matching preset item and update its active slot
+   for (auto* item : presetItems)
+   {
+       if (item && item->getPresetId() == activePresetId)
+       {
+           item->updateActiveSlot(activeSlotIndex);
+           handleItemClicked(item);
+           break;
+       }
+   }
 }
 
 void PresetBrowserComponent::handleSampleCheckClicked(PresetListItem* item)
 {
-    if (!processor)
-        return;
+   if (!processor || !processor->getCollectionManager())
+       return;
 
-    const auto& presetInfo = item->getPresetInfo();
+   const String& presetId = item->getPresetId();
 
-    // Collect all unique sample IDs from all slots
-    StringArray allUniqueSampleIds;  // Track unique sample IDs
-    Array<PadInfo> allMissingPadInfos;
-    StringArray uniqueMissingSampleIds;  // Track unique missing IDs
+   // Collect all unique sample IDs from all slots
+   StringArray allUniqueSampleIds;
+   Array<SampleMetadata> allMissingSamples;
+   StringArray uniqueMissingSampleIds;
 
-    for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
-    {
-        if (!presetInfo.slots[slotIndex].hasData)
-            continue;
+   for (int slotIndex = 0; slotIndex < 8; ++slotIndex)
+   {
+       Array<String> slotFreesoundIds = processor->getCollectionManager()->getPresetSlot(presetId, slotIndex);
 
-        Array<PadInfo> slotPadInfos;
-        if (processor->getPresetManager().loadPreset(presetInfo.presetFile, slotIndex, slotPadInfos))
-        {
-            for (const auto& padInfo : slotPadInfos)
-            {
-                // Add to unique samples list
-                allUniqueSampleIds.addIfNotAlreadyThere(padInfo.freesoundId);
+       for (const String& freesoundId : slotFreesoundIds)
+       {
+           if (freesoundId.isNotEmpty())
+           {
+               // Add to unique samples list
+               allUniqueSampleIds.addIfNotAlreadyThere(freesoundId);
 
-                File sampleFile = processor->getPresetManager().getSampleFile(padInfo.freesoundId);
-                if (!sampleFile.existsAsFile())
-                {
-                    // For missing samples, add unique IDs for download
-                    uniqueMissingSampleIds.addIfNotAlreadyThere(padInfo.freesoundId);
-                    allMissingPadInfos.add(padInfo);
-                }
-            }
-        }
-    }
+               File sampleFile = processor->getCollectionManager()->getSampleFile(freesoundId);
+               if (!sampleFile.existsAsFile())
+               {
+                   // For missing samples, add unique IDs for download
+                   uniqueMissingSampleIds.addIfNotAlreadyThere(freesoundId);
 
-    int totalUniqueSamples = allUniqueSampleIds.size();
+                   SampleMetadata sample = processor->getCollectionManager()->getSample(freesoundId);
+                   if (!sample.freesoundId.isEmpty())
+                   {
+                       allMissingSamples.add(sample);
+                   }
+               }
+           }
+       }
+   }
 
-    if (totalUniqueSamples == 0)
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "No Samples", "This preset bank contains no samples.");
-        return;
-    }
+   int totalUniqueSamples = allUniqueSampleIds.size();
 
-    int totalMissingUniqueSamples = uniqueMissingSampleIds.size();
+   if (totalUniqueSamples == 0)
+   {
+       AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+           "No Samples", "This preset bank contains no samples.");
+       return;
+   }
 
-    if (totalMissingUniqueSamples == 0)
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-            "All Samples Available",
-            "All " + String(totalUniqueSamples) + " samples are available in the resources folder.");
-        return;
-    }
+   int totalMissingUniqueSamples = uniqueMissingSampleIds.size();
 
-    // Some samples are missing
-    String message;
-    if (totalMissingUniqueSamples == totalUniqueSamples)
-    {
-        message = "All " + String(totalUniqueSamples) + " samples are missing from the resources folder.\n\n";
-    }
-    else
-    {
-        message = String(totalMissingUniqueSamples) + " of " + String(totalUniqueSamples) +
-                 " samples are missing from the resources folder.\n\n";
-    }
+   if (totalMissingUniqueSamples == 0)
+   {
+       AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+           "All Samples Available",
+           "All " + String(totalUniqueSamples) + " samples are available in the resources folder.");
+       return;
+   }
 
-    message += "Do you want to download the missing samples?";
+   // Some samples are missing
+   String message;
+   if (totalMissingUniqueSamples == totalUniqueSamples)
+   {
+       message = "All " + String(totalUniqueSamples) + " samples are missing from the resources folder.\n\n";
+   }
+   else
+   {
+       message = String(totalMissingUniqueSamples) + " of " + String(totalUniqueSamples) +
+                " samples are missing from the resources folder.\n\n";
+   }
 
-    AlertWindow::showOkCancelBox(
-        AlertWindow::QuestionIcon,
-        "Missing Samples",
-        message,
-        "Yes, Download", "No",
-        nullptr,
-        ModalCallbackFunction::create([this, allMissingPadInfos](int result) {
-            if (result == 1) { // User clicked "Yes, Download"
-                downloadMissingSamples(allMissingPadInfos);
-            }
-        })
-    );
+   message += "Do you want to download the missing samples?";
+
+   AlertWindow::showOkCancelBox(
+       AlertWindow::QuestionIcon,
+       "Missing Samples",
+       message,
+       "Yes, Download", "No",
+       nullptr,
+       ModalCallbackFunction::create([this, allMissingSamples](int result) {
+           if (result == 1) { // User clicked "Yes, Download"
+               downloadMissingSamples(allMissingSamples);
+           }
+       })
+   );
 }
 
-void PresetBrowserComponent::downloadMissingSamples(const Array<PadInfo>& missingPadInfos)
+void PresetBrowserComponent::downloadMissingSamples(const Array<SampleMetadata>& missingSamples)
 {
-    if (!processor || missingPadInfos.isEmpty())
-        return;
+   if (!processor || missingSamples.isEmpty())
+       return;
 
-    // Get unique sample IDs to avoid downloading the same sample multiple times
-    StringArray uniqueMissingIds;
-    for (const auto& padInfo : missingPadInfos)
-    {
-        uniqueMissingIds.addIfNotAlreadyThere(padInfo.freesoundId);
-    }
+   // Get unique sample IDs to avoid downloading the same sample multiple times
+   StringArray uniqueMissingIds;
+   for (const auto& sample : missingSamples)
+   {
+       uniqueMissingIds.addIfNotAlreadyThere(sample.freesoundId);
+   }
 
-    // We need to fetch the missing sounds from Freesound API to get complete data including previews
-    Array<FSSound> soundsToDownload;
-    FreesoundClient client(FREESOUND_API_KEY);
+   // We need to fetch the missing sounds from Freesound API to get complete data including previews
+   Array<FSSound> soundsToDownload;
+   FreesoundClient client(FREESOUND_API_KEY);
 
-    for (const String& freesoundId : uniqueMissingIds)
-    {
-        try
-        {
-            // Fetch the complete sound data from Freesound API including previews
-            FSSound sound = client.getSound(freesoundId, "id,name,username,license,previews,duration,filesize");
+   for (const String& freesoundId : uniqueMissingIds)
+   {
+       try
+       {
+           // Fetch the complete sound data from Freesound API including previews
+           FSSound sound = client.getSound(freesoundId, "id,name,username,license,previews,duration,filesize,tags,description");
 
-            if (!sound.id.isEmpty())
-            {
-                soundsToDownload.add(sound);
-            }
-            else
-            {
-                DBG("Failed to fetch sound data for ID: " + freesoundId);
-            }
-        }
-        catch (const std::exception& e)
-        {
-            DBG("Error fetching sound " + freesoundId + ": " + String(e.what()));
-        }
-    }
+           if (!sound.id.isEmpty())
+           {
+               soundsToDownload.add(sound);
+           }
+           else
+           {
+               DBG("Failed to fetch sound data for ID: " + freesoundId);
+           }
+       }
+       catch (const std::exception& e)
+       {
+           DBG("Error fetching sound " + freesoundId + ": " + String(e.what()));
+       }
+   }
 
-    if (soundsToDownload.isEmpty())
-    {
-        AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
-            "Download Failed",
-            "Could not retrieve sound information from Freesound. Please check your internet connection.");
-        return;
-    }
+   if (soundsToDownload.isEmpty())
+   {
+       AlertWindow::showMessageBoxAsync(AlertWindow::WarningIcon,
+           "Download Failed",
+           "Could not retrieve sound information from Freesound. Please check your internet connection.");
+       return;
+   }
 
-    // Start download using processor's download system
-    processor->getDownloadManager().startDownloads(
-        soundsToDownload,
-        processor->getPresetManager().getSamplesFolder(),
-        "Missing samples download"
-    );
+   // Start download using processor's download system
+   processor->getDownloadManager().startDownloads(
+       soundsToDownload,
+       processor->getCollectionManager()->getSamplesFolder(),
+       "Missing samples download"
+   );
 
-    // Show progress notification
-    AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
-        "Download Started",
-        "Downloading " + String(soundsToDownload.size()) + " unique samples...");
+   // Show progress notification
+   AlertWindow::showMessageBoxAsync(AlertWindow::InfoIcon,
+       "Download Started",
+       "Downloading " + String(soundsToDownload.size()) + " unique samples...");
 }

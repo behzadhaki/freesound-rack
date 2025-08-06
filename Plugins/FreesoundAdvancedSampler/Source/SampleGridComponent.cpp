@@ -1099,12 +1099,15 @@ void SamplePad::initializeBadges()
 
         // Bookmark badge - use emplace_back with move
         {
+            bool isCurrentlyBookmarked = processor && processor->getCollectionManager()
+                                        ? processor->getCollectionManager()->isBookmarked(freesoundId)
+                                        : false;
+
             Badge bookmarkBadge("bookmark", String(CharPointer_UTF8("\xE2\x98\x85")),
-                               processor && processor->getBookmarkManager().isBookmarked(freesoundId) ?
-                               Colours::goldenrod : Colour(0x80808080).withAlpha(0.0f));
+                               isCurrentlyBookmarked ? Colours::goldenrod : Colour(0x80808080).withAlpha(0.0f));
             bookmarkBadge.width = 16;
             bookmarkBadge.onClick = [this](const MouseEvent&) { handleBookmarkClick(); };
-            topLeftBadges.emplace_back(std::move(bookmarkBadge)); // Use emplace_back with move
+            topLeftBadges.emplace_back(std::move(bookmarkBadge));
         }
     }
 
@@ -1625,32 +1628,20 @@ void SamplePad::handleBookmarkClick()
     if (!hasValidSample || !processor)
         return;
 
-    BookmarkManager& bookmarkManager = processor->getBookmarkManager();
+    SampleCollectionManager* collectionManager = processor->getCollectionManager();
+    if (!collectionManager)
+        return;
 
-    if (bookmarkManager.isBookmarked(freesoundId))
+    if (collectionManager->isBookmarked(freesoundId))
     {
-        if (bookmarkManager.removeBookmark(freesoundId))
+        if (collectionManager->removeBookmark(freesoundId))
         {
             repaint();
         }
     }
     else
     {
-        BookmarkInfo bookmark;
-        bookmark.freesoundId = freesoundId;
-        bookmark.sampleName = sampleName;
-        bookmark.authorName = authorName;
-        bookmark.licenseType = licenseType;
-        bookmark.searchQuery = getQuery();
-        bookmark.fileName = audioFile.getFileName();
-        bookmark.duration = 0.5;
-        bookmark.fileSize = (int)audioFile.getSize();
-        bookmark.bookmarkedAt = Time::getCurrentTime().toString(true, true);
-        bookmark.freesoundUrl = "https://freesound.org/s/" + freesoundId + "/";
-        bookmark.tags = tags;
-        bookmark.description = description;
-
-        if (bookmarkManager.addBookmark(bookmark))
+        if (collectionManager->addBookmark(freesoundId))
         {
             repaint();
         }
@@ -2121,46 +2112,6 @@ void SampleGridComponent::clearSamples()
     }
 }
 
-void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
-{
-    if (sourcePadIndex < 0 || sourcePadIndex >= TOTAL_PADS ||
-        targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS ||
-        sourcePadIndex == targetPadIndex)
-        return;
-
-    // Swap visual pad objects
-    std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
-
-    // Swap their bounds to keep layout consistent
-    auto sourceBounds = samplePads[sourcePadIndex]->getBounds();
-    auto targetBounds = samplePads[targetPadIndex]->getBounds();
-    samplePads[sourcePadIndex]->setBounds(targetBounds);
-    samplePads[targetPadIndex]->setBounds(sourceBounds);
-
-    // Update padIndex of each pad so MIDI note triggering is correct
-    samplePads[sourcePadIndex]->setPadIndex(sourcePadIndex);
-    samplePads[targetPadIndex]->setPadIndex(targetPadIndex);
-
-    // Update processor-side arrays to keep logic in sync
-    if (processor != nullptr)
-    {
-        // Swap current sound data
-        auto& sounds = processor->getCurrentSoundsArrayReference();
-        std::swap(sounds.getReference(sourcePadIndex), sounds.getReference(targetPadIndex));
-
-        // Swap associated metadata (author, license, etc.)
-        auto& metadata = processor->getDataReference();
-        std::swap(metadata[sourcePadIndex], metadata[targetPadIndex]);
-
-        // Rebuild the sampler to apply updated MIDI mappings
-        processor->setSources();
-    }
-
-    // Repaint both pads to reflect new visuals
-    samplePads[sourcePadIndex]->repaint();
-    samplePads[targetPadIndex]->repaint();
-}
-
 void SampleGridComponent::shuffleSamples()
 {
     if (!processor)
@@ -2399,13 +2350,17 @@ void SampleGridComponent::updateJsonMetadata()
 
 void SampleGridComponent::noteStarted(int noteNumber, float velocity)
 {
-    // Convert MIDI note back to pad index
-    int padIndex = noteNumber - 36; // Note 36 = pad 0, Note 37 = pad 1, etc.
+    int padIndex = noteNumber - 36;
     if (padIndex >= 0 && padIndex < TOTAL_PADS)
     {
-        // These methods now handle message thread dispatching internally
         samplePads[padIndex]->setIsPlaying(true);
         samplePads[padIndex]->setPlayheadPosition(0.0f);
+
+        // Track play count in collection manager
+        if (processor)
+        {
+            processor->incrementSamplePlayCount(padIndex);
+        }
     }
 }
 
@@ -2786,25 +2741,6 @@ void SampleGridComponent::performSinglePadSearch(int padIndex, const String& que
         // Need to download it
         downloadSingleSampleWithQuery(padIndex, newSound, query);
     }
-}
-
-void SampleGridComponent::loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query)
-{
-    // Update the pad visually with the query
-    samplePads[padIndex]->setSample(audioFile, sound.name, sound.user, sound.id, sound.license, query, sound.tags.joinIntoString(","), sound.description);
-
-    // Update processor's internal arrays
-    updateSinglePadInProcessor(padIndex, sound);
-
-    // Reload the sampler to include the new sample
-    if (processor)
-    {
-        processor->setSources();
-        processor->updateReadmeFile();
-    }
-
-    // Update JSON metadata
-    updateJsonMetadata();
 }
 
 void SampleGridComponent::downloadSingleSampleWithQuery(int padIndex, const FSSound& sound, const String& query)
@@ -3657,6 +3593,135 @@ void SampleGridComponent::fileDragExit(const StringArray& files)
     dragHoverPadIndex = -1;
     repaint();
 }
+
+void SampleGridComponent::updatePadFromCollection(int padIndex, const String& freesoundId)
+{
+    if (padIndex < 0 || padIndex >= TOTAL_PADS || !processor)
+        return;
+
+    SampleCollectionManager* collectionManager = processor->getCollectionManager();
+    if (!collectionManager)
+        return;
+
+    if (freesoundId.isEmpty())
+    {
+        // Clear the pad
+        samplePads[padIndex]->clearSample();
+        processor->clearPad(padIndex);
+    }
+    else
+    {
+        // Load sample data from collection
+        SampleMetadata sample = collectionManager->getSample(freesoundId);
+        File audioFile = collectionManager->getSampleFile(freesoundId);
+
+        if (!sample.freesoundId.isEmpty() && audioFile.existsAsFile())
+        {
+            // Update visual pad
+            samplePads[padIndex]->setSample(
+                audioFile,
+                sample.originalName,
+                sample.authorName,
+                sample.freesoundId,
+                sample.licenseType,
+                sample.searchQuery,
+                sample.tags,
+                sample.description
+            );
+
+            // Update processor state
+            processor->setPadSample(padIndex, freesoundId);
+        }
+    }
+}
+
+// Load all pads from current processor state
+void SampleGridComponent::refreshFromProcessor()
+{
+    if (!processor)
+        return;
+
+    for (int padIndex = 0; padIndex < TOTAL_PADS; ++padIndex)
+    {
+        String freesoundId = processor->getPadFreesoundId(padIndex);
+        updatePadFromCollection(padIndex, freesoundId);
+    }
+
+    // Update sampler
+    processor->setSources();
+}
+
+// Updated sample loading for master search
+void SampleGridComponent::loadSingleSampleWithQuery(int padIndex, const FSSound& sound, const File& audioFile, const String& query)
+{
+    if (!processor)
+        return;
+
+    SampleCollectionManager* collectionManager = processor->getCollectionManager();
+    if (!collectionManager)
+        return;
+
+    // Add/update sample in collection with the search query
+    collectionManager->addOrUpdateSample(sound, query);
+
+    // Update the pad
+    updatePadFromCollection(padIndex, sound.id);
+
+    // Rebuild sampler
+    processor->setSources();
+}
+
+// Updated clear sample method
+void SampleGridComponent::clearSampleFromPad(int padIndex)
+{
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
+        return;
+
+    updatePadFromCollection(padIndex, "");
+
+    if (processor)
+    {
+        processor->setSources();
+    }
+}
+
+// Updated swap samples method
+void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
+{
+    if (sourcePadIndex < 0 || sourcePadIndex >= TOTAL_PADS ||
+        targetPadIndex < 0 || targetPadIndex >= TOTAL_PADS ||
+        sourcePadIndex == targetPadIndex || !processor)
+        return;
+
+    // Get current freesound IDs
+    String sourceId = processor->getPadFreesoundId(sourcePadIndex);
+    String targetId = processor->getPadFreesoundId(targetPadIndex);
+
+    // Swap visual pad objects
+    std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
+
+    // Swap their bounds to keep layout consistent
+    auto sourceBounds = samplePads[sourcePadIndex]->getBounds();
+    auto targetBounds = samplePads[targetPadIndex]->getBounds();
+    samplePads[sourcePadIndex]->setBounds(targetBounds);
+    samplePads[targetPadIndex]->setBounds(sourceBounds);
+
+    // Update padIndex of each pad so MIDI note triggering is correct
+    samplePads[sourcePadIndex]->setPadIndex(sourcePadIndex);
+    samplePads[targetPadIndex]->setPadIndex(targetPadIndex);
+
+    // Update processor pad assignments
+    processor->setPadSample(sourcePadIndex, targetId);
+    processor->setPadSample(targetPadIndex, sourceId);
+
+    // Rebuild the sampler to apply updated MIDI mappings
+    processor->setSources();
+
+    // Repaint both pads
+    samplePads[sourcePadIndex]->repaint();
+    samplePads[targetPadIndex]->repaint();
+}
+
 
 //==============================================================================
 // SampleDragArea Implementation

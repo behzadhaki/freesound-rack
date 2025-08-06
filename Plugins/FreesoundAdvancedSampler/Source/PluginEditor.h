@@ -14,7 +14,7 @@
 #include "PluginProcessor.h"
 #include "SampleGridComponent.h"
 #include "PresetBrowserComponent.h"
-#include "PresetManager.h"
+#include "SampleCollectionManager.h"
 #include "ExpandablePanel.h"
 #include "CustomLookAndFeel.h"
 #include "BookmarkViewerComponent.h"
@@ -22,8 +22,8 @@
 //==============================================================================
 /**
 */
-class FreesoundAdvancedSamplerAudioProcessorEditor  : public AudioProcessorEditor,
-                                                  public FreesoundAdvancedSamplerAudioProcessor::DownloadListener
+class FreesoundAdvancedSamplerAudioProcessorEditor : public AudioProcessorEditor,
+                                                    public FreesoundAdvancedSamplerAudioProcessor::DownloadListener
 {
 public:
     FreesoundAdvancedSamplerAudioProcessorEditor (FreesoundAdvancedSamplerAudioProcessor&);
@@ -37,9 +37,10 @@ public:
     void downloadProgressChanged(const AudioDownloadManager::DownloadProgress& progress) override;
     void downloadCompleted(bool success) override;
 
+    // Preset operations using collection manager
     bool saveCurrentAsPreset(const String& name, const String& description = "", int slotIndex = 0);
-    bool loadPreset(const File& presetFile, int slotIndex = 0);
-    bool saveToSlot(const File& presetFile, int slotIndex, const String& description = "");
+    bool loadPreset(const String& presetId, int slotIndex = 0);
+    bool saveToSlot(const String& presetId, int slotIndex, const String& description = "");
 
     SampleGridComponent& getSampleGridComponent() { return sampleGridComponent; }
     bool keyPressed(const KeyPress& key) override;
@@ -47,7 +48,6 @@ public:
     void updateWindowSizeForBookmarkPanel();
 
 private:
-
     FreesoundAdvancedSamplerAudioProcessor& processor;
 
     std::unique_ptr<CustomLookAndFeel> customLookAndFeel;
@@ -60,22 +60,20 @@ private:
     PresetBrowserComponent presetBrowserComponent;
     ExpandablePanel expandablePanelComponent;
 
-    // Store sounds for grid update
-    Array<FSSound> currentSounds;
-
-    // Handle preset loading with slot support
-    void handlePresetLoadRequested(const PresetInfo& presetInfo, int slotIndex);
-    void loadPresetNormally(const PresetInfo& presetInfo, int slotIndex); // NEW helper method
+    // Handle preset loading with slot support using collection manager
+    void handlePresetLoadRequested(const String& presetId, int slotIndex);
+    void loadPresetNormally(const String& presetId, int slotIndex);
 
     // Method for expandable panel on the right side
     void updateWindowSizeForPanelState();
 
-    // Add to the private section after the existing expandable panel
+    // Bookmark panel on the left side
     ExpandablePanel bookmarkExpandablePanel;
     BookmarkViewerComponent bookmarkViewerComponent;
 
     void updateSizeConstraintsForCurrentPanelStates();
 
     int getKeyboardPadIndex(const KeyPress& key) const;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessorEditor)
 };

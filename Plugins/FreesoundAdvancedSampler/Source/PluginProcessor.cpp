@@ -142,20 +142,27 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingPreviewSamplerVoice::render
 
 FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-     :         AudioProcessor (BusesProperties()
+     : AudioProcessor (BusesProperties()
                      #if ! JucePlugin_IsMidiEffect
                       #if ! JucePlugin_IsSynth
                        .withInput  ("Input",  AudioChannelSet::stereo(), true)
                       #endif
                        .withOutput ("Output", AudioChannelSet::stereo(), true)
                      #endif
-                       ), presetManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler"))
-                        , bookmarkManager(File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler"))
+                       )
 #endif
 {
+    // Initialize collection manager
+    File baseDir = File::getSpecialLocation(File::userDocumentsDirectory)
+                      .getChildFile("FreesoundAdvancedSampler");
+    collectionManager = std::make_unique<SampleCollectionManager>(baseDir);
+
+    // Initialize pad state
+    currentPadFreesoundIds.resize(16);
+
     tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
     tmpDownloadLocation.createDirectory();
-    currentSessionDownloadLocation = presetManager.getSamplesFolder();
+    currentSessionDownloadLocation = collectionManager->getSamplesFolder();
     midicounter = 1;
     startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
@@ -356,6 +363,22 @@ void FreesoundAdvancedSamplerAudioProcessor::setStateInformation(const void* dat
 
 void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
 {
+    xml.setAttribute("activePresetId", activePresetId);
+    xml.setAttribute("activeSlotIndex", activeSlotIndex);
+
+    // Save current pad state
+    auto* padsXml = xml.createNewChildElement("CurrentPads");
+    for (int i = 0; i < 16; ++i)
+    {
+        String freesoundId = getPadFreesoundId(i);
+        if (freesoundId.isNotEmpty())
+        {
+            auto* padXml = padsXml->createNewChildElement("Pad");
+            padXml->setAttribute("index", i);
+            padXml->setAttribute("freesoundId", freesoundId);
+        }
+    }
+
     // Save basic plugin state
     xml.setAttribute("query", query);
     xml.setAttribute("lastDownloadLocation", currentSessionDownloadLocation.getFullPathName());
@@ -367,10 +390,6 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
     // Save panel states
     xml.setAttribute("presetPanelExpanded", presetPanelExpandedState);
     xml.setAttribute("bookmarkPanelExpanded", bookmarkPanelExpandedState);
-
-    // Save active preset state
-    xml.setAttribute("activePresetFile", presetManager.getActivePresetFile().getFullPathName());
-    xml.setAttribute("activeSlotIndex", presetManager.getActiveSlotIndex());
 
     // Save current sounds and their positions
     auto* soundsXml = xml.createNewChildElement("Sounds");
@@ -406,10 +425,32 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
 
 void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& xml)
 {
+    activePresetId = xml.getStringAttribute("activePresetId", "");
+    activeSlotIndex = xml.getIntAttribute("activeSlotIndex", -1);
+
+    // Clear current state
+    clearAllPads();
+
+    // Load pad state
+    if (auto* padsXml = xml.getChildByName("CurrentPads"))
+    {
+        for (auto* padXml : padsXml->getChildIterator())
+        {
+            if (padXml->hasTagName("Pad"))
+            {
+                int padIndex = padXml->getIntAttribute("index", -1);
+                String freesoundId = padXml->getStringAttribute("freesoundId", "");
+
+                if (padIndex >= 0 && padIndex < 16 && freesoundId.isNotEmpty())
+                {
+                    setPadSample(padIndex, freesoundId);
+                }
+            }
+        }
+    }
+
     // Load basic plugin state
     query = xml.getStringAttribute("query", "");
-    currentSessionDownloadLocation = File(xml.getStringAttribute("lastDownloadLocation",
-        presetManager.getSamplesFolder().getFullPathName()));
 
     // Load window dimensions
     savedWindowWidth = xml.getIntAttribute("windowWidth", 1000);
@@ -423,14 +464,14 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
     String activePresetPath = xml.getStringAttribute("activePresetFile", "");
     int activeSlot = xml.getIntAttribute("activeSlotIndex", -1);
 
-    if (activePresetPath.isNotEmpty() && activeSlot >= 0)
+    /*if (activePresetPath.isNotEmpty() && activeSlot >= 0)
     {
         File activePresetFile(activePresetPath);
         if (activePresetFile.existsAsFile())
         {
-            presetManager.setActivePreset(activePresetFile, activeSlot);
+            collectionManager.setActivePreset(activePresetFile, activeSlot);
         }
-    }
+    }*/
 
     // Clear current state
     currentSoundsArray.clear();
@@ -511,28 +552,34 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
 
 void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)
 {
-    query = textQuery;
-    soundsArray = soundInfo;
-    currentSoundsArray = sounds; // Store the sounds array
+    // Add all sounds to collection
+    for (int i = 0; i < sounds.size(); ++i)
+    {
+        const FSSound& sound = sounds[i];
+        String searchQuery = textQuery;
 
-    // Check if we have an editor with a grid component to handle master search
+        // Override with individual query if available
+        if (i < soundInfo.size() && soundInfo[i].size() > 5)
+        {
+            searchQuery = soundInfo[i][5]; // Query stored at index 5
+        }
+
+        collectionManager->addOrUpdateSample(sound, searchQuery);
+    }
+
+    // Handle master search or individual pad population
     if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
     {
-        // Use the new master search method that only affects pads with empty queries
         editor->getSampleGridComponent().handleMasterSearch(sounds, soundInfo, textQuery);
     }
 
-    // Always start downloads to ensure all samples are available locally
     startDownloads(sounds);
-
-    // NOTE: We do NOT call updateSamples here anymore since handleMasterSearch handles the grid update
-    // This prevents the text boxes from being cleared after master search
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::startDownloads(const Array<FSSound>& sounds)
 {
     // Create main samples folder (no more subfolders)
-    File samplesFolder = presetManager.getSamplesFolder();
+    File samplesFolder = collectionManager->getSamplesFolder();
     samplesFolder.createDirectory();
 
     // Filter out sounds that already exist to avoid re-downloading
@@ -612,29 +659,23 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
     sampler.clearVoices();
 
     int poliphony = 16;
-    double maxLength = 0.0; // CHANGED: 0.0 means no length limit
 
     // Add tracking voices
     for (int i = 0; i < poliphony; i++) {
         sampler.addVoice(new TrackingSamplerVoice(*this));
     }
 
-    // Add a tracking voice for preview sampler instead of regular voice
-    previewSampler.addVoice(new TrackingPreviewSamplerVoice(*this));
-
     if (audioFormatManager.getNumKnownFormats() == 0) {
         audioFormatManager.registerBasicFormats();
     }
 
-    // Load samples by their actual pad positions
+    // Load samples by pad index using collection manager
     for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
-        if (padIndex < currentSoundsArray.size() && !currentSoundsArray[padIndex].id.isEmpty())
+        String freesoundId = getPadFreesoundId(padIndex);
+        if (freesoundId.isNotEmpty() && collectionManager)
         {
-            const FSSound& sound = currentSoundsArray[padIndex];
-
-            String fileName = "FS_ID_" + sound.id + ".ogg";
-            File audioFile = currentSessionDownloadLocation.getChildFile(fileName);
+            File audioFile = collectionManager->getSampleFile(freesoundId);
 
             if (audioFile.existsAsFile())
             {
@@ -646,19 +687,16 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
                     int midiNote = 36 + padIndex;
                     notes.setBit(midiNote, true);
 
-                    // For sustained playback (samples play until note off):
-                    double attackTime = 0.0;      // Start immediately
-                    double releaseTime = 0.1;     // Short release (100ms fadeout after note off)
-                    double maxSampleLength = 10.0; // No length limit - play full sample
+                    double attackTime = 0.0;
+                    double releaseTime = 0.1;
+                    double maxSampleLength = 10.0;
 
                     sampler.addSound(new SamplerSound(String(padIndex), *reader, notes, midiNote,
                                                      attackTime, releaseTime, maxSampleLength));
-
                 }
             }
         }
     }
-
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addNoteOnToMidiBuffer(int notenumber)
@@ -724,335 +762,148 @@ void FreesoundAdvancedSamplerAudioProcessor::notifyNoteStopped(int noteNumber)
     });
 }
 
-bool FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description, int slotIndex)
+String FreesoundAdvancedSamplerAudioProcessor::saveCurrentAsPreset(const String& name, const String& description, int slotIndex)
 {
-    Array<PadInfo> padInfos;
+    if (!collectionManager)
+        return "";
 
-    // Get pad info from the grid if editor is available
-    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    // Create preset if it doesn't exist
+    String presetId = collectionManager->createPreset(name, description);
+
+    // Get current pad state
+    Array<SampleMetadata> currentSamples;
+    Array<int> padPositions;
+
+    for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
-        auto& gridComponent = editor->getSampleGridComponent();
-        auto allSampleInfo = gridComponent.getAllSampleInfo();
-
-        for (const auto& sampleInfo : allSampleInfo)
+        String freesoundId = getPadFreesoundId(padIndex);
+        if (freesoundId.isNotEmpty())
         {
-            if (sampleInfo.hasValidSample)
+            SampleMetadata sample = collectionManager->getSample(freesoundId);
+            if (!sample.freesoundId.isEmpty())
             {
-                PadInfo padInfo;
-                padInfo.padIndex = sampleInfo.padIndex - 1; // Convert from 1-based to 0-based
-                padInfo.freesoundId = sampleInfo.freesoundId;
-                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
-                padInfo.originalName = sampleInfo.sampleName;
-                padInfo.author = sampleInfo.authorName;
-                padInfo.license = sampleInfo.licenseType;
-                padInfo.tags = sampleInfo.tags;
-                padInfo.description = sampleInfo.description;
-
-                // Get additional info from the existing arrays if available
-                for (int i = 0; i < currentSoundsArray.size(); ++i)
-                {
-                    if (currentSoundsArray[i].id == sampleInfo.freesoundId)
-                    {
-                        padInfo.duration = currentSoundsArray[i].duration;
-                        padInfo.fileSize = currentSoundsArray[i].filesize;
-                        break;
-                    }
-                }
-
-                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
-                padInfos.add(padInfo);
+                currentSamples.add(sample);
+                padPositions.add(padIndex);
             }
         }
     }
-    else
+
+    // Save to slot
+    if (collectionManager->saveCurrentStateToPreset(presetId, slotIndex, currentSamples, padPositions))
     {
-        // Fallback to the old method
-        padInfos = getCurrentPadInfos();
+        setActivePreset(presetId, slotIndex);
+        return presetId;
     }
 
-    return presetManager.saveCurrentPreset(name, description, padInfos, query, slotIndex);
+    return "";
 }
 
-bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const File& presetFile, int slotIndex)
+bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const String& presetId, int slotIndex)
 {
-    Array<PadInfo> padInfos;
-    if (!presetManager.loadPreset(presetFile, slotIndex, padInfos))
+    if (!collectionManager)
         return false;
 
-    // Read query from slot info in the JSON (for master query)
-    String masterQuery = "";
+    // Load samples for this preset slot
+    Array<SampleMetadata> samples = collectionManager->loadPresetSlot(presetId, slotIndex);
+
+    // Clear current state
+    clearAllPads();
+
+    // Load samples into pads
+    for (int padIndex = 0; padIndex < jmin(samples.size(), 16); ++padIndex)
     {
-        String jsonText = presetFile.loadFileAsString();
-        var parsedJson = juce::JSON::parse(jsonText);
-        if (parsedJson.isObject())
+        const SampleMetadata& sample = samples[padIndex];
+        if (!sample.freesoundId.isEmpty())
         {
-            String slotKey = "slot_" + String(slotIndex);
-            var slotData = parsedJson.getProperty(slotKey, var());
-            if (slotData.isObject())
-            {
-                var slotInfo = slotData.getProperty("slot_info", var());
-                if (slotInfo.isObject())
-                {
-                    masterQuery = slotInfo.getProperty("search_query", "");
-                }
-            }
+            setPadSample(padIndex, sample.freesoundId);
         }
     }
 
-    // Clear ALL current state completely
-    soundsArray.clear();
-    currentSoundsArray.clear();
-
-    // Also clear the sampler before rebuilding
-    sampler.clearSounds();
-    sampler.clearVoices();
-
-    // Update query from slot info
-    query = masterQuery;
-
-    // Initialize arrays to hold 16 positions (all empty initially)
-    currentSoundsArray.resize(16);
-    soundsArray.resize(16);
-
-    // Clear all positions - ensure soundsArray has 4 elements including query
-    for (int i = 0; i < 16; ++i)
-    {
-        currentSoundsArray.set(i, FSSound()); // Empty sound
-
-        StringArray emptyData;
-        emptyData.add(""); // Empty name
-        emptyData.add(""); // Empty author
-        emptyData.add(""); // Empty license
-        emptyData.add(""); // Empty query - 4th element
-        soundsArray[i] = emptyData;
-    }
-
-    // Load samples into their specific pad positions WITH QUERIES
-    for (const auto& padInfo : padInfos)
-    {
-        // Validate pad index
-        if (padInfo.padIndex < 0 || padInfo.padIndex >= 16)
-            continue;
-
-        // Check if sample file exists
-        File sampleFile = presetManager.getSampleFile(padInfo.freesoundId);
-        if (!sampleFile.existsAsFile())
-        {
-            DBG("Missing sample file for ID: " + padInfo.freesoundId + " at pad " + String(padInfo.padIndex));
-            continue;
-        }
-
-        // Create FSSound object
-        FSSound sound;
-        sound.id = padInfo.freesoundId;
-        sound.name = padInfo.originalName;
-        sound.user = padInfo.author;
-        sound.license = padInfo.license;
-        sound.duration = padInfo.duration;
-        sound.filesize = padInfo.fileSize;
-
-        // Place sound at its original pad position
-        currentSoundsArray.set(padInfo.padIndex, sound);
-
-        // Create sound info for legacy compatibility WITH QUERY IN 4TH POSITION
-        StringArray soundData;
-        soundData.add(padInfo.originalName);
-        soundData.add(padInfo.author);
-        soundData.add(padInfo.license);
-        soundData.add(padInfo.searchQuery);  // IMPORTANT: Store query in 4th position
-        soundsArray[padInfo.padIndex] = soundData;
-
-    }
-
-    // Update current session location to samples folder
-    currentSessionDownloadLocation = presetManager.getSamplesFolder();
-
-    // Force reload sampler with new data
+    // Update sampler
     setSources();
 
-    // CRITICAL: Update the visual grid with the loaded data INCLUDING QUERIES
+    // Update UI if available
     if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
     {
-        // This will update the visual grid and restore queries to text boxes
-        editor->getSampleGridComponent().updateSamples(currentSoundsArray, soundsArray);
+        editor->getSampleGridComponent().refreshFromProcessor();
     }
 
+    setActivePreset(presetId, slotIndex);
     return true;
 }
 
-bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const File& presetFile, int slotIndex, const String& description)
+bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const String& presetId, int slotIndex, const String& description)
 {
-    Array<PadInfo> padInfos;
+    if (!collectionManager)
+        return false;
 
-    // Get pad info from the grid if editor is available
-    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    // Get current pad state
+    Array<SampleMetadata> currentSamples;
+    Array<int> padPositions;
+
+    for (int padIndex = 0; padIndex < 16; ++padIndex)
     {
-        auto& gridComponent = editor->getSampleGridComponent();
-        auto allSampleInfo = gridComponent.getAllSampleInfo();
-
-        for (const auto& sampleInfo : allSampleInfo)
+        String freesoundId = getPadFreesoundId(padIndex);
+        if (freesoundId.isNotEmpty())
         {
-            if (sampleInfo.hasValidSample)
+            SampleMetadata sample = collectionManager->getSample(freesoundId);
+            if (!sample.freesoundId.isEmpty())
             {
-                PadInfo padInfo;
-                padInfo.padIndex = sampleInfo.padIndex - 1; // Convert from 1-based to 0-based
-                padInfo.freesoundId = sampleInfo.freesoundId;
-                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
-                padInfo.originalName = sampleInfo.sampleName;
-                padInfo.author = sampleInfo.authorName;
-                padInfo.license = sampleInfo.licenseType;
-                padInfo.tags = sampleInfo.tags;
-                padInfo.description = sampleInfo.description;
-
-                // Get additional info from the existing arrays
-                for (int i = 0; i < currentSoundsArray.size(); ++i)
-                {
-                    if (currentSoundsArray[i].id == sampleInfo.freesoundId)
-                    {
-                        padInfo.duration = currentSoundsArray[i].duration;
-                        padInfo.fileSize = currentSoundsArray[i].filesize;
-                        break;
-                    }
-                }
-
-                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
-                padInfos.add(padInfo);
+                currentSamples.add(sample);
+                padPositions.add(padIndex);
             }
         }
     }
-    else
-    {
-        // Fallback to the old method
-        padInfos = getCurrentPadInfos();
-    }
 
-    return presetManager.saveToSlot(presetFile, slotIndex, description, padInfos, query);
+    return collectionManager->saveCurrentStateToPreset(presetId, slotIndex, currentSamples, padPositions);
 }
 
-Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfos() const
+void FreesoundAdvancedSamplerAudioProcessor::setPadSample(int padIndex, const String& freesoundId)
 {
-    Array<PadInfo> padInfos;
-
-    // Get pad info from the grid to preserve exact positions
-    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    if (padIndex >= 0 && padIndex < 16)
     {
-        auto& gridComponent = editor->getSampleGridComponent();
-
-        // Iterate through all 16 pad positions
-        for (int padIndex = 0; padIndex < 16; ++padIndex)
-        {
-            auto sampleInfo = gridComponent.getPadInfo(padIndex);
-
-            if (sampleInfo.hasValidSample)
-            {
-                PadInfo padInfo;
-                padInfo.padIndex = padIndex;
-                padInfo.freesoundId = sampleInfo.freesoundId;
-                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
-                padInfo.originalName = sampleInfo.sampleName;
-                padInfo.author = sampleInfo.authorName;
-                padInfo.license = sampleInfo.licenseType;
-                padInfo.searchQuery = sampleInfo.query;  // Get from pad's UI
-                padInfo.tags = sampleInfo.tags;
-                padInfo.description = sampleInfo.description;
-
-                // Get duration and file size from processor arrays if available
-                for (const auto& sound : currentSoundsArray)
-                {
-                    if (sound.id == sampleInfo.freesoundId)
-                    {
-                        padInfo.duration = sound.duration;
-                        padInfo.fileSize = sound.filesize;
-                        break;
-                    }
-                }
-
-                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
-                padInfos.add(padInfo);
-            }
-        }
+        currentPadFreesoundIds.set(padIndex, freesoundId);
     }
-    else
-    {
-        // Fallback method - get queries from soundsArray
-        for (int i = 0; i < jmin(currentSoundsArray.size(), (int)soundsArray.size()); ++i)
-        {
-            const FSSound& sound = currentSoundsArray[i];
-
-            if (sound.id.isEmpty())
-                continue;
-
-            PadInfo padInfo;
-            padInfo.padIndex = i;
-            padInfo.freesoundId = sound.id;
-            padInfo.fileName = "FS_ID_" + sound.id + ".ogg";
-            padInfo.originalName = sound.name;
-            padInfo.author = sound.user;
-            padInfo.license = sound.license;
-            padInfo.tags = sound.tags.joinIntoString(",");
-            padInfo.description = sound.description;
-
-            // Get query from soundsArray 4th element
-            padInfo.searchQuery = (soundsArray[i].size() > 3) ? soundsArray[i][3] : "";
-
-            padInfo.duration = sound.duration;
-            padInfo.fileSize = sound.filesize;
-            padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
-
-            padInfos.add(padInfo);
-        }
-    }
-
-    return padInfos;
 }
 
-Array<PadInfo> FreesoundAdvancedSamplerAudioProcessor::getCurrentPadInfosFromGrid() const
+String FreesoundAdvancedSamplerAudioProcessor::getPadFreesoundId(int padIndex) const
 {
-    Array<PadInfo> padInfos;
-
-    // Get the grid component from the editor
-    if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
+    if (padIndex >= 0 && padIndex < currentPadFreesoundIds.size())
     {
-        auto& gridComponent = editor->getSampleGridComponent();
-        auto allSampleInfo = gridComponent.getAllSampleInfo();
-
-        for (const auto& sampleInfo : allSampleInfo)
-        {
-            if (sampleInfo.hasValidSample)
-            {
-                PadInfo padInfo;
-                padInfo.padIndex = sampleInfo.padIndex - 1; // Convert from 1-based to 0-based
-                padInfo.freesoundId = sampleInfo.freesoundId;
-                padInfo.fileName = "FS_ID_" + sampleInfo.freesoundId + ".ogg";
-                padInfo.originalName = sampleInfo.sampleName;
-                padInfo.author = sampleInfo.authorName;
-                padInfo.license = sampleInfo.licenseType;
-                padInfo.tags = sampleInfo.tags;
-                padInfo.description = sampleInfo.description;
-
-                // Get additional info from the existing arrays if available
-                for (int i = 0; i < currentSoundsArray.size(); ++i)
-                {
-                    if (currentSoundsArray[i].id == sampleInfo.freesoundId)
-                    {
-                        padInfo.duration = currentSoundsArray[i].duration;
-                        padInfo.fileSize = currentSoundsArray[i].filesize;
-                        break;
-                    }
-                }
-
-                padInfo.downloadedAt = Time::getCurrentTime().toString(true, true);
-                padInfos.add(padInfo);
-            }
-        }
+        return currentPadFreesoundIds[padIndex];
     }
-    else
+    return "";
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::clearPad(int padIndex)
+{
+    if (padIndex >= 0 && padIndex < 16)
     {
-        // Fallback to the old method if no editor is available
-        return getCurrentPadInfos();
+        currentPadFreesoundIds.set(padIndex, "");
     }
+}
 
-    return padInfos;
+void FreesoundAdvancedSamplerAudioProcessor::clearAllPads()
+{
+    for (int i = 0; i < 16; ++i)
+    {
+        currentPadFreesoundIds.set(i, "");
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::incrementSamplePlayCount(int padIndex)
+{
+    String freesoundId = getPadFreesoundId(padIndex);
+    if (freesoundId.isNotEmpty() && collectionManager)
+    {
+        collectionManager->incrementPlayCount(freesoundId);
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setActivePreset(const String& presetId, int slotIndex)
+{
+    activePresetId = presetId;
+    activeSlotIndex = slotIndex;
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery)
@@ -1398,6 +1249,65 @@ void FreesoundAdvancedSamplerAudioProcessor::addPreviewPlaybackListener(PreviewP
 void FreesoundAdvancedSamplerAudioProcessor::removePreviewPlaybackListener(PreviewPlaybackListener* listener)
 {
     previewPlaybackListeners.remove(listener);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::migrateFromOldSystem()
+{
+    // This method can help migrate existing presets/bookmarks to the new system
+    // Implementation depends on your current file structure
+
+    File oldBookmarksFile = File::getSpecialLocation(File::userDocumentsDirectory)
+                               .getChildFile("FreesoundAdvancedSampler")
+                               .getChildFile("bookmarks.json");
+
+    if (oldBookmarksFile.existsAsFile())
+    {
+        // Load old bookmarks and migrate them
+        String jsonText = oldBookmarksFile.loadFileAsString();
+        var parsedJson = JSON::parse(jsonText);
+
+        if (parsedJson.isObject())
+        {
+            var bookmarksArray = parsedJson.getProperty("bookmarks", var());
+            if (bookmarksArray.isArray())
+            {
+                Array<var>* bookmarks = bookmarksArray.getArray();
+                for (const auto& bookmarkVar : *bookmarks)
+                {
+                    if (bookmarkVar.isObject())
+                    {
+                        String freesoundId = bookmarkVar.getProperty("freesound_id", "");
+                        if (freesoundId.isNotEmpty())
+                        {
+                            // Create sample metadata from old bookmark
+                            SampleMetadata sample;
+                            sample.freesoundId = freesoundId;
+                            sample.originalName = bookmarkVar.getProperty("sample_name", "");
+                            sample.authorName = bookmarkVar.getProperty("author_name", "");
+                            sample.licenseType = bookmarkVar.getProperty("license_type", "");
+                            sample.searchQuery = bookmarkVar.getProperty("search_query", "");
+                            sample.tags = bookmarkVar.getProperty("tags", "");
+                            sample.description = bookmarkVar.getProperty("description", "");
+                            sample.fileName = "FS_ID_" + freesoundId + ".ogg";
+                            sample.freesoundUrl = bookmarkVar.getProperty("freesound_url", "");
+                            sample.duration = bookmarkVar.getProperty("duration", 0.0);
+                            sample.fileSize = bookmarkVar.getProperty("file_size", 0);
+                            sample.downloadedAt = bookmarkVar.getProperty("bookmarked_at", "");
+                            sample.isBookmarked = true;
+                            sample.bookmarkedAt = sample.downloadedAt;
+
+                            collectionManager->addOrUpdateSample(sample);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rename old file so we don't migrate again
+        oldBookmarksFile.moveFileTo(oldBookmarksFile.getSiblingFile("bookmarks_migrated.json"));
+    }
+
+    // Similar migration can be done for old presets...
 }
 
 //==============================================================================
