@@ -284,18 +284,46 @@ void FreesoundAdvancedSamplerAudioProcessor::processBlock(AudioBuffer<float>& bu
     MidiBuffer mainMidiBuffer;
     MidiBuffer previewMidiBuffer;
 
-    // Split MIDI messages by channel
+    // Split MIDI messages by channel and light up empty pads
     for (const auto metadata : midiMessages)
     {
-        auto message = metadata.getMessage();
+        const auto message = metadata.getMessage();
 
         if (message.getChannel() == 2) // Preview channel
         {
             previewMidiBuffer.addEvent(message, metadata.samplePosition);
+
+            // If you also want preview to light when empty, uncomment below:
+            // if (message.isNoteOn() || message.isNoteOff() || (message.isNoteOn() && message.getVelocity() == 0))
+            // {
+            //     const int noteNumber = message.getNoteNumber();
+            //     const int padIndex   = noteNumber - 36;
+            //     if (padIndex >= 0 && padIndex < 16 && getPadFreesoundId(padIndex).isEmpty())
+            //     {
+            //         if (message.isNoteOn() && message.getVelocity() > 0.0f)
+            //             notifyNoteStarted(noteNumber, message.getFloatVelocity());
+            //         else
+            //             notifyNoteStopped(noteNumber);
+            //     }
+            // }
         }
         else // Main sampler channel(s)
         {
             mainMidiBuffer.addEvent(message, metadata.samplePosition);
+
+            // NEW: Light up empty pads on incoming MIDI
+            if (message.isNoteOn() || message.isNoteOff() || (message.isNoteOn() && message.getVelocity() == 0))
+            {
+                const int noteNumber = message.getNoteNumber();
+                const int padIndex   = noteNumber - 36; // pads are mapped 36 + padIndex
+                if (padIndex >= 0 && padIndex < 16 && getPadFreesoundId(padIndex).isEmpty())
+                {
+                    if (message.isNoteOn() && message.getVelocity() > 0.0f)
+                        notifyNoteStarted(noteNumber, message.getFloatVelocity());
+                    else
+                        notifyNoteStopped(noteNumber);
+                }
+            }
         }
     }
 
@@ -312,13 +340,12 @@ void FreesoundAdvancedSamplerAudioProcessor::processBlock(AudioBuffer<float>& bu
 
         // Mix preview with main output at reduced volume
         for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-        {
-            buffer.addFrom(channel, 0, previewBuffer, channel, 0, buffer.getNumSamples(), 0.6f); // 60% volume for preview
-        }
+            buffer.addFrom(channel, 0, previewBuffer, channel, 0, buffer.getNumSamples(), 0.6f);
     }
 
     midiMessages.clear();
 }
+
 
 // Modify prepareToPlay to prepare both samplers
 void FreesoundAdvancedSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
