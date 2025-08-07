@@ -683,22 +683,31 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
 void SamplePad::setPlayheadPosition(float position)
 {
     // Adjust position using fileSourceSampleRate and processorSampleRate
-
     position = (position * fileSourceSampleRate) / processorSampleRate;
 
-    MessageManager::callAsync([this, position]()
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    MessageManager::callAsync([safeThis, position]()
     {
-        playheadPosition = jlimit(0.0f, 1.0f, position);
-        repaint();
+        if (safeThis != nullptr && safeThis->isShowing())
+        {
+            safeThis->playheadPosition = jlimit(0.0f, 1.0f, position);
+            safeThis->repaint();
+        }
     });
 }
 
 void SamplePad::setIsPlaying(bool playing)
 {
-    MessageManager::callAsync([this, playing]()
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    MessageManager::callAsync([safeThis, playing]()
     {
-        isPlaying = playing;
-        repaint();
+        if (safeThis != nullptr && safeThis->isShowing())
+        {
+            safeThis->isPlaying = playing;
+            safeThis->repaint();
+        }
     });
 }
 
@@ -837,22 +846,27 @@ void SamplePad::setPreviewPlaying(bool playing)
     if (padMode != PadMode::Preview)
         return;
 
-    MessageManager::callAsync([this, playing]()
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    MessageManager::callAsync([safeThis, playing]()
     {
-        isPreviewPlaying = playing;
-
-        // Update pad color based on playing state
-        if (playing)
+        if (safeThis != nullptr && safeThis->isShowing())
         {
-            padColour = defaultColour.withAlpha(0.5f);
-        }
-        else
-        {
-            padColour = defaultColour.withAlpha(0.2f);
-            previewPlayheadPosition = 0.0f;
-        }
+            safeThis->isPreviewPlaying = playing;
 
-        repaint();
+            // Update pad color based on playing state
+            if (playing)
+            {
+                safeThis->padColour = safeThis->defaultColour.withAlpha(0.5f);
+            }
+            else
+            {
+                safeThis->padColour = safeThis->defaultColour.withAlpha(0.2f);
+                safeThis->previewPlayheadPosition = 0.0f;
+            }
+
+            safeThis->repaint();
+        }
     });
 }
 
@@ -864,10 +878,15 @@ void SamplePad::setPreviewPlayheadPosition(float position)
     // Adjust position using fileSourceSampleRate and processorSampleRate
     position = (position * fileSourceSampleRate) / processorSampleRate;
 
-    MessageManager::callAsync([this, position]()
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    MessageManager::callAsync([safeThis, position]()
     {
-        previewPlayheadPosition = jlimit(0.0f, 1.0f, position);
-        repaint();
+        if (safeThis != nullptr && safeThis->isShowing())
+        {
+            safeThis->previewPlayheadPosition = jlimit(0.0f, 1.0f, position);
+            safeThis->repaint();
+        }
     });
 }
 
@@ -884,12 +903,14 @@ void SamplePad::startPreviewPlayback()
     // Load the sample into the preview sampler
     processor->loadPreviewSample(audioFile, freesoundId);
 
-    // Small delay to ensure sample is loaded before playing
-    Timer::callAfterDelay(50, [this]() {
-        if (previewRequested && processor)
+    // Use SafePointer for delayed preview start
+    Component::SafePointer<SamplePad> safeThis(this);
+
+    Timer::callAfterDelay(50, [safeThis]() {
+        if (safeThis != nullptr && safeThis->previewRequested && safeThis->processor)
         {
-            processor->playPreviewSample();
-            setMouseCursor(MouseCursor::PointingHandCursor);
+            safeThis->processor->playPreviewSample();
+            safeThis->setMouseCursor(MouseCursor::PointingHandCursor);
         }
     });
 }
@@ -961,9 +982,6 @@ void SamplePad::updateDownloadProgress(double progress, const String& status)
 
         safeThis->currentDownloadProgress = jlimit(0.0, 1.0, progress);
 
-        // String progressText = status.isEmpty() ?
-        //     "Downloading... " + String((int)(progress * 100)) + "%" :
-        //     status;
         String progressText = "";
 
         if (safeThis->progressLabel)
@@ -993,7 +1011,6 @@ void SamplePad::finishDownloadProgress(bool success, const String& message)
         if (success)
         {
             if (safeThis->progressLabel)
-                // safeThis->progressLabel->setText("Complete!", dontSendNotification);
                 safeThis->progressLabel->setText("", dontSendNotification);
             safeThis->currentDownloadProgress = 1.0;
             if (safeThis->progressBar)
@@ -1420,8 +1437,27 @@ void SamplePad::loadWaveform()
 
         fileSourceSampleRate = (fileSourceSampleRate <= 1.0) ? 44100.0 : fileSourceSampleRate;
 
-        Timer::callAfterDelay(100, [this]() {
-            repaint();
+        // FIXED: Use SafePointer to prevent crashes if component is destroyed
+        Component::SafePointer<SamplePad> safeThis(this);
+
+        Timer::callAfterDelay(100, [safeThis]() {
+            if (safeThis != nullptr && safeThis->isShowing())
+            {
+                // Double-check we're on the message thread
+                if (MessageManager::getInstance()->isThisTheMessageThread())
+                {
+                    safeThis->repaint();
+                }
+                else
+                {
+                    MessageManager::callAsync([safeThis]() {
+                        if (safeThis != nullptr && safeThis->isShowing())
+                        {
+                            safeThis->repaint();
+                        }
+                    });
+                }
+            }
         });
     }
 }
@@ -1703,7 +1739,6 @@ void SamplePad::handleBookmarkClick()
             repaint();
     }
 }
-
 
 // Drag and drop methods
 void SamplePad::performEnhancedDragDrop()

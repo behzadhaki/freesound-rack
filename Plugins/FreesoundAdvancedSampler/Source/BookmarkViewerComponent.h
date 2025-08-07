@@ -2,6 +2,7 @@
  ==============================================================================
 
    BookmarkViewerComponent.h - Updated with Collection Manager Integration
+   and Search Functionality
 
  ==============================================================================
 */
@@ -45,6 +46,12 @@ private:
    // UI Components
    Label titleLabel;
    StyledButton refreshButton { String(CharPointer_UTF8("\xE2\x9F\xB3")) , 20.0f, false };
+
+   // NEW: Search Panel Components
+   TextEditor searchBox;
+   StyledButton clearSearchButton { String(CharPointer_UTF8("\xE2\x9C\x96")), 12.0f, false };
+   Label resultCountLabel;
+
    Viewport bookmarkViewport;
    Component bookmarkContainer;
 
@@ -54,6 +61,10 @@ private:
 
    // Current bookmark data (for UI compatibility)
    Array<SampleMetadata> currentBookmarks;
+   Array<SampleMetadata> filteredBookmarks; // NEW: Filtered results based on search
+
+   // NEW: Search state
+   String currentSearchTerm;
 
    // Layout management
    int currentScrollOffset = 0;
@@ -63,6 +74,13 @@ private:
    void createBookmarkPads();
    void clearBookmarkPads();
    void updateScrollableArea();
+
+   // NEW: Search functionality
+   void performSearch();
+   void clearSearch();
+   bool matchesSearchTerm(const SampleMetadata& sample, const String& searchTerm) const;
+   void updateResultCount();
+   void setupSearchComponents();
 
    // Helper to find pad by freesound ID
    SamplePad* findPadByFreesoundId(const String& freesoundId);
