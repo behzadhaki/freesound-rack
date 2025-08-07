@@ -18,6 +18,7 @@
 #include "CustomButtonStyle.h"
 #include "MasterSearchPanel.h"
 #include "FreesoundSearchUtils.h"
+#include "HtmlAlertWindow.h"
 
 static const String FREESOUND_SAMPLER_MIME_TYPE = "application/x-freesound-sampler-data"; // for inter plugin drag and drop
 

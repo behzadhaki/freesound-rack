@@ -1243,45 +1243,61 @@ void SamplePad::showDetailedSampleInfo()
     if (!hasValidSample) return;
 
     String infoText;
-    infoText += "Name: " + sampleName + "\n\n";
-    infoText += "Author: " + authorName + "\n\n";
+
+    // Use safe string creation to avoid encoding issues
+    auto safeString = [](const String& input) -> String {
+        if (input.isEmpty()) return String();
+
+        // Create a safe version by iterating through characters
+        String result;
+        for (int i = 0; i < input.length(); ++i)
+        {
+            juce_wchar ch = input[i];
+
+            // Only include safe ASCII characters and common Unicode that JUCE handles well
+            if (ch <= 127 || (ch >= 160 && ch < 8192)) // Basic ASCII + Latin extended + common Unicode
+            {
+                result += String::charToString(ch);
+            }
+            else
+            {
+                result += "?"; // Replace problematic characters
+            }
+        }
+        return result;
+    };
+
+    infoText += "<b>Name:</b> " + safeString(sampleName) + "\n\n";
+    infoText += "<b>Author:</b> " + safeString(authorName) + "\n\n";
 
     if (freesoundId.isNotEmpty()) {
-        infoText += "Freesound ID: " + freesoundId + "\n";
-        infoText += "URL: https://freesound.org/s/" + freesoundId + "/\n\n";
+        infoText += "<b>Freesound ID:</b> " + safeString(freesoundId) + "\n";
+        infoText += "<b>URL:</b> https://freesound.org/s/" + safeString(freesoundId) + "/\n\n";
     }
 
     if (licenseType.isNotEmpty()) {
-        infoText += "License: " + licenseType + "\n\n";
+        infoText += "<b>License:</b> " + safeString(licenseType) + "\n\n";
     }
 
     if (tags.isNotEmpty()) {
-        infoText += "Tags: " + tags + "\n\n";
+        infoText += "<b>Tags:</b> " + safeString(tags) + "\n\n";
     }
 
     if (description.isNotEmpty()) {
-        infoText += "Description: " + description + "\n\n";
+        infoText += "<b>Description:</b> " + safeString(description) + "\n\n";
     }
 
     if (audioFile.existsAsFile()) {
-        infoText += "File: " + audioFile.getFileName() + "\n";
-        infoText += "Size: " + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
+        infoText += "<b>File:</b> " + safeString(audioFile.getFileName()) + "\n";
+        infoText += "<b>Size:</b> " + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
     }
 
     if (fileSourceSampleRate > 0.0) {
-        infoText += "Sample Rate: " + String(fileSourceSampleRate) + " Hz\n";
+        infoText += "<b>Sample Rate:</b> " + String(fileSourceSampleRate) + " Hz\n";
     }
 
-    AlertWindow::showMessageBoxAsync(
-        AlertWindow::InfoIcon,
-        "Sample Information",
-        infoText,
-        "OK",
-        nullptr,
-        ModalCallbackFunction::create([this](int) {
-            // Optional callback after window closes
-        })
-    );
+    // That's it! No CustomLookAndFeel instance needed
+    HtmlAlertWindow::show("Sample Information", infoText, "OK", 600, 500);
 }
 
 void SamplePad::layoutBadges()
