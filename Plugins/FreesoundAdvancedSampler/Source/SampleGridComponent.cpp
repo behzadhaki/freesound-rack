@@ -422,15 +422,6 @@ void SamplePad::mouseUp(const MouseEvent& event)
         previewRequested = false;
     }
 
-    // Normal/NonSearchable modes: Stop playback when mouse is released
-    if (padMode != PadMode::Preview && isPlaying && processor)
-    {
-        int noteNumber = padIndex + 36;
-        processor->addNoteOffToMidiBuffer(noteNumber);
-        setIsPlaying(false);
-        processorSampleRate = processor->getSampleRate();
-    }
-
     // Reset cursor
     setMouseCursor(MouseCursor::NormalCursor);
 }
@@ -682,7 +673,8 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
 
 void SamplePad::setPlayheadPosition(float position)
 {
-    // Adjust position using fileSourceSampleRate and processorSampleRate
+
+    // // Adjust position using metadata sample rate and processor sample rate
     position = (position * fileSourceSampleRate) / processorSampleRate;
 
     Component::SafePointer<SamplePad> safeThis(this);
@@ -799,7 +791,6 @@ SamplePad::SampleInfo SamplePad::getSampleInfo() const
     info.description = description;
     info.hasValidSample = hasValidSample;
     info.padIndex = padIndex;
-    info.fileSourceSampleRate = fileSourceSampleRate;
     return info;
 }
 
@@ -875,7 +866,6 @@ void SamplePad::setPreviewPlayheadPosition(float position)
     if (padMode != PadMode::Preview)
         return;
 
-    // Adjust position using fileSourceSampleRate and processorSampleRate
     position = (position * fileSourceSampleRate) / processorSampleRate;
 
     Component::SafePointer<SamplePad> safeThis(this);
@@ -1284,6 +1274,16 @@ void SamplePad::showDetailedSampleInfo()
         return result;
     };
 
+    // Get sample metadata from collection manager if available
+    SampleMetadata metadata;
+    bool hasMetadata = false;
+
+    if (processor && processor->getCollectionManager())
+    {
+        metadata = processor->getCollectionManager()->getSample(freesoundId);
+        hasMetadata = !metadata.freesoundId.isEmpty();
+    }
+
     infoText += "<b>Name:</b> \t\t" + safeString(sampleName) + "\n";
     infoText += "<b>Author:</b> \t\t" + safeString(authorName) + "\n";
 
@@ -1310,16 +1310,37 @@ void SamplePad::showDetailedSampleInfo()
         infoText += "<b>Description:</b> \t\t" + safeString(description) + "\n";
     }
 
+    // Technical audio information
+    if (hasMetadata && metadata.sampleRate > 0.0) {
+        infoText += "<b>Sample Rate:</b> \t\t" + String(metadata.sampleRate, 0) + " Hz\n";
+    }
+
+    if (hasMetadata && metadata.bitDepth > 0) {
+        infoText += "<b>Bit Depth:</b> \t\t" + String(metadata.bitDepth) + " bit\n";
+    }
+
+    if (hasMetadata && metadata.channelCount > 0) {
+        String channelText = String(metadata.channelCount);
+        if (metadata.channelCount == 1) channelText += " (Mono)";
+        else if (metadata.channelCount == 2) channelText += " (Stereo)";
+        else channelText += " (Multichannel)";
+        infoText += "<b>Channels:</b> \t\t" + channelText + "\n";
+    }
+
     if (audioFile.existsAsFile()) {
         infoText += "<b>File:</b> \t\t" + safeString(audioFile.getFileName()) + "\n";
         infoText += "<b>Size:</b> \t\t" + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
     }
 
-    if (fileSourceSampleRate > 0.0) {
-        infoText += "<b>Sample Rate:</b> \t\t" + String(fileSourceSampleRate) + " Hz\n";
+    // Dates from metadata if available
+    if (hasMetadata && metadata.downloadedAt.isNotEmpty()) {
+        infoText += "<b>Downloaded:</b> \t\t" + safeString(metadata.downloadedAt) + "\n";
     }
 
-    // That's it! No CustomLookAndFeel instance needed
+    if (hasMetadata && metadata.isBookmarked && metadata.bookmarkedAt.isNotEmpty()) {
+        infoText += "<b>Bookmarked:</b> \t\t" + safeString(metadata.bookmarkedAt) + "\n";
+    }
+
     HtmlAlertWindow::show("Sample Information", infoText, "OK", 600, 500);
 }
 
@@ -3818,7 +3839,6 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     samplePads[sourcePadIndex]->repaint();
     samplePads[targetPadIndex]->repaint();
 }
-
 
 //==============================================================================
 // SampleDragArea Implementation

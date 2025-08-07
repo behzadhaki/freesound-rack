@@ -229,7 +229,7 @@ void BookmarkViewerComponent::setupSearchComponents()
     searchBox.setColour(TextEditor::highlightColourId, pluginChoiceColour.withAlpha(0.6f));
     searchBox.setColour(TextEditor::outlineColourId, Colour(0xff404040)); // textEditorOutlineColour
     searchBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060)); // textEditorFocusedOutlineColour
-    searchBox.setTextToShowWhenEmpty("Search: name, author, tags, description, license, duration, file size, dates...", Colours::grey);
+    searchBox.setTextToShowWhenEmpty("Search: name, author, tags, license, duration, size, sample rate, bit depth...", Colours::grey);
 
     // Thread-safe real-time search as user types
     searchBox.onTextChange = [this]() {
@@ -341,8 +341,8 @@ void BookmarkViewerComponent::onModeToggled(bool bookmarksMode)
 
     // Update search placeholder text based on mode
     String placeholderText = bookmarksMode ?
-        "Search bookmarks: name, author, tags, license, duration, size..." :
-        "Search all samples: name, author, tags, license, duration, size...";
+        "Search bookmarks: name, author, tags, license, sample rate, bit depth..." :
+        "Search all samples: name, author, tags, license, sample rate, bit depth...";
     searchBox.setTextToShowWhenEmpty(placeholderText, Colours::grey);
 
     // Apply search to new data set
@@ -520,13 +520,56 @@ bool BookmarkViewerComponent::matchesSearchTerm(const SampleMetadata& sample, co
         }
     }
 
-    // Sample rate (if available in future - placeholder for now)
-    // Note: SampleMetadata doesn't currently have sample rate, but adding placeholder
-    // searchableFields.add(String(sample.sampleRate) + "hz");
-    // searchableFields.add(String(sample.sampleRate / 1000) + "khz");
+    // Sample rate searching (now implemented!)
+    if (sample.sampleRate > 0.0)
+    {
+        searchableFields.add(String((int)sample.sampleRate) + "hz");
+        searchableFields.add(String((int)(sample.sampleRate / 1000)) + "khz");
 
-    // Bit depth (if available in future - placeholder)
-    // searchableFields.add(String(sample.bitDepth) + "bit");
+        // Common sample rate categories
+        if (sample.sampleRate == 44100.0)
+            searchableFields.add("cd quality");
+        if (sample.sampleRate == 48000.0)
+            searchableFields.add("professional");
+        if (sample.sampleRate >= 88200.0)
+            searchableFields.add("high resolution");
+        if (sample.sampleRate >= 96000.0)
+            searchableFields.add("hires");
+        if (sample.sampleRate >= 192000.0)
+            searchableFields.add("ultra high");
+
+        // Decimal formats for precise searching
+        searchableFields.add(String(sample.sampleRate, 0));
+        searchableFields.add(String(sample.sampleRate / 1000.0, 1) + "k");
+    }
+
+    // Bit depth and channel count searching (now implemented!)
+    if (sample.bitDepth > 0)
+    {
+        searchableFields.add(String(sample.bitDepth) + "bit");
+        searchableFields.add(String(sample.bitDepth) + "-bit");
+        if (sample.bitDepth == 16)
+            searchableFields.add("cd quality");
+        if (sample.bitDepth >= 24)
+            searchableFields.add("high resolution");
+        if (sample.bitDepth >= 32)
+            searchableFields.add("professional");
+    }
+
+    if (sample.channelCount > 0)
+    {
+        searchableFields.add(String(sample.channelCount) + "ch");
+        searchableFields.add(String(sample.channelCount) + "channel");
+        searchableFields.add(String(sample.channelCount) + " channel");
+        if (sample.channelCount == 1)
+            searchableFields.add("mono");
+        else if (sample.channelCount == 2)
+            searchableFields.add("stereo");
+        else if (sample.channelCount > 2)
+            searchableFields.add("multichannel");
+        if (sample.channelCount >= 5)
+            searchableFields.add("surround");
+    }
 
     // === SPECIAL SEARCH TERMS AND CATEGORIES ===
 

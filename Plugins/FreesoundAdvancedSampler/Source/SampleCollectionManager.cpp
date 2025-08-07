@@ -20,14 +20,19 @@ SampleMetadata SampleMetadata::fromFSSound(const FSSound& sound, const String& s
     metadata.searchQuery = searchQuery;
     metadata.downloadedAt = Time::getCurrentTime().toString(true, true);
     metadata.lastModifiedAt = metadata.downloadedAt;
-    
+
+    // Initialize technical metadata (will be populated when file is analyzed)
+    metadata.sampleRate = 0.0;
+    metadata.bitDepth = 0;
+    metadata.channelCount = 0;
+
     return metadata;
 }
 
 var SampleMetadata::toJson() const
 {
     DynamicObject::Ptr obj = new DynamicObject();
-    
+
     // Core sample data
     obj->setProperty("freesound_id", freesoundId);
     obj->setProperty("file_name", fileName);
@@ -41,12 +46,17 @@ var SampleMetadata::toJson() const
     obj->setProperty("file_size", (int)fileSize);
     obj->setProperty("downloaded_at", downloadedAt);
     obj->setProperty("search_query", searchQuery);
-    
+
+    // Technical metadata
+    obj->setProperty("sample_rate", sampleRate);
+    obj->setProperty("bit_depth", bitDepth);
+    obj->setProperty("channel_count", channelCount);
+
     // Usage tracking
     obj->setProperty("is_bookmarked", isBookmarked);
     obj->setProperty("bookmarked_at", bookmarkedAt);
     obj->setProperty("last_modified_at", lastModifiedAt);
-    
+
     // Preset associations
     DynamicObject::Ptr presetObj = new DynamicObject();
     for (const auto& association : presetAssociations)
@@ -59,17 +69,17 @@ var SampleMetadata::toJson() const
         presetObj->setProperty(association.first, positionsArray);
     }
     obj->setProperty("preset_associations", var(presetObj.get()));
-    
+
     return var(obj.get());
 }
 
 SampleMetadata SampleMetadata::fromJson(const var& json)
 {
     SampleMetadata metadata;
-    
+
     if (!json.isObject())
         return metadata;
-    
+
     // Core sample data
     metadata.freesoundId = json.getProperty("freesound_id", "");
     metadata.fileName = json.getProperty("file_name", "");
@@ -83,12 +93,17 @@ SampleMetadata SampleMetadata::fromJson(const var& json)
     metadata.fileSize = json.getProperty("file_size", 0);
     metadata.downloadedAt = json.getProperty("downloaded_at", "");
     metadata.searchQuery = json.getProperty("search_query", "");
-    
+
+    // Technical metadata
+    metadata.sampleRate = json.getProperty("sample_rate", 0.0);
+    metadata.bitDepth = json.getProperty("bit_depth", 0);
+    metadata.channelCount = json.getProperty("channel_count", 0);
+
     // Usage tracking
     metadata.isBookmarked = json.getProperty("is_bookmarked", false);
     metadata.bookmarkedAt = json.getProperty("bookmarked_at", "");
     metadata.lastModifiedAt = json.getProperty("last_modified_at", "");
-    
+
     // Preset associations
     var presetAssoc = json.getProperty("preset_associations", var());
     if (presetAssoc.isObject())
@@ -100,7 +115,7 @@ SampleMetadata SampleMetadata::fromJson(const var& json)
             {
                 String presetId = property.name.toString();
                 var positionsVar = property.value;
-                
+
                 Array<String> positions;
                 if (positionsVar.isArray())
                 {
@@ -110,12 +125,12 @@ SampleMetadata SampleMetadata::fromJson(const var& json)
                         positions.add(posVar.toString());
                     }
                 }
-                
+
                 metadata.presetAssociations[presetId] = positions;
             }
         }
     }
-    
+
     return metadata;
 }
 
@@ -209,6 +224,8 @@ SampleCollectionManager::SampleCollectionManager(const File& baseDirectory)
 {
     ensureDirectoriesExist();
     loadCollection();
+
+    analyzeAllSampleFiles();
 }
 
 SampleCollectionManager::~SampleCollectionManager()
@@ -258,7 +275,7 @@ bool SampleCollectionManager::addOrUpdateSample(const SampleMetadata& metadata)
                 pushUnique(tok);
         }
 
-        // 2) add incoming tokens if they’re not already present in the text
+        // 2) add incoming tokens if they're not already present in the text
         {
             StringArray tokens = StringArray::fromTokens(incoming, ",", "");
             for (const auto& tok : tokens)
@@ -284,6 +301,7 @@ bool SampleCollectionManager::addOrUpdateSample(const SampleMetadata& metadata)
         return out.joinIntoString(", ");
     };
 
+    bool isNewSample = false;
     auto it = samples.find(metadata.freesoundId);
     if (it != samples.end())
     {
@@ -292,6 +310,14 @@ bool SampleCollectionManager::addOrUpdateSample(const SampleMetadata& metadata)
         updated.isBookmarked       = it->second.isBookmarked;
         updated.bookmarkedAt       = it->second.bookmarkedAt;
         updated.presetAssociations = it->second.presetAssociations;
+
+        // Preserve technical metadata if already analyzed
+        if (it->second.sampleRate > 0.0)
+        {
+            updated.sampleRate = it->second.sampleRate;
+            updated.bitDepth = it->second.bitDepth;
+            updated.channelCount = it->second.channelCount;
+        }
 
         // Merge queries (existing + incoming)
         updated.searchQuery    = mergeQueries(it->second.searchQuery, metadata.searchQuery);
@@ -307,9 +333,75 @@ bool SampleCollectionManager::addOrUpdateSample(const SampleMetadata& metadata)
         fresh.lastModifiedAt = nowStr;
 
         samples[metadata.freesoundId] = std::move(fresh);
+        isNewSample = true;
     }
 
-    return saveCollection();
+    bool result = saveCollection();
+
+    // NEW: Auto-analyze new samples if file exists and technical metadata is missing
+    if (result && isNewSample)
+    {
+        SampleMetadata& newSample = samples[metadata.freesoundId];
+        if (newSample.sampleRate <= 0.0 && sampleFileExists(metadata.freesoundId))
+        {
+            // Small delay to ensure file is fully written
+            Timer::callAfterDelay(100, [this, freesoundId = metadata.freesoundId]() {
+                analyzeSampleFile(freesoundId);
+            });
+        }
+    }
+
+    return result;
+}
+
+bool SampleCollectionManager::analyzeSampleFile(const String& freesoundId)
+{
+    auto it = samples.find(freesoundId);
+    if (it == samples.end())
+        return false;
+
+    File sampleFile = getSampleFile(freesoundId);
+    if (!sampleFile.existsAsFile())
+        return false;
+
+    // Analyze audio file properties using JUCE's AudioFormatReader
+    AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    std::unique_ptr<AudioFormatReader> reader(formatManager.createReaderFor(sampleFile));
+    if (reader)
+    {
+        it->second.sampleRate = reader->sampleRate;
+        it->second.bitDepth = reader->bitsPerSample;
+        it->second.channelCount = (int)reader->numChannels;
+        it->second.lastModifiedAt = Time::getCurrentTime().toString(true, true);
+
+        return saveCollection();
+    }
+
+    return false;
+}
+
+bool SampleCollectionManager::analyzeAllSampleFiles()
+{
+    bool anyChanges = false;
+
+    for (const auto& samplePair : samples)
+    {
+        const String& freesoundId = samplePair.first;
+        const SampleMetadata& metadata = samplePair.second;
+
+        // Only analyze if technical metadata is missing
+        if (metadata.sampleRate <= 0.0 || metadata.bitDepth <= 0 || metadata.channelCount <= 0)
+        {
+            if (analyzeSampleFile(freesoundId))
+            {
+                anyChanges = true;
+            }
+        }
+    }
+
+    return anyChanges;
 }
 
 SampleMetadata SampleCollectionManager::getSample(const String& freesoundId) const
@@ -356,13 +448,13 @@ Array<SampleMetadata> SampleCollectionManager::getBookmarkedSamples() const
             result.add(pair.second);
         }
     }
-    
+
     // Sort by bookmark date (newest first)
-    std::sort(result.begin(), result.end(), 
+    std::sort(result.begin(), result.end(),
               [](const SampleMetadata& a, const SampleMetadata& b) {
                   return a.bookmarkedAt > b.bookmarkedAt;
               });
-    
+
     return result;
 }
 
@@ -370,7 +462,7 @@ Array<SampleMetadata> SampleCollectionManager::searchSamples(const String& searc
 {
     Array<SampleMetadata> result;
     String lowerSearchTerm = searchTerm.toLowerCase();
-    
+
     for (const auto& pair : samples)
     {
         const SampleMetadata& sample = pair.second;
@@ -383,7 +475,7 @@ Array<SampleMetadata> SampleCollectionManager::searchSamples(const String& searc
             result.add(sample);
         }
     }
-    
+
     return result;
 }
 
@@ -406,11 +498,11 @@ bool SampleCollectionManager::addBookmark(const String& freesoundId, const Strin
     auto it = samples.find(freesoundId);
     if (it == samples.end())
         return false;
-    
+
     it->second.isBookmarked = true;
     it->second.bookmarkedAt = Time::getCurrentTime().toString(true, true);
     it->second.lastModifiedAt = it->second.bookmarkedAt;
-    
+
     return saveCollection();
 }
 
@@ -419,11 +511,11 @@ bool SampleCollectionManager::removeBookmark(const String& freesoundId)
     auto it = samples.find(freesoundId);
     if (it == samples.end())
         return false;
-    
+
     it->second.isBookmarked = false;
     it->second.bookmarkedAt = "";
     it->second.lastModifiedAt = Time::getCurrentTime().toString(true, true);
-    
+
     return saveCollection();
 }
 
@@ -440,7 +532,7 @@ bool SampleCollectionManager::isBookmarked(const String& freesoundId) const
 String SampleCollectionManager::createPreset(const String& name, const String& description)
 {
     String presetId = generatePresetId();
-    
+
     PresetInfo info;
     info.presetId = presetId;
     info.name = name;
@@ -448,10 +540,10 @@ String SampleCollectionManager::createPreset(const String& name, const String& d
     info.createdAt = Time::getCurrentTime().toString(true, true);
     info.modifiedAt = info.createdAt;
     info.fileName = presetId + ".json"; // For future compatibility
-    
+
     presets[presetId] = info;
     saveCollection();
-    
+
     return presetId;
 }
 
@@ -461,15 +553,15 @@ bool SampleCollectionManager::deletePreset(const String& presetId)
     auto presetIt = presets.find(presetId);
     if (presetIt == presets.end())
         return false;
-    
+
     presets.erase(presetIt);
-    
+
     // Remove all sample associations with this preset
     for (auto& samplePair : samples)
     {
         samplePair.second.removeFromPreset(presetId);
     }
-    
+
     return saveCollection();
 }
 
@@ -478,10 +570,10 @@ bool SampleCollectionManager::renamePreset(const String& presetId, const String&
     auto it = presets.find(presetId);
     if (it == presets.end())
         return false;
-    
+
     it->second.name = newName;
     it->second.modifiedAt = Time::getCurrentTime().toString(true, true);
-    
+
     return saveCollection();
 }
 
@@ -492,13 +584,13 @@ Array<PresetInfo> SampleCollectionManager::getAllPresets() const
     {
         result.add(pair.second);
     }
-    
+
     // Sort by creation date (newest first)
     std::sort(result.begin(), result.end(),
               [](const PresetInfo& a, const PresetInfo& b) {
                   return a.createdAt > b.createdAt;
               });
-    
+
     return result;
 }
 
@@ -584,7 +676,7 @@ bool SampleCollectionManager::clearPresetSlot(const String& presetId, int slotIn
     for (auto& samplePair : samples)
     {
         Array<String> positions = samplePair.second.getPositionsInPreset(presetId);
-        
+
         for (const String& positionKey : positions)
         {
             auto [slot, pad] = parsePositionKey(positionKey);
@@ -594,7 +686,7 @@ bool SampleCollectionManager::clearPresetSlot(const String& presetId, int slotIn
             }
         }
     }
-    
+
     return saveCollection();
 }
 
@@ -645,7 +737,7 @@ Array<SampleMetadata> SampleCollectionManager::loadPresetSlot(const String& pres
             }
         }
     }
-    
+
     return result;
 }
 

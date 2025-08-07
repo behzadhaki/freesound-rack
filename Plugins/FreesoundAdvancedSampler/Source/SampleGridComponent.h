@@ -153,7 +153,6 @@ public:
         String query;
         String tags;
         String description;
-        float fileSourceSampleRate = 44100.0f;
         bool hasValidSample;
         int padIndex;
     };
@@ -218,8 +217,8 @@ protected:
     String padQuery;
     String tags;
     String description;
-    float fileSourceSampleRate = 44100.0f;
     float processorSampleRate = 44100.0f;
+    float fileSourceSampleRate = 44100.0f; // Original sample rate of the audio file
     String getKeyboardKeyForPad(int padIndex) const;
 
     // Playback state
