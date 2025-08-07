@@ -3123,7 +3123,6 @@ int SampleGridComponent::getPadIndexFromPosition(Point<int> position)
     {
         // Convert grid position to pad index (bottom-left is pad 0)
         int padIndex = (GRID_SIZE - 1 - row) * GRID_SIZE + col;
-        DBG("padIndex: " +  String(jmin(padIndex, 15)));
         return jmin(padIndex, 15);
     }
 
@@ -3531,6 +3530,12 @@ void SampleGridComponent::filesDropped(const StringArray& files, int x, int y)
     bool hasMetadata = false;
     bool hasAudio = false;
 
+    // set all 16 pads to not playing
+    for (int i = 0; i < TOTAL_PADS; ++i)
+    {
+        samplePads[i]->setIsPlaying(false);
+    }
+
     for (const String& path : files)
     {
         File file(path);
@@ -3744,6 +3749,10 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     String sourceId = processor->getPadFreesoundId(sourcePadIndex);
     String targetId = processor->getPadFreesoundId(targetPadIndex);
 
+    // reset playing state to avoid hung visuals
+    samplePads[sourcePadIndex]->setIsPlaying(false);
+    samplePads[targetPadIndex]->setIsPlaying(false);
+
     // Swap visual pad objects
     std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
 
@@ -3769,6 +3778,8 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     processor->setSources();
 
     // Repaint both pads
+    samplePads[sourcePadIndex]->setIsPlaying(false); // just for safety redone here
+    samplePads[targetPadIndex]->setIsPlaying(false);
     samplePads[sourcePadIndex]->repaint();
     samplePads[targetPadIndex]->repaint();
 }
