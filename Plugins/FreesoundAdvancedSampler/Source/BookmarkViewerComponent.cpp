@@ -23,12 +23,12 @@ void BookmarkViewerComponent::ToggleButton::paint(Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // Background
-    g.setColour(Colour(0xff2A2A2A));
+    // Background using consistent plugin colors
+    g.setColour(Colour(0xff2A2A2A)); // textEditorBackgroundColour from CustomLookAndFeel
     g.fillRoundedRectangle(bounds, 4.0f);
 
-    // Border
-    g.setColour(Colour(0xff404040));
+    // Border using consistent outline color
+    g.setColour(Colour(0xff404040)); // alertOutlineColour from CustomLookAndFeel
     g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 
     // Calculate button halves
@@ -36,22 +36,32 @@ void BookmarkViewerComponent::ToggleButton::paint(Graphics& g)
     leftBounds = bounds.removeFromLeft(halfWidth);
     rightBounds = bounds;
 
-    // Draw active state background
+    // Draw active state background using pluginChoiceColour
+    Colour activeColour = pluginChoiceColour.withAlpha(0.8f);
+
     if (bookmarksActive)
     {
-        g.setColour(Colour(0xff4A9EFF));
+        // Create gradient for active state like in CustomLookAndFeel
+        ColourGradient gradient(
+            activeColour.brighter(0.1f), leftBounds.getTopLeft(),
+            activeColour.darker(0.1f), leftBounds.getBottomRight(), false);
+        g.setGradientFill(gradient);
         g.fillRoundedRectangle(leftBounds.reduced(2.0f), 2.0f);
     }
     else
     {
-        g.setColour(Colour(0xff4A9EFF));
+        // Create gradient for active state like in CustomLookAndFeel
+        ColourGradient gradient(
+            activeColour.brighter(0.1f), rightBounds.getTopLeft(),
+            activeColour.darker(0.1f), rightBounds.getBottomRight(), false);
+        g.setGradientFill(gradient);
         g.fillRoundedRectangle(rightBounds.reduced(2.0f), 2.0f);
     }
 
-    // Draw text
+    // Draw text using consistent font and colors
     g.setFont(Font(10.0f));
 
-    // Left text (Bookmarks)
+    // Left text (Bookmarks) - use white for active, lightgrey for inactive
     g.setColour(bookmarksActive ? Colours::white : Colours::lightgrey);
     g.drawText(leftText, leftBounds, Justification::centred);
 
@@ -99,8 +109,8 @@ BookmarkViewerComponent::BookmarkViewerComponent()
 {
     // Title label
     titleLabel.setText("Sample Browser", dontSendNotification);
-    // titleLabel.setFont(Font(14.0f, Font::bold));
-    // titleLabel.setColour(Label::textColourId, Colours::white);
+    titleLabel.setFont(Font(14.0f, Font::bold));
+    titleLabel.setColour(Label::textColourId, Colours::white);
     addAndMakeVisible(titleLabel);
 
     // Refresh button
@@ -140,8 +150,8 @@ BookmarkViewerComponent::~BookmarkViewerComponent()
 
 void BookmarkViewerComponent::paint(Graphics& g)
 {
-    // Dark background
-    g.setColour(Colour(0xff1A1A1A).withAlpha(0.9f));
+    // Dark background consistent with plugin theme
+    g.setColour(Colour(0xff1A1A1A).withAlpha(0.9f)); // alertBackgroundColour from CustomLookAndFeel
     g.fillAll();
 }
 
@@ -207,18 +217,19 @@ void BookmarkViewerComponent::resized()
 
 void BookmarkViewerComponent::setupSearchComponents()
 {
-    // Search box
+    // Search box using consistent styling from CustomLookAndFeel
     searchBox.setMultiLine(false);
     searchBox.setReturnKeyStartsNewLine(false);
     searchBox.setScrollbarsShown(false);
     searchBox.setPopupMenuEnabled(true);
     searchBox.setFont(Font(11.0f));
-    searchBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A));
-    searchBox.setColour(TextEditor::textColourId, Colours::white);
-    searchBox.setColour(TextEditor::highlightColourId, Colour(0xff4A9EFF));
-    searchBox.setColour(TextEditor::outlineColourId, Colour(0xff404040));
-    searchBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff404040));
-    searchBox.setTextToShowWhenEmpty("Search all fields: tags, description, name, author, license...", Colours::grey);
+    // Use consistent colors from CustomLookAndFeel
+    searchBox.setColour(TextEditor::backgroundColourId, Colour(0xff2A2A2A)); // textEditorBackgroundColour
+    searchBox.setColour(TextEditor::textColourId, Colours::white); // textEditorTextColour
+    searchBox.setColour(TextEditor::highlightColourId, pluginChoiceColour.withAlpha(0.6f));
+    searchBox.setColour(TextEditor::outlineColourId, Colour(0xff404040)); // textEditorOutlineColour
+    searchBox.setColour(TextEditor::focusedOutlineColourId, Colour(0xff606060)); // textEditorFocusedOutlineColour
+    searchBox.setTextToShowWhenEmpty("Search: name, author, tags, description, license, duration, file size, dates...", Colours::grey);
 
     // Thread-safe real-time search as user types
     searchBox.onTextChange = [this]() {
@@ -241,15 +252,15 @@ void BookmarkViewerComponent::setupSearchComponents()
 
     addAndMakeVisible(searchBox);
 
-    // Clear search button
+    // Clear search button - already using StyledButton from CustomButtonStyle
     clearSearchButton.onClick = [this]() {
         clearSearch();
     };
     addAndMakeVisible(clearSearchButton);
 
-    // Result count label
-    resultCountLabel.setFont(Font(8.0f));
-    // resultCountLabel.setColour(Label::textColourId, Colours::lightgrey);
+    // Result count label using consistent styling
+    resultCountLabel.setFont(Font(10.0f));
+    resultCountLabel.setColour(Label::textColourId, Colours::lightgrey); // consistent with CustomLookAndFeel labelTextColour
     resultCountLabel.setJustificationType(Justification::centredLeft);
     addAndMakeVisible(resultCountLabel);
     resultCountLabel.setVisible(false); // Hidden initially
@@ -328,10 +339,10 @@ void BookmarkViewerComponent::onModeToggled(bool bookmarksMode)
 {
     isBookmarksMode = bookmarksMode;
 
-    // Update search placeholder text
+    // Update search placeholder text based on mode
     String placeholderText = bookmarksMode ?
-        "Search bookmarked samples..." :
-        "Search all local samples...";
+        "Search bookmarks: name, author, tags, license, duration, size..." :
+        "Search all samples: name, author, tags, license, duration, size...";
     searchBox.setTextToShowWhenEmpty(placeholderText, Colours::grey);
 
     // Apply search to new data set
@@ -411,126 +422,223 @@ void BookmarkViewerComponent::clearSearch()
 
 bool BookmarkViewerComponent::matchesSearchTerm(const SampleMetadata& sample, const String& searchTerm) const
 {
-    // Convert search term to lowercase for case-insensitive search
-    String lowerSearchTerm = searchTerm.toLowerCase();
+    if (searchTerm.trim().isEmpty())
+        return true;
+
+    // Split search term into individual words for multi-word search
+    StringArray searchWords = StringArray::fromTokens(searchTerm.toLowerCase(), " ", "");
+    searchWords.removeEmptyStrings();
+
+    if (searchWords.isEmpty())
+        return true;
+
+    // Count how many search words are found
+    int matchedWords = 0;
+
+    // Create searchable content from all fields
+    StringArray searchableFields;
 
     // === CORE METADATA FIELDS ===
-
-    // Search in original name
-    if (sample.originalName.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in author name
-    if (sample.authorName.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in description
-    if (sample.description.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in tags
-    if (sample.tags.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in search query (the original search term used to find this sample)
-    if (sample.searchQuery.toLowerCase().contains(lowerSearchTerm))
-        return true;
+    searchableFields.add(sample.originalName.toLowerCase());
+    searchableFields.add(sample.authorName.toLowerCase());
+    searchableFields.add(sample.description.toLowerCase());
+    searchableFields.add(sample.tags.toLowerCase());
+    searchableFields.add(sample.searchQuery.toLowerCase());
 
     // === TECHNICAL METADATA ===
-
-    // Search in license type
-    if (sample.licenseType.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in file name
-    if (sample.fileName.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in Freesound URL
-    if (sample.freesoundUrl.toLowerCase().contains(lowerSearchTerm))
-        return true;
-
-    // Search in Freesound ID (exact match or partial)
-    if (sample.freesoundId.toLowerCase().contains(lowerSearchTerm))
-        return true;
+    searchableFields.add(sample.licenseType.toLowerCase());
+    searchableFields.add(sample.fileName.toLowerCase());
+    searchableFields.add(sample.freesoundUrl.toLowerCase());
+    searchableFields.add(sample.freesoundId.toLowerCase());
 
     // === DATE/TIME FIELDS ===
+    searchableFields.add(sample.downloadedAt.toLowerCase());
+    searchableFields.add(sample.bookmarkedAt.toLowerCase());
+    searchableFields.add(sample.lastModifiedAt.toLowerCase());
 
-    // Search in download date
-    if (sample.downloadedAt.toLowerCase().contains(lowerSearchTerm))
-        return true;
+    // === DERIVED/COMPUTED FIELDS ===
 
-    // Search in bookmark date
-    if (sample.bookmarkedAt.toLowerCase().contains(lowerSearchTerm))
-        return true;
+    // Add file extension using string methods instead of File constructor
+    String fileExtension;
+    int dotIndex = sample.fileName.lastIndexOf(".");
+    if (dotIndex >= 0 && dotIndex < sample.fileName.length() - 1)
+    {
+        fileExtension = sample.fileName.substring(dotIndex + 1).toLowerCase();
+        searchableFields.add(fileExtension);
+        searchableFields.add("." + fileExtension); // Include version with dot
+    }
 
-    // === NUMERIC FIELDS (convert to searchable strings) ===
-
-    // Search in duration (convert seconds to searchable format)
+    // Duration in various formats
     if (sample.duration > 0.0)
     {
-        String durationStr = String(sample.duration, 1) + "s"; // e.g., "3.2s"
-        if (durationStr.toLowerCase().contains(lowerSearchTerm))
-            return true;
+        // Raw seconds with decimal
+        searchableFields.add(String(sample.duration, 2) + "s");
+        searchableFields.add(String(sample.duration, 1) + "s");
+        searchableFields.add(String((int)sample.duration) + "s");
 
-        // Also search formatted duration (e.g., "1m 30s")
+        // Formatted duration (e.g., "1m 30s")
         int minutes = (int)(sample.duration / 60);
         int seconds = (int)(sample.duration) % 60;
         if (minutes > 0)
         {
-            String formattedDuration = String(minutes) + "m " + String(seconds) + "s";
-            if (formattedDuration.toLowerCase().contains(lowerSearchTerm))
-                return true;
+            searchableFields.add(String(minutes) + "m " + String(seconds) + "s");
+            searchableFields.add(String(minutes) + "min " + String(seconds) + "sec");
+            searchableFields.add(String(minutes) + ":" + String(seconds).paddedLeft('0', 2));
+        }
+        else
+        {
+            searchableFields.add(String(seconds) + "sec");
+        }
+
+        // Duration in milliseconds (for precise searches)
+        int milliseconds = (int)(sample.duration * 1000);
+        searchableFields.add(String(milliseconds) + "ms");
+    }
+
+    // File size in various formats
+    if (sample.fileSize > 0)
+    {
+        // Bytes
+        searchableFields.add(String(sample.fileSize) + "b");
+        searchableFields.add(String(sample.fileSize) + "bytes");
+
+        // Kilobytes
+        if (sample.fileSize > 1024)
+        {
+            searchableFields.add(String(sample.fileSize / 1024) + "kb");
+            searchableFields.add(String(sample.fileSize / 1024) + "kilobytes");
+        }
+
+        // Megabytes
+        if (sample.fileSize > 1024 * 1024)
+        {
+            float mb = sample.fileSize / (1024.0f * 1024.0f);
+            searchableFields.add(String(mb, 1) + "mb");
+            searchableFields.add(String(mb, 2) + "mb");
+            searchableFields.add(String((int)mb) + "mb");
+            searchableFields.add(String(mb, 1) + "megabytes");
         }
     }
 
-    // Search in file size (convert bytes to searchable format)
+    // Sample rate (if available in future - placeholder for now)
+    // Note: SampleMetadata doesn't currently have sample rate, but adding placeholder
+    // searchableFields.add(String(sample.sampleRate) + "hz");
+    // searchableFields.add(String(sample.sampleRate / 1000) + "khz");
+
+    // Bit depth (if available in future - placeholder)
+    // searchableFields.add(String(sample.bitDepth) + "bit");
+
+    // === SPECIAL SEARCH TERMS AND CATEGORIES ===
+
+    // License categories
+    String lowerLicense = sample.licenseType.toLowerCase();
+    if (lowerLicense.contains("creative"))
+        searchableFields.add("creative commons");
+    if (lowerLicense.contains("cc"))
+        searchableFields.add("cc");
+    if (lowerLicense.contains("cc0"))
+        searchableFields.add("cc0");
+    if (lowerLicense.contains("by"))
+        searchableFields.add("attribution");
+    if (lowerLicense.contains("sa"))
+        searchableFields.add("share-alike");
+    if (lowerLicense.contains("nc"))
+        searchableFields.add("non-commercial");
+    if (lowerLicense.contains("public"))
+        searchableFields.add("public domain");
+
+    // Duration categories
+    if (sample.duration < 1.0)
+        searchableFields.add("very short");
+    if (sample.duration < 5.0)
+        searchableFields.add("short");
+    else if (sample.duration >= 5.0 && sample.duration < 30.0)
+        searchableFields.add("medium");
+    else if (sample.duration >= 30.0 && sample.duration < 120.0)
+        searchableFields.add("long");
+    else if (sample.duration >= 120.0)
+        searchableFields.add("very long");
+
+    // File size categories
     if (sample.fileSize > 0)
     {
-        String fileSizeStr;
-        if (sample.fileSize > 1024 * 1024)
-            fileSizeStr = String(sample.fileSize / (1024 * 1024)) + "mb";
-        else if (sample.fileSize > 1024)
-            fileSizeStr = String(sample.fileSize / 1024) + "kb";
+        if (sample.fileSize < 50 * 1024) // < 50KB
+            searchableFields.add("tiny");
+        if (sample.fileSize < 200 * 1024) // < 200KB
+            searchableFields.add("small");
+        else if (sample.fileSize < 1024 * 1024) // < 1MB
+            searchableFields.add("medium size");
+        else if (sample.fileSize < 5 * 1024 * 1024) // < 5MB
+            searchableFields.add("large");
         else
-            fileSizeStr = String(sample.fileSize) + "b";
-
-        if (fileSizeStr.toLowerCase().contains(lowerSearchTerm))
-            return true;
+            searchableFields.add("very large");
     }
 
-    // === SPECIAL SEARCH TERMS ===
+    // Bookmark status
+    if (sample.isBookmarked)
+        searchableFields.add("bookmarked");
+    else
+        searchableFields.add("not bookmarked");
 
-    // Search for license categories
-    String lowerLicense = sample.licenseType.toLowerCase();
-    if (lowerSearchTerm == "cc" && lowerLicense.contains("creative"))
-        return true;
-    if (lowerSearchTerm == "cc0" && lowerLicense.contains("cc0"))
-        return true;
-    if (lowerSearchTerm == "by" && lowerLicense.contains("by"))
-        return true;
-    if (lowerSearchTerm == "sa" && lowerLicense.contains("sa"))
-        return true;
-    if (lowerSearchTerm == "nc" && lowerLicense.contains("nc"))
-        return true;
-    if (lowerSearchTerm == "public" && lowerLicense.contains("public"))
-        return true;
+    // Date-based searches (extract year, month from dates)
+    auto extractDateTerms = [&searchableFields](const String& dateStr) {
+        if (dateStr.isNotEmpty())
+        {
+            // Try to extract year (look for 4-digit numbers)
+            for (int i = 0; i <= dateStr.length() - 4; ++i)
+            {
+                String yearCandidate = dateStr.substring(i, i + 4);
+                if (yearCandidate.containsOnly("0123456789"))
+                {
+                    int year = yearCandidate.getIntValue();
+                    if (year >= 2000 && year <= 2030) // Reasonable range
+                    {
+                        searchableFields.add(String(year));
+                        searchableFields.add("year " + String(year));
+                    }
+                }
+            }
 
-    // Search for duration ranges
-    if (lowerSearchTerm == "short" && sample.duration < 5.0)
-        return true;
-    if (lowerSearchTerm == "medium" && sample.duration >= 5.0 && sample.duration < 30.0)
-        return true;
-    if (lowerSearchTerm == "long" && sample.duration >= 30.0)
-        return true;
+            // Add common date patterns
+            if (dateStr.contains("2024"))
+                searchableFields.add("this year");
+            if (dateStr.contains("jan"))
+                searchableFields.add("january");
+            if (dateStr.contains("feb"))
+                searchableFields.add("february");
+            // Add more month mappings as needed...
+        }
+    };
 
-    // Search for file size ranges
-    if (lowerSearchTerm == "small" && sample.fileSize < 100 * 1024) // < 100KB
-        return true;
-    if (lowerSearchTerm == "large" && sample.fileSize > 1024 * 1024) // > 1MB
-        return true;
+    extractDateTerms(sample.downloadedAt.toLowerCase());
+    extractDateTerms(sample.bookmarkedAt.toLowerCase());
 
-    return false;
+    // === MULTI-WORD SEARCH LOGIC ===
+
+    for (const String& searchWord : searchWords)
+    {
+        if (searchWord.length() < 2) // Skip very short words
+            continue;
+
+        bool wordFound = false;
+
+        // Check if this search word appears in any field
+        for (const String& field : searchableFields)
+        {
+            if (field.contains(searchWord))
+            {
+                wordFound = true;
+                break;
+            }
+        }
+
+        if (wordFound)
+            matchedWords++;
+    }
+
+    // Require all words to be found for a match
+    // This implements AND logic: "drum kick" requires both "drum" AND "kick" to be present
+    return matchedWords == searchWords.size();
 }
 
 void BookmarkViewerComponent::updateResultCount()
@@ -541,18 +649,23 @@ void BookmarkViewerComponent::updateResultCount()
     String countText = String(filteredSamples.size()) + " of " +
                       String(sourceData.size()) + " " + modeText;
 
+    // Use consistent colors from plugin theme
     if (filteredSamples.size() == 0)
     {
+        resultCountLabel.setColour(Label::textColourId, Colour(0xFFFF6B47)); // Warning orange
         countText += " (no matches)";
     }
     else if (filteredSamples.size() == sourceData.size())
     {
+        resultCountLabel.setColour(Label::textColourId, Colour(0xFF4CAF50)); // Success green
         countText += " (showing all)";
     }
     else
     {
+        resultCountLabel.setColour(Label::textColourId, pluginChoiceColour.brighter(0.3f)); // Plugin theme color
         countText += " (filtered)";
     }
+
     resultCountLabel.setText(countText, dontSendNotification);
 }
 

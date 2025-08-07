@@ -14,6 +14,7 @@
 #include "SampleCollectionManager.h"
 #include "PluginProcessor.h"
 #include "CustomButtonStyle.h"
+#include "CustomLookAndFeel.h"
 
 // Add forward declaration
 class FreesoundAdvancedSamplerAudioProcessorEditor;
