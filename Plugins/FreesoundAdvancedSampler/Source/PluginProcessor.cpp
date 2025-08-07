@@ -180,12 +180,16 @@ FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
 
 FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor()
 {
-	// Remove download manager listener
-	downloadManager.removeListener(this);
+    // Remove download manager listener
+    downloadManager.removeListener(this);
 
-	// Note: We no longer delete the tmp directory to preserve downloaded files
+    // NEW: Clear mappings and let JUCE handle SamplerSound cleanup
+    padToSoundMapping.clear();
+    soundRefCount.clear();
 
+    // sampler.clearSounds() will be called automatically by Synthesiser destructor
 }
+
 
 //==============================================================================
 const String FreesoundAdvancedSamplerAudioProcessor::getName() const
@@ -674,51 +678,350 @@ void FreesoundAdvancedSamplerAudioProcessor::removeDownloadListener(DownloadList
 
 void FreesoundAdvancedSamplerAudioProcessor::setSources()
 {
-    sampler.clearSounds();
-    sampler.clearVoices();
+    // NEW: Smart update - only change what's actually different
+    initializeVoicesIfNeeded();
 
-    int poliphony = 16;
-
-    // Add tracking voices
-    for (int i = 0; i < poliphony; i++) {
-        sampler.addVoice(new TrackingSamplerVoice(*this));
+    if (hasStateChanged()) {
+        detectAndApplyChanges();
     }
 
+    // Optional: Validate in debug builds
+#if JUCE_DEBUG
+    validateSamplerState();
+#endif
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::initializeVoicesIfNeeded()
+{
+    if (!voicesInitialized || sampler.getNumVoices() != currentPolyphony) {
+        sampler.clearVoices();
+
+        for (int i = 0; i < currentPolyphony; i++) {
+            sampler.addVoice(new TrackingSamplerVoice(*this));
+        }
+
+        voicesInitialized = true;
+    }
+
+    // Ensure audio format manager is ready (only once)
     if (audioFormatManager.getNumKnownFormats() == 0) {
         audioFormatManager.registerBasicFormats();
     }
+}
 
-    // FIXED: Load samples by pad index - each pad gets its own sampler sound, even if duplicate
-    for (int padIndex = 0; padIndex < 16; ++padIndex)
-    {
-        String freesoundId = getPadFreesoundId(padIndex);
-        if (freesoundId.isNotEmpty() && collectionManager)
-        {
-            File audioFile = collectionManager->getSampleFile(freesoundId);
+bool FreesoundAdvancedSamplerAudioProcessor::hasStateChanged()
+{
+    SamplerState currentState = getCurrentState();
+    bool changed = (currentState != lastAppliedState);
 
-            if (audioFile.existsAsFile())
-            {
-                std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+    if (changed) {
+        lastAppliedState = currentState;
+    }
 
-                if (reader != nullptr)
-                {
-                    BigInteger notes;
-                    int midiNote = 36 + padIndex;
-                    notes.setBit(midiNote, true);
+    return changed;
+}
 
-                    double attackTime = 0.0;
-                    double releaseTime = 0.1;
-                    double maxSampleLength = 10.0;
+FreesoundAdvancedSamplerAudioProcessor::SamplerState FreesoundAdvancedSamplerAudioProcessor::getCurrentState()
+{
+    SamplerState state;
 
-                    // CRITICAL: Use padIndex as name, not freesoundId
-                    // This ensures each pad gets its own sampler sound instance
-                    sampler.addSound(new SamplerSound("pad_" + String(padIndex), *reader, notes, midiNote,
-                                                     attackTime, releaseTime, maxSampleLength));
-                }
-            }
+    for (int i = 0; i < 16; ++i) {
+        state.padAssignments[i] = getPadFreesoundId(i);
+    }
+    state.polyphony = currentPolyphony;
+
+    return state;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::detectAndApplyChanges()
+{
+    // Find what changed and update only those pads
+    Array<int> changedPads;
+    Array<std::pair<int, int>> swappedPads;
+
+    for (int i = 0; i < 16; ++i) {
+        String currentId = getPadFreesoundId(i);
+        String loadedId = loadedSampleIds[i];
+
+        if (currentId != loadedId) {
+            changedPads.add(i);
         }
     }
+
+    // Optimize for common swap operations
+    if (changedPads.size() == 2) {
+        int padA = changedPads[0];
+        int padB = changedPads[1];
+
+        // Check if this is actually a swap
+        if (getPadFreesoundId(padA) == loadedSampleIds[padB] &&
+            getPadFreesoundId(padB) == loadedSampleIds[padA]) {
+
+            swapPadSoundsDirectly(padA, padB);
+            return; // Early exit for swap optimization
+        }
+    }
+
+    // For other changes, update individual pads
+    updateMultiplePads(changedPads);
 }
+
+void FreesoundAdvancedSamplerAudioProcessor::updateMultiplePads(const Array<int>& padIndices)
+{
+    for (int padIndex : padIndices) {
+        updateSinglePadSound(padIndex);
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::updateSinglePadSound(int padIndex)
+{
+    if (padIndex < 0 || padIndex >= 16) return;
+
+    String newFreesoundId = getPadFreesoundId(padIndex);
+    String currentId = loadedSampleIds[padIndex];
+
+    if (newFreesoundId == currentId) return; // No change needed
+
+    // Remove old sound for this pad
+    removeSoundForPad(padIndex);
+
+    // Add new sound if we have one
+    if (newFreesoundId.isNotEmpty()) {
+        addSoundForPad(padIndex, newFreesoundId);
+    }
+
+    // Update tracking
+    loadedSampleIds[padIndex] = newFreesoundId;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::removeSoundForPad(int padIndex)
+{
+    // Find and remove the sound currently mapped to this pad
+    if (padToSoundMapping.count(padIndex)) {
+        SamplerSound* soundToRemove = padToSoundMapping[padIndex];
+
+        // Remove from sampler - this will properly handle reference counting
+        for (int i = 0; i < sampler.getNumSounds(); ++i) {
+            if (sampler.getSound(i).get() == soundToRemove) {
+                sampler.removeSound(i);
+                break;
+            }
+        }
+
+        // Update reference count
+        String freesoundId = loadedSampleIds[padIndex];
+        if (freesoundId.isNotEmpty() && soundRefCount.count(freesoundId)) {
+            soundRefCount[freesoundId]--;
+            if (soundRefCount[freesoundId] <= 0) {
+                soundRefCount.erase(freesoundId);
+            }
+        }
+
+        padToSoundMapping.erase(padIndex);
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::addSoundForPad(int padIndex, const String& freesoundId)
+{
+    if (!collectionManager) return;
+
+    File audioFile = collectionManager->getSampleFile(freesoundId);
+    if (!audioFile.existsAsFile()) return;
+
+    int midiNote = 36 + padIndex;
+
+    // Create the sound directly and let JUCE manage the reference counting
+    std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+    if (!reader) return;
+
+    BigInteger notes = createNoteSetForPad(padIndex);
+
+    // Create SamplerSound and let the Synthesiser manage its lifetime
+    auto* newSound = new SamplerSound(
+        "pad_" + String(padIndex),       // name
+        *reader,                         // AudioFormatReader reference
+        notes,                          // MIDI notes this sound responds to
+        midiNote,                       // root MIDI note
+        0.0,                           // attack time
+        0.1,                           // release time
+        10.0                           // max sample length
+    );
+
+    // Add to sampler - the Synthesiser will manage the reference counting
+    sampler.addSound(newSound);
+
+    // Store raw pointer for quick lookup (safe because Synthesiser owns it)
+    padToSoundMapping[padIndex] = newSound;
+
+    // Track usage
+    soundRefCount[freesoundId]++;
+}
+
+std::shared_ptr<SamplerSound> FreesoundAdvancedSamplerAudioProcessor::getOrCreateCachedSound(const String& freesoundId, int midiNote)
+{
+    // Simplified approach: Create each sound fresh but track usage for optimization
+
+    if (!collectionManager) return nullptr;
+
+    File audioFile = collectionManager->getSampleFile(freesoundId);
+    if (!audioFile.existsAsFile()) return nullptr;
+
+    std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+    if (!reader) return nullptr;
+
+    BigInteger notes = createNoteSetForPad(midiNote - 36);
+
+    // Create new SamplerSound instance
+    auto newSound = std::make_shared<SamplerSound>(
+        "pad_" + String(midiNote - 36),  // name
+        *reader,                         // ✅ FIXED: AudioFormatReader reference
+        notes,                          // MIDI notes this sound responds to
+        midiNote,                       // root MIDI note
+        0.0,                           // attack time
+        0.1,                           // release time
+        10.0                           // max sample length
+    );
+
+    // Track usage for potential future optimizations
+    soundRefCount[freesoundId]++;
+
+    return newSound;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::swapPadSoundsDirectly(int padA, int padB)
+{
+    // This is the most efficient way to handle swaps
+
+    // Get current sound pointers
+    SamplerSound* soundA = getSamplerSoundForPad(padA);
+    SamplerSound* soundB = getSamplerSoundForPad(padB);
+
+    // Swap MIDI note assignments if both sounds exist
+    if (soundA && soundB) {
+        BigInteger notesA = createNoteSetForPad(padA);
+        BigInteger notesB = createNoteSetForPad(padB);
+
+        // Update MIDI mappings directly (if SamplerSound supports this)
+        // Otherwise, we need to recreate only these two sounds
+        removeSoundForPad(padA);
+        removeSoundForPad(padB);
+        addSoundForPad(padA, getPadFreesoundId(padA));
+        addSoundForPad(padB, getPadFreesoundId(padB));
+    }
+    else if (soundA) {
+        // Only A has sound - move it to B
+        removeSoundForPad(padA);
+        addSoundForPad(padB, getPadFreesoundId(padB));
+    }
+    else if (soundB) {
+        // Only B has sound - move it to A
+        removeSoundForPad(padB);
+        addSoundForPad(padA, getPadFreesoundId(padA));
+    }
+
+    // Update tracking
+    std::swap(loadedSampleIds[padA], loadedSampleIds[padB]);
+}
+
+BigInteger FreesoundAdvancedSamplerAudioProcessor::createNoteSetForPad(int padIndex)
+{
+    BigInteger notes;
+    int midiNote = 36 + padIndex;
+    notes.setBit(midiNote, true);
+    return notes;
+}
+
+SamplerSound* FreesoundAdvancedSamplerAudioProcessor::getSamplerSoundForPad(int padIndex)
+{
+    if (padToSoundMapping.count(padIndex)) {
+        return padToSoundMapping[padIndex];
+    }
+    return nullptr;
+}
+
+// Public convenience methods for specific operations
+
+void FreesoundAdvancedSamplerAudioProcessor::setSourcesForSinglePad(int padIndex)
+{
+    initializeVoicesIfNeeded();
+    updateSinglePadSound(padIndex);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setSourcesForPadSwap(int padA, int padB)
+{
+    initializeVoicesIfNeeded();
+    swapPadSoundsDirectly(padA, padB);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setSourcesForMultiplePads(const Array<int>& padIndices)
+{
+    initializeVoicesIfNeeded();
+    updateMultiplePads(padIndices);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::rebuildAllSources()
+{
+    // Fallback method - complete rebuild when needed
+    // (Keep your original logic as a backup)
+
+    // Clear everything
+    sampler.clearSounds();
+    padToSoundMapping.clear();
+    std::fill(loadedSampleIds.begin(), loadedSampleIds.end(), String());
+
+    // Force voice reinitialization
+    voicesInitialized = false;
+    initializeVoicesIfNeeded();
+
+    // Load all pads from scratch
+    Array<int> allPads;
+    for (int i = 0; i < 16; ++i) allPads.add(i);
+    updateMultiplePads(allPads);
+
+    // Update state tracking
+    lastAppliedState = getCurrentState();
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::clearSoundCache()
+{
+    soundRefCount.clear();
+}
+
+#if JUCE_DEBUG
+void FreesoundAdvancedSamplerAudioProcessor::validateSamplerState()
+{
+    // Debug validation to catch issues early
+
+    DBG("=== Sampler State Validation ===");
+    DBG("Voices: " + String(sampler.getNumVoices()));
+    DBG("Sounds: " + String(sampler.getNumSounds()));
+    DBG("Cached sounds: " + String(soundRefCount.size()));
+    DBG("Pad mappings: " + String(padToSoundMapping.size()));
+
+    // Check for consistency
+    int activePads = 0;
+    for (int i = 0; i < 16; ++i) {
+        String padId = getPadFreesoundId(i);
+        String loadedId = loadedSampleIds[i];
+        bool hasMapping = padToSoundMapping.count(i) > 0;
+
+        if (!padId.isEmpty()) {
+            activePads++;
+            if (padId != loadedId) {
+                DBG("WARNING: Pad " + String(i) + " state mismatch - Expected: " + padId + ", Loaded: " + loadedId);
+            }
+            if (!hasMapping) {
+                DBG("WARNING: Pad " + String(i) + " has freesound ID but no sound mapping");
+            }
+        } else if (hasMapping) {
+            DBG("WARNING: Pad " + String(i) + " has sound mapping but no freesound ID");
+        }
+    }
+
+    DBG("Active pads: " + String(activePads));
+    DBG("=== End Validation ===");
+}
+#endif
 
 void FreesoundAdvancedSamplerAudioProcessor::addNoteOnToMidiBuffer(int notenumber)
 {
@@ -834,30 +1137,33 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const String& presetId, 
     if (!collectionManager)
         return false;
 
-    // FIXED: Load pad-specific data (handles duplicates correctly)
     Array<SampleCollectionManager::PadSlotData> padData = collectionManager->getPresetSlot(presetId, slotIndex);
 
     // Clear current state
-    clearAllPads();
+    clearAllPads(); // This now clears efficiently
 
-    // FIXED: Load each pad individually (allows duplicates)
+    // Collect all pad indices that will be updated
+    Array<int> padsToUpdate;
+
+    // Set pad assignments
     for (const auto& data : padData)
     {
         if (data.padIndex >= 0 && data.padIndex < 16 && data.freesoundId.isNotEmpty())
         {
-            setPadSample(data.padIndex, data.freesoundId);
+            currentPadFreesoundIds.set(data.padIndex, data.freesoundId);
+            padsToUpdate.add(data.padIndex);
         }
     }
 
-    // Update sampler with new pad assignments
-    setSources();
+    // NEW: Use batch update for all changed pads
+    setSourcesForMultiplePads(padsToUpdate);
 
-    // Update UI and restore individual queries
+    // Update UI
     if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
     {
         editor->getSampleGridComponent().refreshFromProcessor();
 
-        // Restore individual queries after UI refresh
+        // Restore individual queries
         Timer::callAfterDelay(100, [editor, padData]() {
             auto& gridComponent = editor->getSampleGridComponent();
             for (const auto& data : padData)
@@ -873,6 +1179,30 @@ bool FreesoundAdvancedSamplerAudioProcessor::loadPreset(const String& presetId, 
 
     setActivePreset(presetId, slotIndex);
     return true;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::cleanupUnusedCachedSounds()
+{
+    // Remove cached sounds that aren't currently being used by any pad
+    auto it = soundRefCount.begin();
+    while (it != soundRefCount.end()) {
+        const String& freesoundId = it->first;
+        bool isUsed = false;
+
+        // Check if any pad is using this sound
+        for (int i = 0; i < 16; ++i) {
+            if (getPadFreesoundId(i) == freesoundId) {
+                isUsed = true;
+                break;
+            }
+        }
+
+        if (!isUsed) {
+            it = soundRefCount.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 bool FreesoundAdvancedSamplerAudioProcessor::saveToSlot(const String& presetId, int slotIndex, const String& description)
@@ -912,6 +1242,9 @@ void FreesoundAdvancedSamplerAudioProcessor::setPadSample(int padIndex, const St
     if (padIndex >= 0 && padIndex < 16)
     {
         currentPadFreesoundIds.set(padIndex, freesoundId);
+
+        // NEW: Use smart single-pad update instead of full rebuild
+        setSourcesForSinglePad(padIndex);
     }
 }
 
@@ -929,6 +1262,9 @@ void FreesoundAdvancedSamplerAudioProcessor::clearPad(int padIndex)
     if (padIndex >= 0 && padIndex < 16)
     {
         currentPadFreesoundIds.set(padIndex, "");
+
+        // NEW: Use smart single-pad update
+        setSourcesForSinglePad(padIndex);
     }
 }
 
@@ -938,6 +1274,13 @@ void FreesoundAdvancedSamplerAudioProcessor::clearAllPads()
     {
         currentPadFreesoundIds.set(i, "");
     }
+
+    // NEW: Clear everything efficiently and safely
+    sampler.clearSounds(); // This properly manages reference counting
+    padToSoundMapping.clear();
+    soundRefCount.clear();
+    std::fill(loadedSampleIds.begin(), loadedSampleIds.end(), String());
+    lastAppliedState = getCurrentState();
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::setActivePreset(const String& presetId, int slotIndex)

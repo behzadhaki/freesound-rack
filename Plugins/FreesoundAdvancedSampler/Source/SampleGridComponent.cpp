@@ -2096,32 +2096,46 @@ void SampleGridComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p
     }
 }
 
-void SampleGridComponent::updateSamples(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo)
+void SampleGridComponent::updatePadFromCollection(int padIndex, const String& freesoundId)
 {
-    // Always clear samples first
-    clearSamples();
-
-    if (!processor)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS || !processor)
         return;
 
-    File downloadDir = processor->getCurrentDownloadLocation();
+    SampleCollectionManager* collectionManager = processor->getCollectionManager();
+    if (!collectionManager)
+        return;
 
-    // DBG("SampleGridComponent::updateSamples called with " + String(sounds.size()) + " sounds");
-
-    // For preset loading, always use the provided arrays directly
-    if (!sounds.isEmpty())
+    if (freesoundId.isEmpty())
     {
-        // DBG("Using provided arrays for grid update");
-        loadSamplesFromArrays(sounds, soundInfo, downloadDir);
+        // Clear the pad
+        samplePads[padIndex]->clearSample();
+        processor->clearPad(padIndex); // This now uses smart update
     }
-
-    // Force repaint all pads
-    for (auto& pad : samplePads)
+    else
     {
-        pad->repaint();
-    }
+        // Load sample data from collection
+        SampleMetadata sample = collectionManager->getSample(freesoundId);
+        File audioFile = collectionManager->getSampleFile(freesoundId);
 
-    // DBG("Grid visual update complete");
+        if (!sample.freesoundId.isEmpty() && audioFile.existsAsFile())
+        {
+            String individualQuery = sample.searchQuery;
+            if (samplePads[padIndex]->hasQuery())
+            {
+                individualQuery = samplePads[padIndex]->getQuery();
+            }
+
+            // Update visual pad
+            samplePads[padIndex]->setSample(
+                audioFile, sample.originalName, sample.authorName,
+                sample.freesoundId, sample.licenseType, individualQuery,
+                sample.tags, sample.description
+            );
+
+            // CRITICAL: Update processor state (now uses smart update)
+            processor->setPadSample(padIndex, freesoundId);
+        }
+    }
 }
 
 void SampleGridComponent::loadSamplesFromJson(const File& metadataFile)
@@ -3692,56 +3706,6 @@ void SampleGridComponent::fileDragExit(const StringArray& files)
     repaint();
 }
 
-void SampleGridComponent::updatePadFromCollection(int padIndex, const String& freesoundId)
-{
-    if (padIndex < 0 || padIndex >= TOTAL_PADS || !processor)
-        return;
-
-    SampleCollectionManager* collectionManager = processor->getCollectionManager();
-    if (!collectionManager)
-        return;
-
-    if (freesoundId.isEmpty())
-    {
-        // Clear the pad
-        samplePads[padIndex]->clearSample();
-        processor->clearPad(padIndex);
-    }
-    else
-    {
-        // FIXED: Load sample data from collection - works even if duplicate
-        SampleMetadata sample = collectionManager->getSample(freesoundId);
-        File audioFile = collectionManager->getSampleFile(freesoundId);
-
-        if (!sample.freesoundId.isEmpty() && audioFile.existsAsFile())
-        {
-            // Get individual query for this specific pad if available
-            String individualQuery = sample.searchQuery; // Default to sample's query
-
-            // Try to get pad-specific query from UI state if available
-            if (samplePads[padIndex]->hasQuery())
-            {
-                individualQuery = samplePads[padIndex]->getQuery();
-            }
-
-            // Update visual pad with individual data
-            samplePads[padIndex]->setSample(
-                audioFile,
-                sample.originalName,
-                sample.authorName,
-                sample.freesoundId,
-                sample.licenseType,
-                individualQuery,  // Use individual query
-                sample.tags,
-                sample.description
-            );
-
-            // CRITICAL: Update processor state for this specific pad
-            processor->setPadSample(padIndex, freesoundId);
-        }
-    }
-}
-
 // Load all pads from current processor state
 void SampleGridComponent::refreshFromProcessor()
 {
@@ -3805,24 +3769,20 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     String sourceId = processor->getPadFreesoundId(sourcePadIndex);
     String targetId = processor->getPadFreesoundId(targetPadIndex);
 
-    // reset playing state to avoid hung visuals
+    // Reset playing state
     samplePads[sourcePadIndex]->setIsPlaying(false);
     samplePads[targetPadIndex]->setIsPlaying(false);
 
-    // Swap visual pad objects
+    // Swap visual pad objects (your existing logic)
     std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
 
-    // Swap their bounds to keep layout consistent
     auto sourceBounds = samplePads[sourcePadIndex]->getBounds();
     auto targetBounds = samplePads[targetPadIndex]->getBounds();
     samplePads[sourcePadIndex]->setBounds(targetBounds);
     samplePads[targetPadIndex]->setBounds(sourceBounds);
 
-    // Update padIndex of each pad so MIDI / overlays are correct
     samplePads[sourcePadIndex]->setPadIndex(sourcePadIndex);
     samplePads[targetPadIndex]->setPadIndex(targetPadIndex);
-
-    // NEW: refresh per-index styling so the colours follow the slot
     samplePads[sourcePadIndex]->refreshStyleFromPadIndex();
     samplePads[targetPadIndex]->refreshStyleFromPadIndex();
 
@@ -3830,12 +3790,10 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     processor->setPadSample(sourcePadIndex, targetId);
     processor->setPadSample(targetPadIndex, sourceId);
 
-    // Rebuild the sampler to apply updated mappings
-    processor->setSources();
+    // NEW: Use optimized swap method instead of full rebuild
+    processor->setSourcesForPadSwap(sourcePadIndex, targetPadIndex);
 
-    // Repaint both pads
-    samplePads[sourcePadIndex]->setIsPlaying(false); // just for safety redone here
-    samplePads[targetPadIndex]->setIsPlaying(false);
+    // Repaint
     samplePads[sourcePadIndex]->repaint();
     samplePads[targetPadIndex]->repaint();
 }

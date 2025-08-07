@@ -168,7 +168,7 @@ public:
    int getActiveSlotIndex() const { return activeSlotIndex; }
    void setActivePreset(const String& presetId, int slotIndex);
 
-   // NEW: Pad State Management
+   // NEW: Pad State Management (Updated with smart sampler integration)
    void setPadSample(int padIndex, const String& freesoundId);
    String getPadFreesoundId(int padIndex) const;
    void clearPad(int padIndex);
@@ -194,6 +194,13 @@ public:
    // NEW: Migration Helper
    void migrateFromOldSystem();
 
+   // NEW: Smart Sampler Public Methods
+   void setSourcesForSinglePad(int padIndex);
+   void setSourcesForPadSwap(int padA, int padB);
+   void setSourcesForMultiplePads(const Array<int>& padIndices);
+   void rebuildAllSources();
+   void clearSoundCache();
+
 private:
    // NEW: Unified Collection Manager (replaces PresetManager and BookmarkManager)
    std::unique_ptr<SampleCollectionManager> collectionManager;
@@ -211,6 +218,56 @@ private:
    bool presetPanelExpandedState = false;
    bool bookmarkPanelExpandedState = false;
 
+   //==============================================================================
+   // NEW: Smart Sampler Management System
+   //==============================================================================
+
+   // State tracking for optimization
+   std::array<String, 16> loadedSampleIds;     // What's actually in the sampler
+   bool voicesInitialized = false;
+   int currentPolyphony = 16;
+
+   // Sound caching for performance
+	std::map<int, SamplerSound*> padToSoundMapping; // padIndex -> current sound pointer
+	std::map<String, int> soundRefCount; // Track how many pads use each freesoundId
+
+   // Change detection system
+   struct SamplerState {
+       std::array<String, 16> padAssignments;
+       int polyphony;
+
+       bool operator==(const SamplerState& other) const {
+           return padAssignments == other.padAssignments && polyphony == other.polyphony;
+       }
+       bool operator!=(const SamplerState& other) const { return !(*this == other); }
+   };
+   SamplerState lastAppliedState;
+
+   // Smart sampler internal methods
+   void initializeVoicesIfNeeded();
+   void updateChangedSoundsOnly();
+   bool hasStateChanged();
+   SamplerState getCurrentState();
+   void detectAndApplyChanges();
+
+   // Individual sound management
+   void updateSinglePadSound(int padIndex);
+   void removeSoundForPad(int padIndex);
+   void addSoundForPad(int padIndex, const String& freesoundId);
+   std::shared_ptr<SamplerSound> getOrCreateCachedSound(const String& freesoundId, int midiNote);
+   void updateMultiplePads(const Array<int>& padIndices);
+   void swapPadSoundsDirectly(int padA, int padB);
+
+   // Utility methods
+   BigInteger createNoteSetForPad(int padIndex);
+   SamplerSound* getSamplerSoundForPad(int padIndex);
+   void cleanupUnusedCachedSounds();
+
+   #if JUCE_DEBUG
+   void validateSamplerState();
+   #endif
+
+   //==============================================================================
    // Enhanced sampler voice class for playback tracking
    class TrackingSamplerVoice : public SamplerVoice
    {
