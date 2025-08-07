@@ -1267,33 +1267,39 @@ void SamplePad::showDetailedSampleInfo()
         return result;
     };
 
-    infoText += "<b>Name:</b> " + safeString(sampleName) + "\n\n";
-    infoText += "<b>Author:</b> " + safeString(authorName) + "\n\n";
+    infoText += "<b>Name:</b> \t\t" + safeString(sampleName) + "\n";
+    infoText += "<b>Author:</b> \t\t" + safeString(authorName) + "\n";
 
     if (freesoundId.isNotEmpty()) {
-        infoText += "<b>Freesound ID:</b> " + safeString(freesoundId) + "\n";
-        infoText += "<b>URL:</b> https://freesound.org/s/" + safeString(freesoundId) + "/\n\n";
+        infoText += "<b>Freesound ID:</b> \t\t" + safeString(freesoundId) + "\n";
+        infoText += "<b>URL:</b> \t\thttps://freesound.org/s/" + safeString(freesoundId) + "/\n";
     }
 
     if (licenseType.isNotEmpty()) {
-        infoText += "<b>License:</b> " + safeString(licenseType) + "\n\n";
+        infoText += "<b>License:</b> \t\t" + safeString(licenseType) + "\n";
     }
 
     if (tags.isNotEmpty()) {
-        infoText += "<b>Tags:</b> " + safeString(tags) + "\n\n";
+        // reformat tags: tag1,tag2,tag3 --> tag1, tag2, tag3
+        StringArray tagArray = StringArray::fromTokens(tags, ",", "");
+        for (auto& tag : tagArray)
+        {
+            tag = tag.trim();
+        }
+        infoText += "<b>Tags:</b> \t\t" + safeString(tagArray.joinIntoString(", ")) + "\n";
     }
 
     if (description.isNotEmpty()) {
-        infoText += "<b>Description:</b> " + safeString(description) + "\n\n";
+        infoText += "<b>Description:</b> \t\t" + safeString(description) + "\n";
     }
 
     if (audioFile.existsAsFile()) {
-        infoText += "<b>File:</b> " + safeString(audioFile.getFileName()) + "\n";
-        infoText += "<b>Size:</b> " + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
+        infoText += "<b>File:</b> \t\t" + safeString(audioFile.getFileName()) + "\n";
+        infoText += "<b>Size:</b> \t\t" + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
     }
 
     if (fileSourceSampleRate > 0.0) {
-        infoText += "<b>Sample Rate:</b> " + String(fileSourceSampleRate) + " Hz\n";
+        infoText += "<b>Sample Rate:</b> \t\t" + String(fileSourceSampleRate) + " Hz\n";
     }
 
     // That's it! No CustomLookAndFeel instance needed
@@ -2708,7 +2714,7 @@ void SampleGridComponent::searchForSinglePadWithQuery(int padIndex, const String
     if (currentSample.hasValidSample)
     {
         String message = "Pad " + String(padIndex + 1) + " already contains:\n\"" +
-                        currentSample.sampleName + "\" by " + currentSample.authorName + "\n\n" +
+                        currentSample.sampleName + "\" by " + currentSample.authorName + "\n" +
                         "Replace with a new search for: \"" + query + "\"?";
 
         AlertWindow::showOkCancelBox(
@@ -3163,7 +3169,7 @@ void SampleGridComponent::handleEnhancedDrop(const String& jsonMetadata, const S
         {
             // Different sample exists - ask for confirmation
             String message = "Pad " + String(targetPadIndex + 1) + " already contains:\n\"" +
-                           targetPadInfo.sampleName + "\" by " + targetPadInfo.authorName + "\n\n" +
+                           targetPadInfo.sampleName + "\" by " + targetPadInfo.authorName + "\n" +
                            "Replace with:\n\"" + sampleName + "\" by " + authorName + "\"?";
 
             AlertWindow::showOkCancelBox(
