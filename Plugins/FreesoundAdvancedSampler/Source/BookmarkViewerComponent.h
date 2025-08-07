@@ -2,7 +2,7 @@
  ==============================================================================
 
    BookmarkViewerComponent.h - Updated with Collection Manager Integration
-   and Search Functionality
+   and Search Functionality with Bookmarks/Local Sounds Toggle
 
  ==============================================================================
 */
@@ -47,7 +47,29 @@ private:
    Label titleLabel;
    StyledButton refreshButton { String(CharPointer_UTF8("\xE2\x9F\xB3")) , 20.0f, false };
 
-   // NEW: Search Panel Components
+   // NEW: Toggle Button for Bookmarks vs Local Sounds
+   class ToggleButton : public Component
+   {
+   public:
+       ToggleButton();
+       void paint(Graphics& g) override;
+       void resized() override;
+       void mouseUp(const MouseEvent& event) override;
+
+       std::function<void(bool)> onToggleChanged;
+       bool isBookmarksMode() const { return bookmarksActive; }
+       void setBookmarksMode(bool shouldBeBookmarks);
+
+   private:
+       bool bookmarksActive = true; // Default to bookmarks mode
+       Rectangle<float> leftBounds, rightBounds;
+       String leftText = "Bookmarks";
+       String rightText = "Local Sounds";
+   };
+
+   ToggleButton modeToggle;
+
+   // Search Panel Components
    TextEditor searchBox;
    StyledButton clearSearchButton { String(CharPointer_UTF8("\xE2\x9C\x96")), 12.0f, false };
    Label resultCountLabel;
@@ -59,25 +81,29 @@ private:
    OwnedArray<SamplePad> bookmarkPads;
    std::map<String, SamplePad*> bookmarkPadMap; // Map for quick access by Freesound ID
 
-   // Current bookmark data (for UI compatibility)
+   // Current data sets
    Array<SampleMetadata> currentBookmarks;
-   Array<SampleMetadata> filteredBookmarks; // NEW: Filtered results based on search
+   Array<SampleMetadata> allLocalSamples; // NEW: All local samples
+   Array<SampleMetadata> filteredSamples; // NEW: Filtered results based on search and mode
 
-   // NEW: Search state
+   // Search state
    String currentSearchTerm;
+   bool isBookmarksMode = true; // NEW: Current mode state
 
    // Layout management
    int currentScrollOffset = 0;
    int totalRows = 0;
 
-   void updateBookmarkPads();
-   void createBookmarkPads();
-   void clearBookmarkPads();
+   void updateSamplePads();
+   void createSamplePads();
+   void clearSamplePads();
    void updateScrollableArea();
 
-   // NEW: Search functionality
+   // Search and mode functionality
    void performSearch();
    void clearSearch();
+   void onModeToggled(bool bookmarksMode);
+   void refreshAllSamples(); // NEW: Refresh all local samples
    bool matchesSearchTerm(const SampleMetadata& sample, const String& searchTerm) const;
    void updateResultCount();
    void setupSearchComponents();

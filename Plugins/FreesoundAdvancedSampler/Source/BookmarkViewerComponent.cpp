@@ -1,14 +1,94 @@
 /*
   ==============================================================================
 
-    BookmarkViewerComponent.cpp - Updated with Collection Manager Integration
-    and Search Functionality
+    BookmarkViewerComponent.cpp - Updated with Collection Manager Integration,
+    Search Functionality, and Bookmarks/Local Sounds Toggle
 
   ==============================================================================
 */
 
 #include "BookmarkViewerComponent.h"
 #include "PluginEditor.h"
+
+//==============================================================================
+// ToggleButton Implementation
+//==============================================================================
+
+BookmarkViewerComponent::ToggleButton::ToggleButton()
+{
+    setMouseCursor(MouseCursor::PointingHandCursor);
+}
+
+void BookmarkViewerComponent::ToggleButton::paint(Graphics& g)
+{
+    auto bounds = getLocalBounds().toFloat();
+
+    // Background
+    g.setColour(Colour(0xff2A2A2A));
+    g.fillRoundedRectangle(bounds, 4.0f);
+
+    // Border
+    g.setColour(Colour(0xff404040));
+    g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+
+    // Calculate button halves
+    float halfWidth = bounds.getWidth() * 0.5f;
+    leftBounds = bounds.removeFromLeft(halfWidth);
+    rightBounds = bounds;
+
+    // Draw active state background
+    if (bookmarksActive)
+    {
+        g.setColour(Colour(0xff4A9EFF));
+        g.fillRoundedRectangle(leftBounds.reduced(2.0f), 2.0f);
+    }
+    else
+    {
+        g.setColour(Colour(0xff4A9EFF));
+        g.fillRoundedRectangle(rightBounds.reduced(2.0f), 2.0f);
+    }
+
+    // Draw text
+    g.setFont(Font(10.0f));
+
+    // Left text (Bookmarks)
+    g.setColour(bookmarksActive ? Colours::white : Colours::lightgrey);
+    g.drawText(leftText, leftBounds, Justification::centred);
+
+    // Right text (Local Sounds)
+    g.setColour(bookmarksActive ? Colours::lightgrey : Colours::white);
+    g.drawText(rightText, rightBounds, Justification::centred);
+}
+
+void BookmarkViewerComponent::ToggleButton::resized()
+{
+    // Recalculate bounds
+    repaint();
+}
+
+void BookmarkViewerComponent::ToggleButton::mouseUp(const MouseEvent& event)
+{
+    auto clickPos = event.getPosition().toFloat();
+    bool clickedLeft = clickPos.x < (getWidth() * 0.5f);
+
+    if (clickedLeft != bookmarksActive)
+    {
+        bookmarksActive = clickedLeft;
+        repaint();
+
+        if (onToggleChanged)
+            onToggleChanged(bookmarksActive);
+    }
+}
+
+void BookmarkViewerComponent::ToggleButton::setBookmarksMode(bool shouldBeBookmarks)
+{
+    if (bookmarksActive != shouldBeBookmarks)
+    {
+        bookmarksActive = shouldBeBookmarks;
+        repaint();
+    }
+}
 
 //==============================================================================
 // BookmarkViewerComponent Implementation
@@ -18,16 +98,25 @@ BookmarkViewerComponent::BookmarkViewerComponent()
     : processor(nullptr)
 {
     // Title label
-    titleLabel.setText("Bookmarks", dontSendNotification);
-    titleLabel.setFont(Font(14.0f, Font::bold));
-    titleLabel.setColour(Label::textColourId, Colours::white);
+    titleLabel.setText("Sample Browser", dontSendNotification);
+    // titleLabel.setFont(Font(14.0f, Font::bold));
+    // titleLabel.setColour(Label::textColourId, Colours::white);
     addAndMakeVisible(titleLabel);
 
     // Refresh button
     refreshButton.onClick = [this]() {
-        refreshBookmarks();
+        if (isBookmarksMode)
+            refreshBookmarks();
+        else
+            refreshAllSamples();
     };
     addAndMakeVisible(refreshButton);
+
+    // Mode toggle
+    modeToggle.onToggleChanged = [this](bool bookmarksMode) {
+        onModeToggled(bookmarksMode);
+    };
+    addAndMakeVisible(modeToggle);
 
     // Setup search components
     setupSearchComponents();
@@ -46,7 +135,7 @@ BookmarkViewerComponent::~BookmarkViewerComponent()
         processor->removePreviewPlaybackListener(this);
     }
 
-    clearBookmarkPads();
+    clearSamplePads();
 }
 
 void BookmarkViewerComponent::paint(Graphics& g)
@@ -63,6 +152,7 @@ void BookmarkViewerComponent::resized()
     int textHeight = 18; // Height for title and refresh button
     int refreshButtonWidth = 17; // Width for refresh button
     int gapHeight = 8; // Gap
+    int toggleHeight = 24; // Height for toggle button
     int searchRowHeight = 20; // Height for search components
 
     // === TOP ROW: Title and Refresh Button ===
@@ -76,6 +166,14 @@ void BookmarkViewerComponent::resized()
     refreshButton.setBounds(refreshBounds);
 
     bounds.removeFromTop(gapHeight);
+
+    // === TOGGLE ROW ===
+    auto toggleRow = bounds.removeFromTop(toggleHeight);
+    int toggleWidth = 140; // Fixed width for toggle
+    auto toggleBounds = toggleRow.removeFromLeft(toggleWidth);
+    modeToggle.setBounds(toggleBounds);
+
+    bounds.removeFromTop(5); // Small gap
 
     // === SEARCH ROW ===
     auto searchRow = bounds.removeFromTop(searchRowHeight);
@@ -150,8 +248,8 @@ void BookmarkViewerComponent::setupSearchComponents()
     addAndMakeVisible(clearSearchButton);
 
     // Result count label
-    resultCountLabel.setFont(Font(10.0f));
-    resultCountLabel.setColour(Label::textColourId, Colours::lightgrey);
+    resultCountLabel.setFont(Font(8.0f));
+    // resultCountLabel.setColour(Label::textColourId, Colours::lightgrey);
     resultCountLabel.setJustificationType(Justification::centredLeft);
     addAndMakeVisible(resultCountLabel);
     resultCountLabel.setVisible(false); // Hidden initially
@@ -172,8 +270,9 @@ void BookmarkViewerComponent::setProcessor(FreesoundAdvancedSamplerAudioProcesso
         // Add preview playback listener
         processor->addPreviewPlaybackListener(this);
 
-        // Initial load of bookmarks
+        // Initial load of data
         refreshBookmarks();
+        refreshAllSamples();
     }
 }
 
@@ -194,7 +293,48 @@ void BookmarkViewerComponent::refreshBookmarks()
     // Get bookmarked samples directly from collection manager
     currentBookmarks = processor->getCollectionManager()->getBookmarkedSamples();
 
-    // Apply current search filter
+    // Apply current search filter if in bookmarks mode
+    if (isBookmarksMode)
+    {
+        performSearch();
+    }
+}
+
+void BookmarkViewerComponent::refreshAllSamples()
+{
+    // Ensure we're on the message thread
+    if (!MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        MessageManager::callAsync([this]() {
+            refreshAllSamples();
+        });
+        return;
+    }
+
+    if (!processor || !processor->getCollectionManager())
+        return;
+
+    // Get all local samples from collection manager
+    allLocalSamples = processor->getCollectionManager()->getAllSamples();
+
+    // Apply current search filter if in local sounds mode
+    if (!isBookmarksMode)
+    {
+        performSearch();
+    }
+}
+
+void BookmarkViewerComponent::onModeToggled(bool bookmarksMode)
+{
+    isBookmarksMode = bookmarksMode;
+
+    // Update search placeholder text
+    String placeholderText = bookmarksMode ?
+        "Search bookmarked samples..." :
+        "Search all local samples...";
+    searchBox.setTextToShowWhenEmpty(placeholderText, Colours::grey);
+
+    // Apply search to new data set
     performSearch();
 }
 
@@ -212,22 +352,25 @@ void BookmarkViewerComponent::performSearch()
     currentSearchTerm = searchBox.getText().trim();
 
     // Clear filtered results
-    filteredBookmarks.clear();
+    filteredSamples.clear();
+
+    // Choose the source data based on current mode
+    const Array<SampleMetadata>& sourceData = isBookmarksMode ? currentBookmarks : allLocalSamples;
 
     if (currentSearchTerm.isEmpty())
     {
-        // No search term - show all bookmarks
-        filteredBookmarks = currentBookmarks;
+        // No search term - show all samples from current mode
+        filteredSamples = sourceData;
         resultCountLabel.setVisible(false);
     }
     else
     {
-        // Filter bookmarks based on search term
-        for (const auto& bookmark : currentBookmarks)
+        // Filter samples based on search term
+        for (const auto& sample : sourceData)
         {
-            if (matchesSearchTerm(bookmark, currentSearchTerm))
+            if (matchesSearchTerm(sample, currentSearchTerm))
             {
-                filteredBookmarks.add(bookmark);
+                filteredSamples.add(sample);
             }
         }
 
@@ -237,7 +380,7 @@ void BookmarkViewerComponent::performSearch()
     }
 
     // Update the display with filtered results
-    updateBookmarkPads();
+    updateSamplePads();
 
     // Trigger layout update
     resized();
@@ -256,10 +399,13 @@ void BookmarkViewerComponent::clearSearch()
 
     searchBox.clear();
     currentSearchTerm = "";
-    filteredBookmarks = currentBookmarks;
+
+    // Reset to show all samples from current mode
+    const Array<SampleMetadata>& sourceData = isBookmarksMode ? currentBookmarks : allLocalSamples;
+    filteredSamples = sourceData;
     resultCountLabel.setVisible(false);
 
-    updateBookmarkPads();
+    updateSamplePads();
     resized(); // Update layout
 }
 
@@ -389,76 +535,75 @@ bool BookmarkViewerComponent::matchesSearchTerm(const SampleMetadata& sample, co
 
 void BookmarkViewerComponent::updateResultCount()
 {
-    String countText = String(filteredBookmarks.size()) + " of " +
-                      String(currentBookmarks.size()) + " bookmarks";
+    const Array<SampleMetadata>& sourceData = isBookmarksMode ? currentBookmarks : allLocalSamples;
+    String modeText = isBookmarksMode ? "bookmarks" : "local samples";
 
-    if (filteredBookmarks.size() == 0)
+    String countText = String(filteredSamples.size()) + " of " +
+                      String(sourceData.size()) + " " + modeText;
+
+    if (filteredSamples.size() == 0)
     {
-        resultCountLabel.setColour(Label::textColourId, Colours::orange);
         countText += " (no matches)";
     }
-    else if (filteredBookmarks.size() == currentBookmarks.size())
+    else if (filteredSamples.size() == sourceData.size())
     {
-        resultCountLabel.setColour(Label::textColourId, Colours::lightgreen);
         countText += " (showing all)";
     }
     else
     {
-        resultCountLabel.setColour(Label::textColourId, Colours::lightblue);
         countText += " (filtered)";
     }
-
     resultCountLabel.setText(countText, dontSendNotification);
 }
 
-void BookmarkViewerComponent::updateBookmarkPads()
+void BookmarkViewerComponent::updateSamplePads()
 {
     // Ensure we're on the message thread
     if (!MessageManager::getInstance()->isThisTheMessageThread())
     {
         MessageManager::callAsync([this]() {
-            updateBookmarkPads();
+            updateSamplePads();
         });
         return;
     }
 
     // Clear existing pads
-    clearBookmarkPads();
+    clearSamplePads();
 
-    // Calculate total rows needed (use filtered bookmarks)
-    totalRows = filteredBookmarks.size();
+    // Calculate total rows needed (use filtered samples)
+    totalRows = filteredSamples.size();
 
-    // Create pads for filtered bookmarks
-    createBookmarkPads();
+    // Create pads for filtered samples
+    createSamplePads();
 
     // Update scrollable area
     updateScrollableArea();
 }
 
-void BookmarkViewerComponent::createBookmarkPads()
+void BookmarkViewerComponent::createSamplePads()
 {
-    if (filteredBookmarks.isEmpty())
+    if (filteredSamples.isEmpty())
         return;
 
     const int padWidth = 190;
     const int padHeight = 100;
     const int padSpacing = 8;
 
-    for (int i = 0; i < filteredBookmarks.size(); ++i)
+    for (int i = 0; i < filteredSamples.size(); ++i)
     {
-        const SampleMetadata& bookmark = filteredBookmarks[i];
+        const SampleMetadata& sample = filteredSamples[i];
 
         // Create SamplePad in Preview mode with unique index
         auto* pad = new SamplePad(1000 + i, SamplePad::PadMode::Preview);
         pad->setProcessor(processor);
 
-        // Load the bookmark sample if file exists
-        File sampleFile = processor->getCollectionManager()->getSampleFile(bookmark.freesoundId);
+        // Load the sample if file exists
+        File sampleFile = processor->getCollectionManager()->getSampleFile(sample.freesoundId);
         if (sampleFile.existsAsFile())
         {
-            pad->setSample(sampleFile, bookmark.originalName, bookmark.authorName,
-                          bookmark.freesoundId, bookmark.licenseType, bookmark.searchQuery,
-                          bookmark.tags, bookmark.description);
+            pad->setSample(sampleFile, sample.originalName, sample.authorName,
+                          sample.freesoundId, sample.licenseType, sample.searchQuery,
+                          sample.tags, sample.description);
         }
 
         // Calculate position (single column)
@@ -469,11 +614,11 @@ void BookmarkViewerComponent::createBookmarkPads()
 
         bookmarkContainer.addAndMakeVisible(pad);
         bookmarkPads.add(pad);
-        bookmarkPadMap[bookmark.freesoundId] = pad; // Map by freesound ID
+        bookmarkPadMap[sample.freesoundId] = pad; // Map by freesound ID
     }
 }
 
-void BookmarkViewerComponent::clearBookmarkPads()
+void BookmarkViewerComponent::clearSamplePads()
 {
     bookmarkPads.clear();
     bookmarkContainer.removeAllChildren();
@@ -482,7 +627,7 @@ void BookmarkViewerComponent::clearBookmarkPads()
 
 void BookmarkViewerComponent::updateScrollableArea()
 {
-    const int padHeight = 100; // Match the padHeight from createBookmarkPads
+    const int padHeight = 100; // Match the padHeight from createSamplePads
     const int padSpacing = 4;
     const int rowHeight = padHeight + padSpacing;
 
