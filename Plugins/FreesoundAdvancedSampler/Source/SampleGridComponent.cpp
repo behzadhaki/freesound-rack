@@ -422,6 +422,21 @@ void SamplePad::mouseUp(const MouseEvent& event)
         previewRequested = false;
     }
 
+    // Send MIDI Note OFF for gated behavior
+    if ((padMode == PadMode::Normal || padMode == PadMode::NonSearchable) && hasValidSample)
+    {
+        auto bounds = getLocalBounds();
+        auto waveformBounds = bounds.reduced(8);
+        waveformBounds.removeFromTop(18);
+        waveformBounds.removeFromBottom(18);
+
+        if (waveformBounds.contains(event.getMouseDownPosition()) && processor)
+        {
+            int noteNumber = padIndex + 36;
+            processor->addNoteOffToMidiBuffer(noteNumber);
+        }
+    }
+
     // Reset cursor
     setMouseCursor(MouseCursor::NormalCursor);
 }
