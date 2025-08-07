@@ -683,6 +683,7 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
 void SamplePad::setPlayheadPosition(float position)
 {
     // Adjust position using fileSourceSampleRate and processorSampleRate
+
     position = (position * fileSourceSampleRate) / processorSampleRate;
 
     MessageManager::callAsync([this, position]()
@@ -1267,6 +1268,10 @@ void SamplePad::showDetailedSampleInfo()
         infoText += "Size: " + File::descriptionOfSizeInBytes(audioFile.getSize()) + "\n";
     }
 
+    if (fileSourceSampleRate > 0.0) {
+        infoText += "Sample Rate: " + String(fileSourceSampleRate) + " Hz\n";
+    }
+
     AlertWindow::showMessageBoxAsync(
         AlertWindow::InfoIcon,
         "Sample Information",
@@ -1420,7 +1425,6 @@ void SamplePad::drawPlayhead(Graphics& g, Rectangle<int> bounds)
     if (!isPlaying || !hasValidSample)
         return;
 
-    playheadPosition = processor->getSampleRate() * playheadPosition / fileSourceSampleRate;
     float x = bounds.getX() + (playheadPosition * bounds.getWidth());
 
     g.setColour(padColour.withAlpha(0.8f)); // Use pad colour with alpha for playhead
