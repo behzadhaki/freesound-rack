@@ -3337,7 +3337,7 @@ void SampleGridComponent::performEnhancedDrop(const String& jsonMetadata,
     updatePadFromCollection(targetPadIndex, freesoundId);  // this calls processor->setPadSample(...)
 
     // 4) Rebuild sampler so the new pad actually plays
-    processor->setSources();
+    processor->setSourcesForSinglePad(targetPadIndex);
 }
 
 // Handle regular file drops (existing functionality)
