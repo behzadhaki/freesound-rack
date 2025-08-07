@@ -530,22 +530,36 @@ bool BookmarkViewerComponent::matchesSearchTerm(const SampleMetadata& sample, co
 
     // === SPECIAL SEARCH TERMS AND CATEGORIES ===
 
-    // License categories
+    // License categories and short forms (using SamplePad's logic)
     String lowerLicense = sample.licenseType.toLowerCase();
+
+    // Add full license text
     if (lowerLicense.contains("creative"))
         searchableFields.add("creative commons");
     if (lowerLicense.contains("cc"))
         searchableFields.add("cc");
-    if (lowerLicense.contains("cc0"))
-        searchableFields.add("cc0");
     if (lowerLicense.contains("by"))
         searchableFields.add("attribution");
     if (lowerLicense.contains("sa"))
         searchableFields.add("share-alike");
     if (lowerLicense.contains("nc"))
         searchableFields.add("non-commercial");
+    if (lowerLicense.contains("nd"))
+        searchableFields.add("no-derivatives");
     if (lowerLicense.contains("public"))
         searchableFields.add("public domain");
+
+    // Add license short forms (based on SamplePad's getLicenseShortName logic)
+    String licenseShortForm = getLicenseShortForm(lowerLicense);
+    if (licenseShortForm.isNotEmpty())
+    {
+        searchableFields.add(licenseShortForm.toLowerCase());
+
+        // Also add without version numbers for easier searching
+        String baseForm = licenseShortForm.upToFirstOccurrenceOf(" ", false, false);
+        if (baseForm != licenseShortForm)
+            searchableFields.add(baseForm.toLowerCase());
+    }
 
     // Duration categories
     if (sample.duration < 1.0)
@@ -797,4 +811,83 @@ void BookmarkViewerComponent::previewPlayheadPositionChanged(const String& frees
 SamplePad* BookmarkViewerComponent::findPadByFreesoundId(const String& freesoundId)
 {
     return bookmarkPadMap.count(freesoundId) > 0 ? bookmarkPadMap[freesoundId] : nullptr;
+}
+
+String BookmarkViewerComponent::getLicenseShortForm(const String& lowerLicense) const
+{
+    String licenseVer = "";
+
+    // Extract version number (e.g., "/4.0" -> " 4.0")
+    try
+    {
+        for (int i = 0; i < lowerLicense.length() - 4; ++i)
+        {
+            if (lowerLicense[i] == '/' &&
+                lowerLicense[i + 1] >= '0' && lowerLicense[i + 1] <= '9' &&
+                lowerLicense[i + 2] == '.' &&
+                lowerLicense[i + 3] >= '0' && lowerLicense[i + 3] <= '9')
+            {
+                String version = "";
+                version += lowerLicense[i + 1];
+                version += '.';
+                version += lowerLicense[i + 3];
+
+                int j = i + 4;
+                while (j < lowerLicense.length() &&
+                       lowerLicense[j] >= '0' && lowerLicense[j] <= '9')
+                {
+                    version += lowerLicense[j];
+                    j++;
+                }
+
+                licenseVer = " " + version;
+                break;
+            }
+        }
+    }
+    catch (...)
+    {
+        licenseVer = "";
+    }
+
+    // Determine license short form
+    try
+    {
+        if (lowerLicense.contains("creativecommons.org/publicdomain/zero") ||
+            lowerLicense.contains("cc0") ||
+            lowerLicense.contains("publicdomain/zero"))
+            return "CC0" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-sa") ||
+                 lowerLicense.contains("by-nc-sa"))
+            return "BY-NC-SA" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc-nd") ||
+                 lowerLicense.contains("by-nc-nd"))
+            return "BY-NC-ND" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-sa") ||
+                 lowerLicense.contains("by-sa"))
+            return "BY-SA" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nd") ||
+                 lowerLicense.contains("by-nd"))
+            return "BY-ND" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by-nc") ||
+                 lowerLicense.contains("by-nc"))
+            return "BY-NC" + licenseVer;
+        else if (lowerLicense.contains("creativecommons.org/licenses/by/") ||
+                 (lowerLicense.contains("creativecommons.org/licenses/by") && !lowerLicense.contains("-nc")))
+            return "BY" + licenseVer;
+        else if (lowerLicense.contains("sampling+"))
+            return "S+" + licenseVer;
+        else if (lowerLicense.contains("sampling"))
+            return "S" + licenseVer;
+        else if (lowerLicense.contains("public domain") || lowerLicense.contains("publicdomain"))
+            return "PD";
+        else if (lowerLicense.contains("all rights reserved"))
+            return "ARR";
+        else
+            return "???";
+    }
+    catch (...)
+    {
+        return "???";
+    }
 }

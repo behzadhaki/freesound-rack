@@ -163,7 +163,7 @@ public:
     // Force save/load operations
     bool saveCollection();
     bool loadCollection();
-    
+
 private:
     File baseDirectory;
     File samplesFolder;

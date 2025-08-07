@@ -112,5 +112,7 @@ private:
    // Helper to find pad by freesound ID
    SamplePad* findPadByFreesoundId(const String& freesoundId);
 
+   String getLicenseShortForm(const String& lowerLicense) const;
+
    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BookmarkViewerComponent)
 };
