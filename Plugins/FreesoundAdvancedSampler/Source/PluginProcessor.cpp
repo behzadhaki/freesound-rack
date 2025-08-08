@@ -1157,7 +1157,6 @@ void FreesoundAdvancedSamplerAudioProcessor::setActivePreset(const String& prese
    activeSlotIndex = slotIndex;
 }
 
-// NEW: Playhead Continuation Methods
 void FreesoundAdvancedSamplerAudioProcessor::updatePadSampleWithPlayheadContinuation(int padIndex, const String& newFreesoundId)
 {
     if (padIndex < 0 || padIndex >= 16) return;
@@ -1165,10 +1164,6 @@ void FreesoundAdvancedSamplerAudioProcessor::updatePadSampleWithPlayheadContinua
     // Store current playback state BEFORE updating
     PlaybackState currentState = padPlaybackStates[padIndex];
 
-    // Update the pad sample first (this loads the new sample into the sampler)
-    setPadSample(padIndex, newFreesoundId);
-
-    // If the pad was playing, force active voices to reload the new sample
     if (currentState.isPlaying && !newFreesoundId.isEmpty())
     {
         // Get the new sample to check if continuation is viable
@@ -1182,16 +1177,30 @@ void FreesoundAdvancedSamplerAudioProcessor::updatePadSampleWithPlayheadContinua
 
                 if (shouldContinuePlayback(padIndex, newSampleLength))
                 {
-                    // Store continuation state
-                    padPlaybackStates[padIndex].currentPosition = currentState.currentPosition;
-                    padPlaybackStates[padIndex].isPlaying = currentState.isPlaying;
-                    padPlaybackStates[padIndex].noteNumber = currentState.noteNumber;
-                    padPlaybackStates[padIndex].velocity = currentState.velocity;
-                    padPlaybackStates[padIndex].currentFreesoundId = newFreesoundId;
-                    padPlaybackStates[padIndex].sampleLength = newSampleLength;
+                    // FORCED APPROACH: Stop current note, update sample, restart immediately
 
-                    // Force any active voices playing this pad to reload the new sample
-                    forceReloadActiveVoices(padIndex);
+                    // 1. Send note off to stop current voice
+                    addNoteOffToMidiBuffer(currentState.noteNumber);
+
+                    // 2. Force a very brief delay to ensure note off processes
+                    Timer::callAfterDelay(1, [this, padIndex, newFreesoundId, currentState]()
+                    {
+                        // 3. Update the pad sample (loads new sound)
+                        setPadSample(padIndex, newFreesoundId);
+
+                        // 4. Store the continuation state
+                        padPlaybackStates[padIndex].currentPosition = currentState.currentPosition;
+                        padPlaybackStates[padIndex].velocity = currentState.velocity;
+                        padPlaybackStates[padIndex].currentFreesoundId = newFreesoundId;
+
+                        // 5. Immediately restart with new sample
+                        Timer::callAfterDelay(1, [this, currentState]()
+                        {
+                            addNoteOnToMidiBuffer(currentState.noteNumber);
+                        });
+                    });
+
+                    return; // Don't do normal update
                 }
                 else
                 {
@@ -1203,42 +1212,9 @@ void FreesoundAdvancedSamplerAudioProcessor::updatePadSampleWithPlayheadContinua
             }
         }
     }
-}
 
-void FreesoundAdvancedSamplerAudioProcessor::forceReloadActiveVoices(int padIndex)
-{
-    if (padIndex < 0 || padIndex >= 16) return;
-
-    int noteNumber = 36 + padIndex;
-
-    // Find any active voices playing this note and force them to reload
-    for (int i = 0; i < sampler.getNumVoices(); ++i)
-    {
-        if (auto* voice = dynamic_cast<TrackingSamplerVoice*>(sampler.getVoice(i)))
-        {
-            if (voice->isPlayingNote(noteNumber))
-            {
-                voice->forceReloadCurrentSound();
-            }
-        }
-    }
-}
-
-SamplerSound* FreesoundAdvancedSamplerAudioProcessor::getSamplerSoundForNote(int midiNoteNumber)
-{
-    // Find the sound that responds to this MIDI note
-    for (int i = 0; i < sampler.getNumSounds(); ++i)
-    {
-        auto sound = sampler.getSound(i);
-        if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound.get()))
-        {
-            if (samplerSound->appliesToNote(midiNoteNumber))
-            {
-                return samplerSound;
-            }
-        }
-    }
-    return nullptr;
+    // Normal update (not playing or no continuation needed)
+    setPadSample(padIndex, newFreesoundId);
 }
 
 bool FreesoundAdvancedSamplerAudioProcessor::shouldContinuePlayback(int padIndex, double newSampleLength)

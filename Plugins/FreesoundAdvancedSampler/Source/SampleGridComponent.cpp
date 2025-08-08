@@ -2307,6 +2307,7 @@ void SampleGridComponent::shuffleSamples()
     }
 
     // Re-apply shuffled samples back to the SAME occupied positions
+    // CRITICAL: Use continuation method for each pad that changes
     for (int i = 0; i < samplesToShuffle.size(); ++i)
     {
         const int padIndex = occupiedPadIndices[i];
@@ -2322,16 +2323,18 @@ void SampleGridComponent::shuffleSamples()
             s.query // keep the existing query text
         );
 
-        // CRITICAL: update processor mapping so setSources loads the right files
-        processor->setPadSample(padIndex, s.freesoundId);
+        // CRITICAL: Use continuation method instead of direct processor calls
+        // This ensures any playing samples continue smoothly with the new samples
+        processor->updatePadSampleWithPlayheadContinuation(padIndex, s.freesoundId);
 
-        // (Optional, but keeps your arrays/UI in sync)
-        FSSound fs; fs.id = s.freesoundId; fs.name = s.sampleName; fs.user = s.authorName; fs.license = s.licenseType;
+        // Update processor arrays for UI consistency (optional)
+        FSSound fs;
+        fs.id = s.freesoundId;
+        fs.name = s.sampleName;
+        fs.user = s.authorName;
+        fs.license = s.licenseType;
         updateSinglePadInProcessor(padIndex, fs);
     }
-
-    // Rebuild sampler ONCE after the mapping is correct
-    processor->setSources();
 
     // Refresh visuals
     for (auto& pad : samplePads)
@@ -3785,17 +3788,13 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
         sourcePadIndex == targetPadIndex || !processor)
         return;
 
-    // Get current freesound IDs
+    // Get current freesound IDs BEFORE any changes
     String sourceId = processor->getPadFreesoundId(sourcePadIndex);
     String targetId = processor->getPadFreesoundId(targetPadIndex);
 
-    // swap isPlaying state
-    bool sourceIsPlaying = samplePads[sourcePadIndex]->getIsPlaying();
-    bool targetIsPlaying = samplePads[targetPadIndex]->getIsPlaying();
-
     // Reset playing state
-    // samplePads[sourcePadIndex]->setIsPlaying(false);
-    // samplePads[targetPadIndex]->setIsPlaying(false);
+    samplePads[sourcePadIndex]->setIsPlaying(false);
+    samplePads[targetPadIndex]->setIsPlaying(false);
 
     // Swap visual pad objects (your existing logic)
     std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
@@ -3810,21 +3809,16 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     samplePads[sourcePadIndex]->refreshStyleFromPadIndex();
     samplePads[targetPadIndex]->refreshStyleFromPadIndex();
 
-    // Update processor pad assignments
-    processor->setPadSample(sourcePadIndex, targetId);
-    processor->setPadSample(targetPadIndex, sourceId);
-
-    // NEW: Use optimized swap method instead of full rebuild
-    processor->setSourcesForPadSwap(sourcePadIndex, targetPadIndex);
-
-    // Swap playing state
-    samplePads[sourcePadIndex]->setIsPlaying(sourceIsPlaying);
-    samplePads[targetPadIndex]->setIsPlaying(targetIsPlaying);
+    // CRITICAL: Use continuation method instead of direct processor calls
+    // This ensures any playing samples continue smoothly with the new samples
+    processor->updatePadSampleWithPlayheadContinuation(sourcePadIndex, targetId);
+    processor->updatePadSampleWithPlayheadContinuation(targetPadIndex, sourceId);
 
     // Repaint
     samplePads[sourcePadIndex]->repaint();
     samplePads[targetPadIndex]->repaint();
 }
+
 
 //==============================================================================
 // SampleDragArea Implementation

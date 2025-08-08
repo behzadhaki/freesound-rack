@@ -41,19 +41,12 @@ public:
     void stopNote(float velocity, bool allowTailOff) override;
     void renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
 
-    // NEW: Force reload current sound for sample swapping
-    void forceReloadCurrentSound();
-
-    // NEW: Check if this voice is playing a specific note
-    bool isPlayingNote(int midiNoteNumber) const { return currentNoteNumber == midiNoteNumber; }
-
 private:
     FreesoundAdvancedSamplerAudioProcessor& processor;
     int currentNoteNumber = -1;
     double samplePosition = 0.0;
     double sampleLength = 0.0;
     bool firstRender = true;  // Track first render for continuation logic
-    bool forceReload = false; // Flag to trigger sample reload
 };
 
 //==============================================================================

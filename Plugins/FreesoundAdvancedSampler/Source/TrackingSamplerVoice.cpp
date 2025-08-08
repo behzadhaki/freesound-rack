@@ -90,32 +90,6 @@ void TrackingSamplerVoice::stopNote(float velocity, bool allowTailOff)
 
 void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
-    // Check if we need to force reload the current sound (for sample swapping)
-    if (forceReload && currentNoteNumber >= 0)
-    {
-        forceReload = false;
-
-        // Get the new sound for this note from the processor
-        if (auto* newSound = processor.getSamplerSoundForNote(currentNoteNumber))
-        {
-            // Force this voice to switch to the new sound
-            // We do this by stopping and immediately restarting with the new sound
-            int noteToRestart = currentNoteNumber;
-            float velocityToUse = processor.padPlaybackStates[noteToRestart - 36].velocity;
-
-            // Stop current playback (but don't reset state)
-            SamplerVoice::stopNote(0.0f, false);
-
-            // Immediately restart with the new sound
-            SamplerVoice::startNote(noteToRestart, velocityToUse, newSound, 0);
-
-            // Update sample length from new sound
-            sampleLength = newSound->getAudioData()->getNumSamples();
-
-            // The position will be restored from the stored state
-        }
-    }
-
     SamplerVoice::renderNextBlock(outputBuffer, startSample, numSamples);
 
     // Update playhead position
@@ -190,13 +164,8 @@ void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int
     }
 }
 
-void TrackingSamplerVoice::forceReloadCurrentSound()
-{
-    if (currentNoteNumber >= 0)
-    {
-        forceReload = true;  // Will be processed in next renderNextBlock call
-    }
-}
+// Removed unused method
+// void TrackingSamplerVoice::forceReloadCurrentSound() - not needed with simplified approach
 
 //==============================================================================
 // TrackingPreviewSamplerVoice Implementation
