@@ -613,38 +613,42 @@ void FreesoundAdvancedSamplerAudioProcessor::removeSoundForPad(int padIndex)
 
 void FreesoundAdvancedSamplerAudioProcessor::addSoundForPad(int padIndex, const String& freesoundId)
 {
-   if (!collectionManager) return;
+    if (!collectionManager) return;
 
-   File audioFile = collectionManager->getSampleFile(freesoundId);
-   if (!audioFile.existsAsFile()) return;
+    File audioFile = collectionManager->getSampleFile(freesoundId);
+    if (!audioFile.existsAsFile()) return;
 
-   int midiNote = 36 + padIndex;
+    int midiNote = 36 + padIndex;
 
-   // Create the sound directly and let JUCE manage the reference counting
-   std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
-   if (!reader) return;
+    // Create the sound directly and let JUCE manage the reference counting
+    std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(audioFile));
+    if (!reader) return;
 
-   BigInteger notes = createNoteSetForPad(padIndex);
+    // CRITICAL: Store the source sample rate for this pad
+    if (padIndex >= 0 && padIndex < 16)
+        padSourceSampleRates[padIndex] = reader->sampleRate;
 
-   // Create SamplerSound and let the Synthesiser manage its lifetime
-   auto* newSound = new SamplerSound(
-       "pad_" + String(padIndex),       // name
-       *reader,                         // AudioFormatReader reference
-       notes,                          // MIDI notes this sound responds to
-       midiNote,                       // root MIDI note
-       0.0,                           // attack time
-       0.1,                           // release time
-       10.0                           // max sample length
-   );
+    BigInteger notes = createNoteSetForPad(padIndex);
 
-   // Add to sampler - the Synthesiser will manage the reference counting
-   sampler.addSound(newSound);
+    // Create SamplerSound and let the Synthesiser manage its lifetime
+    auto* newSound = new SamplerSound(
+        "pad_" + String(padIndex),       // name
+        *reader,                         // AudioFormatReader reference
+        notes,                          // MIDI notes this sound responds to
+        midiNote,                       // root MIDI note
+        0.0,                           // attack time
+        0.1,                           // release time
+        10.0                           // max sample length
+    );
 
-   // Store raw pointer for quick lookup (safe because Synthesiser owns it)
-   padToSoundMapping[padIndex] = newSound;
+    // Add to sampler - the Synthesiser will manage the reference counting
+    sampler.addSound(newSound);
 
-   // Track usage
-   soundRefCount[freesoundId]++;
+    // Store raw pointer for quick lookup (safe because Synthesiser owns it)
+    padToSoundMapping[padIndex] = newSound;
+
+    // Track usage
+    soundRefCount[freesoundId]++;
 }
 
 std::shared_ptr<SamplerSound> FreesoundAdvancedSamplerAudioProcessor::getOrCreateCachedSound(const String& freesoundId, int midiNote)
@@ -1052,13 +1056,14 @@ String FreesoundAdvancedSamplerAudioProcessor::getPadFreesoundId(int padIndex) c
 
 void FreesoundAdvancedSamplerAudioProcessor::clearPad(int padIndex)
 {
-   if (padIndex >= 0 && padIndex < 16)
-   {
-       currentPadFreesoundIds.set(padIndex, "");
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        currentPadFreesoundIds.set(padIndex, "");
+        padSourceSampleRates[padIndex] = 0.0; // Reset source sample rate
 
-       // NEW: Use smart single-pad update
-       setSourcesForSinglePad(padIndex);
-   }
+        // NEW: Use smart single-pad update
+        setSourcesForSinglePad(padIndex);
+    }
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::clearAllPads()
@@ -1421,6 +1426,13 @@ void FreesoundAdvancedSamplerAudioProcessor::setPadDirection (int padIndex, Trac
 void FreesoundAdvancedSamplerAudioProcessor::setPadPlayMode (int padIndex, TrackingSamplerVoice::PlayMode m)
 {
     padConfigs[(size_t)faClampPad(padIndex)].playMode = m;
+}
+
+double FreesoundAdvancedSamplerAudioProcessor::getSourceSampleRate(int padIndex) const
+{
+    if (padIndex >= 0 && padIndex < 16)
+        return padSourceSampleRates[padIndex];
+    return 0.0;
 }
 
 //==============================================================================

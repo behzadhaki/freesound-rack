@@ -250,6 +250,8 @@ public:
 
    // Playback state tracking - made public for voice access
    std::array<PlaybackState, 16> padPlaybackStates;
+	std::array<double, 16> padSourceSampleRates; // Track source sample rate for each pad
+	double getSourceSampleRate(int padIndex) const;
 
    // Notification methods for voices to call
    void notifyNoteStarted(int noteNumber, float velocity);
@@ -258,6 +260,9 @@ public:
    void notifyPreviewStarted(const String& freesoundId);
    void notifyPreviewStopped(const String& freesoundId);
    void notifyPreviewPlayheadPositionChanged(const String& freesoundId, float position);
+
+
+	// Add this to the private section
 
 private:
    // NEW: Unified Collection Manager (replaces PresetManager and BookmarkManager)

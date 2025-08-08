@@ -691,27 +691,22 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
 
 void SamplePad::setPlayheadPosition(float position)
 {
-    // Convert from host-domain 0..1 to source-domain 0..1 so the cursor matches files with different SR
-    float corrected = position;
-    if (processorSampleRate > 0.0f) // avoid div-by-zero
-        corrected = position * (fileSourceSampleRate / processorSampleRate);
-
+    // No more sample rate conversion here - it's handled at the source in TrackingSamplerVoice
     Component::SafePointer<SamplePad> safeThis(this);
 
-    MessageManager::callAsync([safeThis, corrected]()
+    MessageManager::callAsync([safeThis, position]()
     {
         if (safeThis != nullptr && safeThis->isShowing())
         {
             // Ignore late updates after we've stopped, but allow explicit zero to snap the line away
-            if (!safeThis->isPlaying && corrected > 0.0f)
+            if (!safeThis->isPlaying && position > 0.0f)
                 return;
 
-            safeThis->playheadPosition = jlimit(0.0f, 1.0f, corrected);
+            safeThis->playheadPosition = jlimit(0.0f, 1.0f, position);
             safeThis->repaint();
         }
     });
 }
-
 
 void SamplePad::setIsPlaying(bool playing)
 {
@@ -895,17 +890,14 @@ void SamplePad::setPreviewPlayheadPosition(float position)
     if (padMode != PadMode::Preview)
         return;
 
-    float corrected = position;
-    if (processorSampleRate > 0.0f)
-        corrected = position * (fileSourceSampleRate / processorSampleRate);
-
+    // No sample rate conversion here either
     Component::SafePointer<SamplePad> safeThis(this);
 
-    MessageManager::callAsync([safeThis, corrected]()
+    MessageManager::callAsync([safeThis, position]()
     {
         if (safeThis != nullptr && safeThis->isShowing())
         {
-            safeThis->previewPlayheadPosition = jlimit(0.0f, 1.0f, corrected);
+            safeThis->previewPlayheadPosition = jlimit(0.0f, 1.0f, position);
             safeThis->repaint();
         }
     });

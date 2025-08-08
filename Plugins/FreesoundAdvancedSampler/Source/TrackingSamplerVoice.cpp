@@ -188,9 +188,9 @@ void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
 }
 
 
-void TrackingSamplerVoice::renderNextBlock (AudioBuffer<float>& outputBuffer,
-                                            int startSampleOut,
-                                            int numSamples)
+void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer,
+                                           int startSampleOut,
+                                           int numSamples)
 {
     // Render audio first so isVoiceActive() reflects this block
     SamplerVoice::renderNextBlock(outputBuffer, startSampleOut, numSamples);
@@ -223,8 +223,30 @@ void TrackingSamplerVoice::renderNextBlock (AudioBuffer<float>& outputBuffer,
     if (!noteHeld)
         return;
 
-    // Advance in host-sample domain (UI will rescale by fileSR/hostSR)
-    samplePosition += (double) numSamples;
+    // CRITICAL FIX: Calculate position based on ACTUAL sample rate relationship
+    // Don't advance by host samples - advance by the actual playback increment
+
+    // Get the current sample rate from the processor
+    double currentHostSampleRate = processor.getSampleRate();
+
+    // Calculate how much we've actually advanced in the source file
+    double actualIncrement = (double)numSamples;
+
+    // If we have source sample rate info, adjust the increment
+    if (sourceBuffer && currentHostSampleRate > 0.0)
+    {
+        // Get the source sample rate from the file
+        // (This should be stored when the sample is loaded)
+        double sourceSampleRate = processor.getSourceSampleRate(padIndex);
+
+        if (sourceSampleRate > 0.0 && sourceSampleRate != currentHostSampleRate)
+        {
+            // Convert host samples to source samples
+            actualIncrement = (double)numSamples * (sourceSampleRate / currentHostSampleRate);
+        }
+    }
+
+    samplePosition += actualIncrement;
 
     // Normalize over the active span [startSample, endSample)
     const double span = std::max(1.0, endSample - startSample);
