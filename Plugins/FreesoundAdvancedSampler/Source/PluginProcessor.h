@@ -179,6 +179,12 @@ public:
    void updatePadSampleWithPlayheadContinuation(int padIndex, const String& newFreesoundId);
    bool shouldContinuePlayback(int padIndex, double newSampleLength);
 
+   // NEW: Force reload method for sample swapping
+   void forceReloadActiveVoices(int padIndex);
+
+   // NEW: Helper method for voices to access sampler sounds safely
+   SamplerSound* getSamplerSoundForNote(int midiNoteNumber);
+
    // Window size methods
    void setWindowSize(int width, int height)
    {

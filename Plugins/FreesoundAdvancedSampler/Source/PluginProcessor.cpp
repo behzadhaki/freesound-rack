@@ -18,40 +18,40 @@
 
 FreesoundAdvancedSamplerAudioProcessor::FreesoundAdvancedSamplerAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-    : AudioProcessor (BusesProperties()
-                    #if ! JucePlugin_IsMidiEffect
-                     #if ! JucePlugin_IsSynth
-                      .withInput  ("Input",  AudioChannelSet::stereo(), true)
+     : AudioProcessor (BusesProperties()
+                     #if ! JucePlugin_IsMidiEffect
+                      #if ! JucePlugin_IsSynth
+                       .withInput  ("Input",  AudioChannelSet::stereo(), true)
+                      #endif
+                       .withOutput ("Output", AudioChannelSet::stereo(), true)
                      #endif
-                      .withOutput ("Output", AudioChannelSet::stereo(), true)
-                    #endif
-                      )
+                       )
 #endif
 {
-   // Initialize collection manager
-   File baseDir = File::getSpecialLocation(File::userDocumentsDirectory)
-                     .getChildFile("FreesoundAdvancedSampler");
-   collectionManager = std::make_unique<SampleCollectionManager>(baseDir);
+    // Initialize collection manager
+    File baseDir = File::getSpecialLocation(File::userDocumentsDirectory)
+                      .getChildFile("FreesoundAdvancedSampler");
+    collectionManager = std::make_unique<SampleCollectionManager>(baseDir);
 
-   // Initialize pad state
-   currentPadFreesoundIds.resize(16);
+    // Initialize pad state
+    currentPadFreesoundIds.resize(16);
 
-   tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
-   tmpDownloadLocation.createDirectory();
-   currentSessionDownloadLocation = collectionManager->getSamplesFolder();
-   midicounter = 1;
-   startTime = Time::getMillisecondCounterHiRes() * 0.001;
+    tmpDownloadLocation = File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("FreesoundAdvancedSampler");
+    tmpDownloadLocation.createDirectory();
+    currentSessionDownloadLocation = collectionManager->getSamplesFolder();
+    midicounter = 1;
+    startTime = Time::getMillisecondCounterHiRes() * 0.001;
 
-   // Initialize preview sampler format manager
-   if (previewAudioFormatManager.getNumKnownFormats() == 0) {
-       previewAudioFormatManager.registerBasicFormats();
-   }
+    // Initialize preview sampler format manager
+    if (previewAudioFormatManager.getNumKnownFormats() == 0) {
+        previewAudioFormatManager.registerBasicFormats();
+    }
 
-   // Add tracking voice for preview sampler
-   previewSampler.addVoice(new TrackingPreviewSamplerVoice(*this));
+    // Add tracking voice for preview sampler
+    previewSampler.addVoice(new TrackingPreviewSamplerVoice(*this));
 
-   // Add download manager listener
-   downloadManager.addListener(this);
+    // Add download manager listener
+    downloadManager.addListener(this);
 }
 
 FreesoundAdvancedSamplerAudioProcessor::~FreesoundAdvancedSamplerAudioProcessor()
@@ -553,22 +553,23 @@ void FreesoundAdvancedSamplerAudioProcessor::setSources()
 
 void FreesoundAdvancedSamplerAudioProcessor::initializeVoicesIfNeeded()
 {
-   if (!voicesInitialized || sampler.getNumVoices() != currentPolyphony) {
-       sampler.clearVoices();
+    if (!voicesInitialized || sampler.getNumVoices() != currentPolyphony) {
+        sampler.clearVoices();
 
-       // Use the new TrackingSamplerVoice instead of the old nested class
-       for (int i = 0; i < currentPolyphony; i++) {
-           sampler.addVoice(new TrackingSamplerVoice(*this));
-       }
+        // Use the new TrackingSamplerVoice instead of the old nested class
+        for (int i = 0; i < currentPolyphony; i++) {
+            sampler.addVoice(new TrackingSamplerVoice(*this));
+        }
 
-       voicesInitialized = true;
-   }
+        voicesInitialized = true;
+    }
 
-   // Ensure audio format manager is ready (only once)
-   if (audioFormatManager.getNumKnownFormats() == 0) {
-       audioFormatManager.registerBasicFormats();
-   }
+    // Ensure audio format manager is ready (only once)
+    if (audioFormatManager.getNumKnownFormats() == 0) {
+        audioFormatManager.registerBasicFormats();
+    }
 }
+
 
 bool FreesoundAdvancedSamplerAudioProcessor::hasStateChanged()
 {
@@ -1159,71 +1160,102 @@ void FreesoundAdvancedSamplerAudioProcessor::setActivePreset(const String& prese
 // NEW: Playhead Continuation Methods
 void FreesoundAdvancedSamplerAudioProcessor::updatePadSampleWithPlayheadContinuation(int padIndex, const String& newFreesoundId)
 {
-   if (padIndex < 0 || padIndex >= 16) return;
+    if (padIndex < 0 || padIndex >= 16) return;
 
-   // Store current playback state BEFORE updating
-   PlaybackState currentState = padPlaybackStates[padIndex];
+    // Store current playback state BEFORE updating
+    PlaybackState currentState = padPlaybackStates[padIndex];
 
-   // Always update the sample first (this stops the old sample)
-   if (currentState.isPlaying)
-   {
-       // Send note off to stop current playback cleanly
-       addNoteOffToMidiBuffer(currentState.noteNumber);
-   }
+    // Update the pad sample first (this loads the new sample into the sampler)
+    setPadSample(padIndex, newFreesoundId);
 
-   // Update the pad sample
-   setPadSample(padIndex, newFreesoundId);
+    // If the pad was playing, force active voices to reload the new sample
+    if (currentState.isPlaying && !newFreesoundId.isEmpty())
+    {
+        // Get the new sample to check if continuation is viable
+        File newAudioFile = collectionManager->getSampleFile(newFreesoundId);
+        if (newAudioFile.existsAsFile())
+        {
+            std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(newAudioFile));
+            if (reader != nullptr)
+            {
+                double newSampleLength = reader->lengthInSamples;
 
-   // If the pad was playing and we have a new sample, restart playback
-   if (currentState.isPlaying && !newFreesoundId.isEmpty())
-   {
-       // Get the new sample to check if continuation is viable
-       File newAudioFile = collectionManager->getSampleFile(newFreesoundId);
-       if (newAudioFile.existsAsFile())
-       {
-           std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(newAudioFile));
-           if (reader != nullptr)
-           {
-               double newSampleLength = reader->lengthInSamples;
+                if (shouldContinuePlayback(padIndex, newSampleLength))
+                {
+                    // Store continuation state
+                    padPlaybackStates[padIndex].currentPosition = currentState.currentPosition;
+                    padPlaybackStates[padIndex].isPlaying = currentState.isPlaying;
+                    padPlaybackStates[padIndex].noteNumber = currentState.noteNumber;
+                    padPlaybackStates[padIndex].velocity = currentState.velocity;
+                    padPlaybackStates[padIndex].currentFreesoundId = newFreesoundId;
+                    padPlaybackStates[padIndex].sampleLength = newSampleLength;
 
-               if (shouldContinuePlayback(padIndex, newSampleLength))
-               {
-                   // Restart playback immediately - the visual will continue from current position
-                   // but the audio will start from the beginning of the new sample
-                   Timer::callAfterDelay(10, [this, currentState, padIndex, newFreesoundId]()
-                   {
-                       addNoteOnToMidiBuffer(currentState.noteNumber);
+                    // Force any active voices playing this pad to reload the new sample
+                    forceReloadActiveVoices(padIndex);
+                }
+                else
+                {
+                    // Stop playback - position is out of range
+                    addNoteOffToMidiBuffer(currentState.noteNumber);
+                    padPlaybackStates[padIndex].isPlaying = false;
+                    padPlaybackStates[padIndex].currentPosition = 0.0f;
+                }
+            }
+        }
+    }
+}
 
-                       // Restore playing state but reset position tracking
-                       // The visual playhead will smoothly continue, creating the illusion of seamless playback
-                       padPlaybackStates[padIndex].isPlaying = true;
-                       padPlaybackStates[padIndex].noteNumber = currentState.noteNumber;
-                       padPlaybackStates[padIndex].velocity = currentState.velocity;
-                       padPlaybackStates[padIndex].currentFreesoundId = newFreesoundId;
-                       // Keep the current position so visual playhead continues smoothly
-                       padPlaybackStates[padIndex].currentPosition = currentState.currentPosition;
-                   });
-               }
-           }
-       }
-   }
+void FreesoundAdvancedSamplerAudioProcessor::forceReloadActiveVoices(int padIndex)
+{
+    if (padIndex < 0 || padIndex >= 16) return;
+
+    int noteNumber = 36 + padIndex;
+
+    // Find any active voices playing this note and force them to reload
+    for (int i = 0; i < sampler.getNumVoices(); ++i)
+    {
+        if (auto* voice = dynamic_cast<TrackingSamplerVoice*>(sampler.getVoice(i)))
+        {
+            if (voice->isPlayingNote(noteNumber))
+            {
+                voice->forceReloadCurrentSound();
+            }
+        }
+    }
+}
+
+SamplerSound* FreesoundAdvancedSamplerAudioProcessor::getSamplerSoundForNote(int midiNoteNumber)
+{
+    // Find the sound that responds to this MIDI note
+    for (int i = 0; i < sampler.getNumSounds(); ++i)
+    {
+        auto sound = sampler.getSound(i);
+        if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound.get()))
+        {
+            if (samplerSound->appliesToNote(midiNoteNumber))
+            {
+                return samplerSound;
+            }
+        }
+    }
+    return nullptr;
 }
 
 bool FreesoundAdvancedSamplerAudioProcessor::shouldContinuePlayback(int padIndex, double newSampleLength)
 {
-   if (padIndex < 0 || padIndex >= 16) return false;
+    if (padIndex < 0 || padIndex >= 16) return false;
 
-   const PlaybackState& state = padPlaybackStates[padIndex];
+    const PlaybackState& state = padPlaybackStates[padIndex];
 
-   // Don't continue if not playing
-   if (!state.isPlaying) return false;
+    // Don't continue if not playing
+    if (!state.isPlaying) return false;
 
-   // Don't continue if we're too close to the end (less than 20% remaining)
-   if (state.currentPosition > 0.8f) return false;
+    // Don't continue if we're too close to the end (less than 20% remaining)
+    if (state.currentPosition > 0.8f) return false;
 
-   // Always allow continuation for simplicity - the new sample will play from start
-   // but the visual will continue from current position
-   return true;
+    // Always allow continuation for simplicity - the new sample will play from start
+    // but the visual will continue from current position
+    return true;
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::generateReadmeFile(const Array<FSSound>& sounds, const std::vector<StringArray>& soundInfo, const String& searchQuery)
