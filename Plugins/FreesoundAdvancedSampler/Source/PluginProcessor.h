@@ -206,6 +206,48 @@ public:
    void rebuildAllSources();
    void clearSoundCache();
 
+   // ==== NEW: Per-pad playback config (backward-compatible defaults) ====
+   struct PlaybackConfig
+   {
+       using Direction = TrackingSamplerVoice::Direction;
+       using PlayMode  = TrackingSamplerVoice::PlayMode;
+
+       // If <= 1.0 treated as normalized [0..1]; if > 1.0 treated as absolute samples.
+       double startSample     = 0.0;   // default 0
+       double endSample       = -1.0;  // default = full length
+       double tempStartSample = 0.0;   // one-shot temp start
+       bool   tempStartArmed  = false;
+
+       // Signal & envelope
+       float  pitchShiftSemitones = 0.0f;
+       float  stretchRatio        = 1.0f;
+       float  gain                = 1.0f;
+       ADSR::Parameters adsr { 0.0f, 0.0f, 1.0f, 0.0f };
+
+       // Transport
+       Direction direction = Direction::Forward;
+       PlayMode  playMode  = PlayMode::Normal;
+   };
+
+   // Read-only access for voices
+   const PlaybackConfig& getPadPlaybackConfig (int padIndex) const;
+
+   // Setters (samples)
+   void setPadStartEndSamples       (int padIndex, double start, double end);
+   void setPadTemporaryStartSamples (int padIndex, double tempStart);
+
+   // Setters (normalized 0..1, interpreted at note-on)
+   void setPadStartEndNormalized        (int padIndex, float startNorm, float endNorm);
+   void setPadTemporaryStartNormalized  (int padIndex, float startNorm);
+
+   // Other playback parameters
+   void setPadPitchShift   (int padIndex, float semitones);
+   void setPadStretchRatio (int padIndex, float ratio);
+   void setPadGain         (int padIndex, float linearGain);
+   void setPadADSR         (int padIndex, const ADSR::Parameters& p);
+   void setPadDirection    (int padIndex, TrackingSamplerVoice::Direction d);
+   void setPadPlayMode     (int padIndex, TrackingSamplerVoice::PlayMode m);
+
    // Playback state tracking - made public for voice access
    std::array<PlaybackState, 16> padPlaybackStates;
 
@@ -244,8 +286,8 @@ private:
    int currentPolyphony = 16;
 
    // Sound caching for performance
-	std::map<int, SamplerSound*> padToSoundMapping; // padIndex -> current sound pointer
-	std::map<String, int> soundRefCount; // Track how many pads use each freesoundId
+   std::map<int, SamplerSound*> padToSoundMapping; // padIndex -> current sound pointer
+   std::map<String, int> soundRefCount;            // Track how many pads use each freesoundId
 
    // Change detection system
    struct SamplerState {
@@ -302,6 +344,9 @@ private:
    // Add dedicated preview sampler (runs in parallel)
    Synthesiser previewSampler;
    AudioFormatManager previewAudioFormatManager;
+
+   // NEW: Per-pad playback configuration backing store
+   std::array<PlaybackConfig, 16> padConfigs;
 
    void savePluginState(XmlElement& xml);
    void loadPluginState(const XmlElement& xml);

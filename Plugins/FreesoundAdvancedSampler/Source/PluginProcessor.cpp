@@ -254,183 +254,112 @@ void FreesoundAdvancedSamplerAudioProcessor::setStateInformation(const void* dat
 
 void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
 {
-   xml.setAttribute("activePresetId", activePresetId);
-   xml.setAttribute("activeSlotIndex", activeSlotIndex);
+    xml.setAttribute("activePresetId", activePresetId);
+    xml.setAttribute("activeSlotIndex", activeSlotIndex);
 
-   // FIXED: Save current pad state with duplicates
-   auto* padsXml = xml.createNewChildElement("CurrentPads");
-   for (int i = 0; i < 16; ++i)
-   {
-       String freesoundId = getPadFreesoundId(i);
-       if (freesoundId.isNotEmpty())
-       {
-           auto* padXml = padsXml->createNewChildElement("Pad");
-           padXml->setAttribute("index", i);
-           padXml->setAttribute("freesoundId", freesoundId);
+    // Save current pads + per-pad config
+    auto* padsXml = xml.createNewChildElement("CurrentPads");
+    for (int i = 0; i < 16; ++i)
+    {
+        String freesoundId = getPadFreesoundId(i);
+        if (freesoundId.isEmpty())
+            continue;
 
-           // Save individual query if available
-           if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
-           {
-               if (i < editor->getSampleGridComponent().samplePads.size())
-               {
-                   String individualQuery = editor->getSampleGridComponent().samplePads[i]->getQuery();
-                   if (individualQuery.isNotEmpty())
-                   {
-                       padXml->setAttribute("query", individualQuery);
-                   }
-               }
-           }
-       }
-   }
+        auto* padXml = padsXml->createNewChildElement("Pad");
+        padXml->setAttribute("index", i);
+        padXml->setAttribute("freesoundId", freesoundId);
 
-   // Save basic plugin state
-   xml.setAttribute("query", query);
-   xml.setAttribute("lastDownloadLocation", currentSessionDownloadLocation.getFullPathName());
+        // Try to normalize against actual sample length if available
+        double lengthSamples = 0.0;
+        if (auto it = padToSoundMapping.find(i); it != padToSoundMapping.end() && it->second != nullptr)
+        {
+            if (auto* buf = it->second->getAudioData())
+                lengthSamples = (double)buf->getNumSamples();
+        }
 
-   // Save window dimensions
-   xml.setAttribute("windowWidth", savedWindowWidth);
-   xml.setAttribute("windowHeight", savedWindowHeight);
+        auto toNorm = [lengthSamples](double v) -> double
+        {
+            if (v <= 1.0) return juce::jlimit(0.0, 1.0, v);
+            if (lengthSamples > 0.0) return juce::jlimit(0.0, 1.0, v / lengthSamples);
+            return v; // fallback: store as-is (may be >1)
+        };
 
-   // Save panel states
-   xml.setAttribute("presetPanelExpanded", presetPanelExpandedState);
-   xml.setAttribute("bookmarkPanelExpanded", bookmarkPanelExpandedState);
+        const auto& cfg = padConfigs[(size_t)i];
 
-   // Save current sounds and their positions
-   auto* soundsXml = xml.createNewChildElement("Sounds");
-   for (int i = 0; i < currentSoundsArray.size(); ++i)
-   {
-       const auto& sound = currentSoundsArray[i];
-       if (sound.id.isNotEmpty())
-       {
-           auto* soundXml = soundsXml->createNewChildElement("Sound");
-           soundXml->setAttribute("padIndex", i);
-           soundXml->setAttribute("id", sound.id);
-           soundXml->setAttribute("name", sound.name);
-           soundXml->setAttribute("user", sound.user);
-           soundXml->setAttribute("license", sound.license);
-           soundXml->setAttribute("duration", sound.duration);
-           soundXml->setAttribute("filesize", sound.filesize);
-           soundXml->setAttribute("tags", sound.tags.joinIntoString(","));
-           soundXml->setAttribute("description", sound.description);
+        padXml->setAttribute("startN", toNorm(cfg.startSample));
+        padXml->setAttribute("endN",   (cfg.endSample < 0.0 ? 1.0 : toNorm(cfg.endSample)));
+        padXml->setAttribute("tempStartN", cfg.tempStartArmed ? toNorm(cfg.tempStartSample) : -1.0);
 
-           // Save associated metadata including query from soundsArray
-           if (i < soundsArray.size() && soundsArray[i].size() >= 4)
-           {
-               soundXml->setAttribute("displayName", soundsArray[i][0]);
-               soundXml->setAttribute("displayAuthor", soundsArray[i][1]);
-               soundXml->setAttribute("displayLicense", soundsArray[i][2]);
-               soundXml->setAttribute("searchQuery", soundsArray[i][3]);
-           }
-       }
-   }
+        padXml->setAttribute("pitch",   cfg.pitchShiftSemitones);
+        padXml->setAttribute("stretch", cfg.stretchRatio);
+        padXml->setAttribute("gain",    cfg.gain);
 
-   xml.setAttribute("presetPanelExpanded", presetPanelExpandedState);
+        padXml->setAttribute("attack",  cfg.adsr.attack);
+        padXml->setAttribute("decay",   cfg.adsr.decay);
+        padXml->setAttribute("sustain", cfg.adsr.sustain);
+        padXml->setAttribute("release", cfg.adsr.release);
+
+        padXml->setAttribute("direction", (int)cfg.direction);
+        padXml->setAttribute("playMode",  (int)cfg.playMode);
+    }
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& xml)
 {
-   // --- Active preset metadata ---
-   activePresetId   = xml.getStringAttribute("activePresetId", "");
-   activeSlotIndex  = xml.getIntAttribute("activeSlotIndex", -1);
+    clearAllPads();
+    loadedSampleIds.fill({});
+    padToSoundMapping.clear();
+    soundRefCount.clear();
 
-   // --- Clear current pad mapping and arrays ---
-   clearAllPads();
+    activePresetId  = xml.getStringAttribute("activePresetId", "");
+    activeSlotIndex = xml.getIntAttribute("activeSlotIndex", -1);
 
-   currentSoundsArray.clear();
-   soundsArray.clear();
-   currentSoundsArray.resize(16);
-   soundsArray.resize(16);
+    if (auto* padsXml = xml.getChildByName("CurrentPads"))
+    {
+        for (auto* padXml : padsXml->getChildIterator())
+        {
+            if (! padXml->hasTagName("Pad"))
+                continue;
 
-   for (int i = 0; i < 16; ++i)
-   {
-       currentSoundsArray.set(i, FSSound()); // empty
-       StringArray empty;
-       empty.add(""); // name
-       empty.add(""); // author
-       empty.add(""); // license
-       empty.add(""); // query
-       soundsArray[i] = empty;
-   }
+            const int    padIndex    = padXml->getIntAttribute("index", -1);
+            const String freesoundId = padXml->getStringAttribute("freesoundId", "");
+            if (padIndex < 0 || padIndex >= 16 || freesoundId.isEmpty())
+                continue;
 
-   // --- Restore pad -> freesoundId mapping (drives audio) ---
-   if (auto* padsXml = xml.getChildByName("CurrentPads"))
-   {
-       for (auto* padXml : padsXml->getChildIterator())
-       {
-           if (! padXml->hasTagName("Pad"))
-               continue;
+            setPadSample(padIndex, freesoundId);
 
-           const int    padIndex       = padXml->getIntAttribute("index", -1);
-           const String freesoundId    = padXml->getStringAttribute("freesoundId", "");
-           const String individualQuery= padXml->getStringAttribute("query", "");
+            const double startN     = padXml->getDoubleAttribute("startN", 0.0);
+            const double endN       = padXml->getDoubleAttribute("endN",   1.0);
+            const double tempStartN = padXml->getDoubleAttribute("tempStartN", -1.0);
 
-           if (padIndex >= 0 && padIndex < 16 && freesoundId.isNotEmpty())
-           {
-               setPadSample(padIndex, freesoundId);
+            setPadStartEndNormalized(padIndex, (float)startN, (float)endN);
+            if (tempStartN >= 0.0)
+                setPadTemporaryStartNormalized(padIndex, (float)tempStartN);
 
-               // If/when editor exists, restore the per-pad query into the UI
-               Timer::callAfterDelay(100, [this, padIndex, individualQuery]()
-               {
-                   if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
-                   {
-                       if (padIndex < editor->getSampleGridComponent().samplePads.size() &&
-                           individualQuery.isNotEmpty())
-                       {
-                           editor->getSampleGridComponent().samplePads[padIndex]->setQuery(individualQuery);
-                       }
-                   }
-               });
-           }
-       }
-   }
+            ADSR::Parameters p;
+            p.attack  = (float) padXml->getDoubleAttribute("attack",  0.0);
+            p.decay   = (float) padXml->getDoubleAttribute("decay",   0.0);
+            p.sustain = (float) padXml->getDoubleAttribute("sustain", 1.0);
+            p.release = (float) padXml->getDoubleAttribute("release", 0.0);
 
-   // --- (Optional) restore display arrays for UI (name/author/license/query) ---
-   if (auto* soundsXml = xml.getChildByName("Sounds"))
-   {
-       for (auto* soundXml : soundsXml->getChildIterator())
-       {
-           if (! soundXml->hasTagName("Sound"))
-               continue;
+            const float pitch   = (float) padXml->getDoubleAttribute("pitch",   0.0);
+            const float stretch = (float) padXml->getDoubleAttribute("stretch", 1.0);
+            const float gain    = (float) padXml->getDoubleAttribute("gain",    1.0);
 
-           const int padIndex = soundXml->getIntAttribute("padIndex", -1);
-           if (padIndex < 0 || padIndex >= 16)
-               continue;
+            const int dirVal  = padXml->getIntAttribute("direction", (int)TrackingSamplerVoice::Direction::Forward);
+            const int modeVal = padXml->getIntAttribute("playMode",  (int)TrackingSamplerVoice::PlayMode::Normal);
 
-           FSSound s;
-           s.id          = soundXml->getStringAttribute("id");
-           s.name        = soundXml->getStringAttribute("name");
-           s.user        = soundXml->getStringAttribute("user");
-           s.license     = soundXml->getStringAttribute("license");
-           s.duration    = soundXml->getDoubleAttribute("duration", 0.5);
-           s.filesize    = soundXml->getIntAttribute("filesize", 50000);
-           s.tags        = soundXml->getStringAttribute("tags");
-           s.description = soundXml->getStringAttribute("description");
-           currentSoundsArray.set(padIndex, s);
+            setPadPitchShift(padIndex, pitch);
+            setPadStretchRatio(padIndex, stretch);
+            setPadGain(padIndex, gain);
+            setPadADSR(padIndex, p);
+            setPadDirection(padIndex, static_cast<TrackingSamplerVoice::Direction>(dirVal));
+            setPadPlayMode(padIndex,  static_cast<TrackingSamplerVoice::PlayMode>(modeVal));
+        }
+    }
 
-           StringArray info;
-           info.add(soundXml->getStringAttribute("displayName",  s.name));
-           info.add(soundXml->getStringAttribute("displayAuthor", s.user));
-           info.add(soundXml->getStringAttribute("displayLicense",s.license));
-           info.add(soundXml->getStringAttribute("searchQuery",  "")); // 4th = query
-           soundsArray[padIndex] = info;
-       }
-   }
-
-   // --- Basic plugin/UI state (safe even if editor is closed) ---
-   query                 = xml.getStringAttribute("query", "");
-   savedWindowWidth      = xml.getIntAttribute("windowWidth", 1000);
-   savedWindowHeight     = xml.getIntAttribute("windowHeight", 700);
-   presetPanelExpandedState   = xml.getBoolAttribute("presetPanelExpanded", false);
-   bookmarkPanelExpandedState = xml.getBoolAttribute("bookmarkPanelExpanded", false);
-
-   // --- CRITICAL: rebuild sampler regardless of editor visibility ---
-   setSources(); // builds voices/sounds from currentPadFreesoundIds; safe if empty.
-
-   // --- If the editor is open, sync the visual pads from processor state ---
-   if (auto* editor = dynamic_cast<FreesoundAdvancedSamplerAudioProcessorEditor*>(getActiveEditor()))
-   {
-       editor->getSampleGridComponent().refreshFromProcessor(); // paints pads + calls setSources() too.
-   }
+    // Rebuild sources based on restored pad mapping
+    setSources();
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::newSoundsReady(Array<FSSound> sounds, String textQuery, std::vector<juce::StringArray> soundInfo)
@@ -1427,6 +1356,77 @@ void FreesoundAdvancedSamplerAudioProcessor::migrateFromOldSystem()
    // Similar migration can be done for old presets...
 }
 
+// ====== NEW: Per-pad playback configuration API ======
+
+const FreesoundAdvancedSamplerAudioProcessor::PlaybackConfig&
+FreesoundAdvancedSamplerAudioProcessor::getPadPlaybackConfig (int padIndex) const
+{
+    static PlaybackConfig fallback; // default-initialized
+    if (padIndex < 0 || padIndex >= (int)padConfigs.size())
+        return fallback;
+    return padConfigs[(size_t)padIndex];
+}
+
+static inline int faClampPad(int i) { return juce::jlimit(0, 15, i); }
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadStartEndSamples (int padIndex, double start, double end)
+{
+    auto& cfg = padConfigs[(size_t)faClampPad(padIndex)];
+    cfg.startSample = std::max(0.0, start);
+    cfg.endSample   = end; // allow -1.0 => full length
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadTemporaryStartSamples (int padIndex, double tempStart)
+{
+    auto& cfg = padConfigs[(size_t)faClampPad(padIndex)];
+    cfg.tempStartSample = std::max(0.0, tempStart);
+    cfg.tempStartArmed  = true; // one-shot; consumed by voice at next note-on
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadStartEndNormalized (int padIndex, float startNorm, float endNorm)
+{
+    auto& cfg = padConfigs[(size_t)faClampPad(padIndex)];
+    cfg.startSample = juce::jlimit(0.0, 1.0, (double)startNorm);
+    cfg.endSample   = juce::jlimit(0.0, 1.0, (double)endNorm);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadTemporaryStartNormalized (int padIndex, float startNorm)
+{
+    auto& cfg = padConfigs[(size_t)faClampPad(padIndex)];
+    cfg.tempStartSample = juce::jlimit(0.0, 1.0, (double)startNorm);
+    cfg.tempStartArmed  = true;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadPitchShift (int padIndex, float semitones)
+{
+    padConfigs[(size_t)faClampPad(padIndex)].pitchShiftSemitones = semitones;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadStretchRatio (int padIndex, float ratio)
+{
+    padConfigs[(size_t)faClampPad(padIndex)].stretchRatio = juce::jmax(0.001f, ratio);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadGain (int padIndex, float linearGain)
+{
+    padConfigs[(size_t)faClampPad(padIndex)].gain = juce::jlimit(0.0f, 4.0f, linearGain);
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadADSR (int padIndex, const ADSR::Parameters& p)
+{
+    padConfigs[(size_t)faClampPad(padIndex)].adsr = p;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadDirection (int padIndex, TrackingSamplerVoice::Direction d)
+{
+    padConfigs[(size_t)faClampPad(padIndex)].direction = d;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadPlayMode (int padIndex, TrackingSamplerVoice::PlayMode m)
+{
+    padConfigs[(size_t)faClampPad(padIndex)].playMode = m;
+}
+
 //==============================================================================
 // This creates new instances of the plugin..
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
@@ -1443,3 +1443,5 @@ File FreesoundAdvancedSamplerAudioProcessor::getCurrentDownloadLocation()
 {
    return currentSessionDownloadLocation;
 }
+
+
