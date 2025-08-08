@@ -121,6 +121,7 @@ public:
                    String fsTags = String(), String fsDescription = String());
     void setPlayheadPosition(float position);
     void setIsPlaying(bool playing);
+    bool getIsPlaying();
     void setProcessor(FreesoundAdvancedSamplerAudioProcessor* p);
 
     // Query management

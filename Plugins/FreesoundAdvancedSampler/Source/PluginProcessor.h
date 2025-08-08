@@ -174,6 +174,11 @@ public:
    void clearPad(int padIndex);
    void clearAllPads();
 
+   // NEW: Playhead Continuation Methods
+   void updatePadSampleWithPlayheadContinuation(int padIndex, const String& newFreesoundId);
+   bool shouldContinuePlayback(int padIndex, double newSampleLength);
+   void continuePlaybackFromPosition(int padIndex, float position, double newSampleLength);
+
    // Window size methods
    void setWindowSize(int width, int height)
    {
@@ -211,6 +216,19 @@ private:
 
    // NEW: Current Pad State (16 pads mapped to freesound IDs)
    Array<String> currentPadFreesoundIds;
+
+   // NEW: Playback State Tracking for Continuation
+   struct PlaybackState {
+       bool isPlaying = false;
+       float currentPosition = 0.0f;  // 0.0 to 1.0
+       double samplePosition = 0.0;   // Actual sample position
+       int noteNumber = -1;
+       float velocity = 0.0f;
+       double sampleLength = 0.0;
+   };
+
+   // Track playback state for each pad
+   std::array<PlaybackState, 16> padPlaybackStates;
 
    // Window and panel state
    int savedWindowWidth = 800;
@@ -278,11 +296,16 @@ private:
        void stopNote(float velocity, bool allowTailOff) override;
        void renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
 
+       // NEW: Method to start from a specific position
+       void startNoteFromPosition(int midiNoteNumber, float velocity, SynthesiserSound* sound,
+                                 int currentPitchWheelPosition, double startPosition);
+
    private:
        FreesoundAdvancedSamplerAudioProcessor& processor;
        int currentNoteNumber = -1;
        double samplePosition = 0.0;
        double sampleLength = 0.0;
+       double startOffset = 0.0; // NEW: Starting offset for continuation
    };
 
    // Enhanced preview sampler voice class for playback tracking of preview samples
@@ -336,6 +359,7 @@ private:
    void loadPluginState(const XmlElement& xml);
 
    friend class TrackingSamplerVoice;
+   friend class TrackingPreviewSamplerVoice;
 
    //==============================================================================
    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessor)

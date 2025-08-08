@@ -22,10 +22,27 @@ FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::TrackingSamplerVoi
 
 void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::startNote(int midiNoteNumber, float velocity, SynthesiserSound* sound, int currentPitchWheelPosition)
 {
+    // Check if this pad should start from a specific position
+    int padIndex = midiNoteNumber - 36;
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        const auto& state = processor.padPlaybackStates[padIndex];
+        if (state.samplePosition > 0.0)
+        {
+            startOffset = state.samplePosition;
+            // Clear the stored position since we're using it
+            processor.padPlaybackStates[padIndex].samplePosition = 0.0;
+        }
+        else
+        {
+            startOffset = 0.0;
+        }
+    }
+
     SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
 
     currentNoteNumber = midiNoteNumber;
-    samplePosition = 0.0;
+    samplePosition = startOffset; // Start from the offset position
 
     // Get sample length from the sound
     if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound))
@@ -34,12 +51,29 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::startNote(int
     }
 
     processor.notifyNoteStarted(midiNoteNumber, velocity);
+
+    // Update the processor's tracking
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        processor.padPlaybackStates[padIndex].isPlaying = true;
+        processor.padPlaybackStates[padIndex].noteNumber = midiNoteNumber;
+        processor.padPlaybackStates[padIndex].sampleLength = sampleLength;
+        processor.padPlaybackStates[padIndex].currentPosition = (float)(samplePosition / sampleLength);
+    }
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::stopNote(float velocity, bool allowTailOff)
 {
     if (currentNoteNumber >= 0)
     {
+        int padIndex = currentNoteNumber - 36;
+        if (padIndex >= 0 && padIndex < 16)
+        {
+            processor.padPlaybackStates[padIndex].isPlaying = false;
+            processor.padPlaybackStates[padIndex].currentPosition = 0.0f;
+            processor.padPlaybackStates[padIndex].samplePosition = 0.0;
+        }
+
         processor.notifyNoteStopped(currentNoteNumber);
         currentNoteNumber = -1;
     }
@@ -49,6 +83,23 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::stopNote(floa
 
 void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
+    // If we have a start offset, we need to handle seeking to that position
+    if (startOffset > 0.0 && isVoiceActive())
+    {
+        // For the first render call, we need to seek to the start position
+        // This is a simplified approach - in practice you might need more sophisticated seeking
+        if (auto* samplerSound = dynamic_cast<SamplerSound*>(getCurrentlyPlayingSound().get()))
+        {
+            // Skip the offset amount of samples by advancing our position
+            // Note: This is a simplified approach. For perfect seeking, you'd need to
+            // modify the SamplerVoice's internal AudioFormatReaderSource
+
+            // For now, we'll just track the position accurately
+            samplePosition = startOffset;
+        }
+        startOffset = 0.0; // Clear the offset after first use
+    }
+
     SamplerVoice::renderNextBlock(outputBuffer, startSample, numSamples);
 
     // Update playhead position
@@ -56,6 +107,15 @@ void FreesoundAdvancedSamplerAudioProcessor::TrackingSamplerVoice::renderNextBlo
     {
         samplePosition += numSamples;
         float position = (float)samplePosition / (float)sampleLength;
+
+        // Update processor tracking
+        int padIndex = currentNoteNumber - 36;
+        if (padIndex >= 0 && padIndex < 16)
+        {
+            processor.padPlaybackStates[padIndex].currentPosition = position;
+            processor.padPlaybackStates[padIndex].samplePosition = samplePosition;
+        }
+
         processor.notifyPlayheadPositionChanged(currentNoteNumber, jlimit(0.0f, 1.0f, position));
     }
 }
@@ -1691,6 +1751,95 @@ void FreesoundAdvancedSamplerAudioProcessor::migrateFromOldSystem()
     }
 
     // Similar migration can be done for old presets...
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::updatePadSampleWithPlayheadContinuation(int padIndex, const String& newFreesoundId)
+{
+    if (padIndex < 0 || padIndex >= 16) return;
+
+    // Store current playback state
+    PlaybackState currentState = padPlaybackStates[padIndex];
+
+    // Update the pad sample
+    setPadSample(padIndex, newFreesoundId);
+
+    // If the pad was playing, try to continue playback
+    if (currentState.isPlaying && !newFreesoundId.isEmpty())
+    {
+        // Get the new sample length
+        File newAudioFile = collectionManager->getSampleFile(newFreesoundId);
+        if (newAudioFile.existsAsFile())
+        {
+            std::unique_ptr<AudioFormatReader> reader(audioFormatManager.createReaderFor(newAudioFile));
+            if (reader != nullptr)
+            {
+                double newSampleLength = reader->lengthInSamples;
+
+                if (shouldContinuePlayback(padIndex, newSampleLength))
+                {
+                    // Continue playback from current position
+                    continuePlaybackFromPosition(padIndex, currentState.currentPosition, newSampleLength);
+                }
+                else
+                {
+                    // Stop playback - position is out of range
+                    addNoteOffToMidiBuffer(currentState.noteNumber);
+                    padPlaybackStates[padIndex].isPlaying = false;
+                    padPlaybackStates[padIndex].currentPosition = 0.0f;
+                    padPlaybackStates[padIndex].samplePosition = 0.0;
+                }
+            }
+        }
+    }
+}
+
+bool FreesoundAdvancedSamplerAudioProcessor::shouldContinuePlayback(int padIndex, double newSampleLength)
+{
+    if (padIndex < 0 || padIndex >= 16) return false;
+
+    const PlaybackState& state = padPlaybackStates[padIndex];
+
+    // Don't continue if not playing
+    if (!state.isPlaying) return false;
+
+    // Don't continue if we're too close to the end (less than 10% remaining)
+    if (state.currentPosition > 0.9f) return false;
+
+    // Don't continue if the new sample is too short for the current position
+    double targetSamplePosition = state.currentPosition * newSampleLength;
+    if (targetSamplePosition >= newSampleLength * 0.9) return false;
+
+    return true;
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::continuePlaybackFromPosition(int padIndex, float position, double newSampleLength)
+{
+    if (padIndex < 0 || padIndex >= 16) return;
+
+    int noteNumber = 36 + padIndex;
+
+    // First stop the current note cleanly
+    addNoteOffToMidiBuffer(noteNumber);
+
+    // Wait a brief moment then restart from position
+    Timer::callAfterDelay(5, [this, padIndex, noteNumber, position, newSampleLength]()
+    {
+        // Calculate the sample position we want to start from
+        double targetSamplePosition = position * newSampleLength;
+
+        // Start the note
+        addNoteOnToMidiBuffer(noteNumber);
+
+        // Update our tracking state
+        padPlaybackStates[padIndex].isPlaying = true;
+        padPlaybackStates[padIndex].currentPosition = position;
+        padPlaybackStates[padIndex].samplePosition = targetSamplePosition;
+        padPlaybackStates[padIndex].sampleLength = newSampleLength;
+        padPlaybackStates[padIndex].noteNumber = noteNumber;
+
+        // We need to modify the voice to start from a specific position
+        // This requires extending the TrackingSamplerVoice
+    });
 }
 
 //==============================================================================

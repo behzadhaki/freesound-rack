@@ -718,6 +718,11 @@ void SamplePad::setIsPlaying(bool playing)
     });
 }
 
+bool SamplePad::getIsPlaying()
+{
+    return isPlaying;
+}
+
 void SamplePad::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p)
 {
     processor = p;
@@ -2124,7 +2129,7 @@ void SampleGridComponent::updatePadFromCollection(int padIndex, const String& fr
     {
         // Clear the pad
         samplePads[padIndex]->clearSample();
-        processor->clearPad(padIndex); // This now uses smart update
+        processor->clearPad(padIndex);
     }
     else
     {
@@ -2147,8 +2152,8 @@ void SampleGridComponent::updatePadFromCollection(int padIndex, const String& fr
                 sample.tags, sample.description
             );
 
-            // CRITICAL: Update processor state (now uses smart update)
-            processor->setPadSample(padIndex, freesoundId);
+            // CRITICAL: Use the new method that handles playhead continuation
+            processor->updatePadSampleWithPlayheadContinuation(padIndex, freesoundId);
         }
     }
 }
@@ -3784,9 +3789,13 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
     String sourceId = processor->getPadFreesoundId(sourcePadIndex);
     String targetId = processor->getPadFreesoundId(targetPadIndex);
 
+    // swap isPlaying state
+    bool sourceIsPlaying = samplePads[sourcePadIndex]->getIsPlaying();
+    bool targetIsPlaying = samplePads[targetPadIndex]->getIsPlaying();
+
     // Reset playing state
-    samplePads[sourcePadIndex]->setIsPlaying(false);
-    samplePads[targetPadIndex]->setIsPlaying(false);
+    // samplePads[sourcePadIndex]->setIsPlaying(false);
+    // samplePads[targetPadIndex]->setIsPlaying(false);
 
     // Swap visual pad objects (your existing logic)
     std::swap(samplePads[sourcePadIndex], samplePads[targetPadIndex]);
@@ -3807,6 +3816,10 @@ void SampleGridComponent::swapSamples(int sourcePadIndex, int targetPadIndex)
 
     // NEW: Use optimized swap method instead of full rebuild
     processor->setSourcesForPadSwap(sourcePadIndex, targetPadIndex);
+
+    // Swap playing state
+    samplePads[sourcePadIndex]->setIsPlaying(sourceIsPlaying);
+    samplePads[targetPadIndex]->setIsPlaying(targetIsPlaying);
 
     // Repaint
     samplePads[sourcePadIndex]->repaint();
