@@ -294,10 +294,11 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
         padXml->setAttribute("stretch", cfg.stretchRatio);
         padXml->setAttribute("gain",    cfg.gain);
 
-        padXml->setAttribute("attack",  cfg.adsr.attack);
-        padXml->setAttribute("decay",   cfg.adsr.decay);
-        padXml->setAttribute("sustain", cfg.adsr.sustain);
-        padXml->setAttribute("release", cfg.adsr.release);
+        // NEW: Save fade parameters instead of ADSR
+        padXml->setAttribute("fadeInTime",   cfg.fadeInTime);
+        padXml->setAttribute("fadeOutTime",  cfg.fadeOutTime);
+        padXml->setAttribute("fadeInCurve",  (int)cfg.fadeInCurve);
+        padXml->setAttribute("fadeOutCurve", (int)cfg.fadeOutCurve);
 
         padXml->setAttribute("direction", (int)cfg.direction);
         padXml->setAttribute("playMode",  (int)cfg.playMode);
@@ -336,12 +337,6 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
             if (tempStartN >= 0.0)
                 setPadTemporaryStartNormalized(padIndex, (float)tempStartN);
 
-            ADSR::Parameters p;
-            p.attack  = (float) padXml->getDoubleAttribute("attack",  0.0);
-            p.decay   = (float) padXml->getDoubleAttribute("decay",   0.0);
-            p.sustain = (float) padXml->getDoubleAttribute("sustain", 1.0);
-            p.release = (float) padXml->getDoubleAttribute("release", 0.0);
-
             const float pitch   = (float) padXml->getDoubleAttribute("pitch",   0.0);
             const float stretch = (float) padXml->getDoubleAttribute("stretch", 1.0);
             const float gain    = (float) padXml->getDoubleAttribute("gain",    1.0);
@@ -349,12 +344,42 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
             const int dirVal  = padXml->getIntAttribute("direction", (int)TrackingSamplerVoice::Direction::Forward);
             const int modeVal = padXml->getIntAttribute("playMode",  (int)TrackingSamplerVoice::PlayMode::Normal);
 
+            // NEW: Load fade parameters instead of ADSR
+            const float fadeInTime   = (float) padXml->getDoubleAttribute("fadeInTime",   0.0);
+            const float fadeOutTime  = (float) padXml->getDoubleAttribute("fadeOutTime",  0.0);
+            const int   fadeInCurve  = padXml->getIntAttribute("fadeInCurve",  (int)TrackingSamplerVoice::FadeCurve::Linear);
+            const int   fadeOutCurve = padXml->getIntAttribute("fadeOutCurve", (int)TrackingSamplerVoice::FadeCurve::Linear);
+
             setPadPitchShift(padIndex, pitch);
             setPadStretchRatio(padIndex, stretch);
             setPadGain(padIndex, gain);
-            setPadADSR(padIndex, p);
+
+            // NEW: Set fade parameters instead of ADSR
+            setPadFadeIn(padIndex, fadeInTime, static_cast<TrackingSamplerVoice::FadeCurve>(fadeInCurve));
+            setPadFadeOut(padIndex, fadeOutTime, static_cast<TrackingSamplerVoice::FadeCurve>(fadeOutCurve));
+
             setPadDirection(padIndex, static_cast<TrackingSamplerVoice::Direction>(dirVal));
             setPadPlayMode(padIndex,  static_cast<TrackingSamplerVoice::PlayMode>(modeVal));
+
+            // MIGRATION: Handle old ADSR data for backward compatibility
+            if (padXml->hasAttribute("attack") || padXml->hasAttribute("decay") ||
+                padXml->hasAttribute("sustain") || padXml->hasAttribute("release"))
+            {
+                // Convert old ADSR to fade parameters if no fade data exists
+                if (fadeInTime == 0.0f && fadeOutTime == 0.0f)
+                {
+                    const float attack  = (float) padXml->getDoubleAttribute("attack",  0.0);
+                    const float release = (float) padXml->getDoubleAttribute("release", 0.0);
+
+                    // Convert ADSR attack to fade-in and release to fade-out
+                    if (attack > 0.0f)
+                        setPadFadeIn(padIndex, attack, TrackingSamplerVoice::FadeCurve::Linear);
+                    if (release > 0.0f)
+                        setPadFadeOut(padIndex, release, TrackingSamplerVoice::FadeCurve::Linear);
+
+                    DBG("Migrated old ADSR to fade: attack=" + String(attack, 3) + "s -> fadeIn, release=" + String(release, 3) + "s -> fadeOut");
+                }
+            }
         }
     }
 
@@ -498,7 +523,6 @@ void FreesoundAdvancedSamplerAudioProcessor::initializeVoicesIfNeeded()
         audioFormatManager.registerBasicFormats();
     }
 }
-
 
 bool FreesoundAdvancedSamplerAudioProcessor::hasStateChanged()
 {
@@ -781,6 +805,24 @@ void FreesoundAdvancedSamplerAudioProcessor::clearSoundCache()
    soundRefCount.clear();
 }
 
+void FreesoundAdvancedSamplerAudioProcessor::setPadFadeIn(int padIndex, float timeSeconds, TrackingSamplerVoice::FadeCurve curve)
+{
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        padConfigs[padIndex].fadeInTime = std::max(0.0f, timeSeconds);
+        padConfigs[padIndex].fadeInCurve = curve;
+    }
+}
+
+void FreesoundAdvancedSamplerAudioProcessor::setPadFadeOut(int padIndex, float timeSeconds, TrackingSamplerVoice::FadeCurve curve)
+{
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        padConfigs[padIndex].fadeOutTime = std::max(0.0f, timeSeconds);
+        padConfigs[padIndex].fadeOutCurve = curve;
+    }
+}
+
 #if JUCE_DEBUG
 void FreesoundAdvancedSamplerAudioProcessor::validateSamplerState()
 {
@@ -831,7 +873,6 @@ void FreesoundAdvancedSamplerAudioProcessor::addNoteOffToMidiBuffer(int noteNumb
 {
     midiFromEditor.addEvent(juce::MidiMessage::noteOff(10, noteNumber), 0);
 }
-
 
 double FreesoundAdvancedSamplerAudioProcessor::getStartTime(){
    return startTime;
@@ -1411,11 +1452,6 @@ void FreesoundAdvancedSamplerAudioProcessor::setPadStretchRatio (int padIndex, f
 void FreesoundAdvancedSamplerAudioProcessor::setPadGain (int padIndex, float linearGain)
 {
     padConfigs[(size_t)faClampPad(padIndex)].gain = juce::jlimit(0.0f, 4.0f, linearGain);
-}
-
-void FreesoundAdvancedSamplerAudioProcessor::setPadADSR (int padIndex, const ADSR::Parameters& p)
-{
-    padConfigs[(size_t)faClampPad(padIndex)].adsr = p;
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::setPadDirection (int padIndex, TrackingSamplerVoice::Direction d)

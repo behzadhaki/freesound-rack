@@ -48,36 +48,37 @@ public:
     enum class Direction { Forward, Reverse };
     enum class PlayMode  { Normal, Loop, PingPong };
 
+    // NEW: Fade curve types
+    enum class FadeCurve { Linear, Exponential, Logarithmic, SCurve };
+
     TrackingSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner);
 
-    // Existing overrides (unchanged signatures)
+    // Existing overrides
     void startNote (int midiNoteNumber, float velocity, SynthesiserSound*, int currentPitchWheelPosition) override;
     void stopNote  (float velocity, bool allowTailOff) override;
     void renderNextBlock (AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
 
-    // #### New: playback controls (backward compatible defaults) ####
-    // Positions are in samples.
+    // Existing playback controls
     void setStartSample        (double s)               { startSample = std::max(0.0, s); }
     void setEndSample          (double e)               { endSample   = std::max(0.0, e); }
     void setTemporaryStart     (double s)               { tempStartSample = std::max(0.0, s); tempStartArmed = true; }
-
-    // Pitch shift in semitones (positive/negative). Defaults to 0.
     void setPitchShiftSemitones(float st)               { pitchShiftSemitones = st; }
-
-    // Time stretching as a simple playback-rate scalar (1.0 = normal, 0.5 = half speed, 2.0 = double).
-    // This is naive resampling (pitch changes unless you counter with pitchShiftSemitones).
     void setStretchRatio       (float r)                { stretchRatio = std::max(0.001f, r); }
-
-    // Linear gain (1.0 = unity)
     void setGain               (float g)                { gain = jlimit(0.0f, 4.0f, g); }
-
-    // ADSR envelope (defaults: A=0, D=0, S=1, R=0)
-    void setADSR               (const ADSR::Parameters& p) { adsrParams = p; adsr.setParameters(adsrParams); }
-
     void setOnsetDirection     (Direction d)            { onsetDirection = d; }
     void setPlayMode           (PlayMode m)             { playMode = m; }
 
-    // Optional helpers if you prefer normalized positions:
+    // NEW: Fade controls (in seconds)
+    void setFadeIn(float timeSeconds, FadeCurve curve = FadeCurve::Linear) {
+        fadeInTime = std::max(0.0f, timeSeconds);
+        fadeInCurve = curve;
+    }
+    void setFadeOut(float timeSeconds, FadeCurve curve = FadeCurve::Linear) {
+        fadeOutTime = std::max(0.0f, timeSeconds);
+        fadeOutCurve = curve;
+    }
+
+    // Normalized helpers
     void setStartNormalized(float n) { normalizedToSamples(n, startSample); }
     void setEndNormalized  (float n) { normalizedToSamples(n, endSample);  }
     void setTemporaryStartNormalized(float n) { normalizedToSamples(n, tempStartSample); tempStartArmed = true; }
@@ -90,41 +91,45 @@ private:
             dest = jlimit(0.0, sampleLength, (double) jlimit(0.0f, 1.0f, n) * sampleLength);
     }
 
+    // NEW: Calculate fade multiplier based on position and curve type
+    float calculateFadeMultiplier(float normalizedPosition, float fadeTime, FadeCurve curve, bool isFadeIn) const;
+
     FreesoundAdvancedSamplerAudioProcessor& processor;
 
-    // ---- Existing state (kept for compatibility with your processor UI) ----
+    // Existing state
     int    currentNoteNumber = -1;
-    double samplePosition    = 0.0;   // absolute within full buffer
+    double samplePosition    = 0.0;
     double sampleLength      = 0.0;
-    bool noteHeld = true;
+    bool   noteHeld          = true;
     bool   firstRender       = true;
 
-    // ---- New playback config/state ----
-    double startSample       = 0.0;   // inclusive
-    double endSample         = -1.0;  // -1 means "use full length"
-    double tempStartSample   = 0.0;   // used once if tempStartArmed
+    // Existing playback config
+    double startSample       = 0.0;
+    double endSample         = -1.0;
+    double tempStartSample   = 0.0;
     bool   tempStartArmed    = false;
-
     float  pitchShiftSemitones = 0.0f;
     float  stretchRatio        = 1.0f;
     float  gain                = 1.0f;
     double sourceSampleRate = 0.0;
-
-    ADSR                 adsr;
-    ADSR::Parameters     adsrParams { 0.0f, 0.0f, 1.0f, 0.0f };
-
     Direction onsetDirection = Direction::Forward;
     PlayMode  playMode       = PlayMode::Normal;
-    int       playDirection  = +1;    // +1 forward, -1 reverse at runtime
+    int       playDirection  = +1;
 
     // Cached source
     AudioBuffer<float>* sourceBuffer = nullptr;
     int                 sourceChannels = 0;
 
+    // NEW: Fade system (replaces ADSR)
+    float fadeInTime  = 0.0f;   // Fade-in duration in seconds
+    float fadeOutTime = 0.0f;   // Fade-out duration in seconds
+    FadeCurve fadeInCurve  = FadeCurve::Linear;
+    FadeCurve fadeOutCurve = FadeCurve::Linear;
+    double currentSampleRate = 44100.0;
+
     // Helpers
     inline double currentIncrement() const
     {
-        // naive playback increment: stretching * pitch shift
         const double semitone = std::pow(2.0, (double)pitchShiftSemitones / 12.0);
         return semitone * (double)stretchRatio;
     }

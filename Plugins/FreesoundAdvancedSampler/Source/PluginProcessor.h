@@ -207,27 +207,33 @@ public:
    void clearSoundCache();
 
    // ==== NEW: Per-pad playback config (backward-compatible defaults) ====
-   struct PlaybackConfig
-   {
-       using Direction = TrackingSamplerVoice::Direction;
-       using PlayMode  = TrackingSamplerVoice::PlayMode;
+	struct PlaybackConfig
+	{
+		using Direction = TrackingSamplerVoice::Direction;
+		using PlayMode  = TrackingSamplerVoice::PlayMode;
+		using FadeCurve = TrackingSamplerVoice::FadeCurve;
 
-       // If <= 1.0 treated as normalized [0..1]; if > 1.0 treated as absolute samples.
-       double startSample     = 0.0;   // default 0
-       double endSample       = -1.0;  // default = full length
-       double tempStartSample = 0.0;   // one-shot temp start
-       bool   tempStartArmed  = false;
+		// If <= 1.0 treated as normalized [0..1]; if > 1.0 treated as absolute samples.
+		double startSample     = 0.0;   // default 0
+		double endSample       = -1.0;  // default = full length
+		double tempStartSample = 0.0;   // one-shot temp start
+		bool   tempStartArmed  = false;
 
-       // Signal & envelope
-       float  pitchShiftSemitones = 0.0f;
-       float  stretchRatio        = 1.0f;
-       float  gain                = 1.0f;
-       ADSR::Parameters adsr { 0.0f, 0.0f, 1.0f, 0.0f };
+		// Signal & envelope
+		float  pitchShiftSemitones = 0.0f;
+		float  stretchRatio        = 1.0f;
+		float  gain                = 1.0f;
 
-       // Transport
-       Direction direction = Direction::Forward;
-       PlayMode  playMode  = PlayMode::Normal;
-   };
+		// NEW: Fade system (replaces ADSR)
+		float fadeInTime   = 0.0f;  // Fade-in time in seconds
+		float fadeOutTime  = 0.0f;  // Fade-out time in seconds
+		FadeCurve fadeInCurve  = FadeCurve::Linear;
+		FadeCurve fadeOutCurve = FadeCurve::Linear;
+
+		// Transport
+		Direction direction = Direction::Forward;
+		PlayMode  playMode  = PlayMode::Normal;
+	};
 
    // Read-only access for voices
    const PlaybackConfig& getPadPlaybackConfig (int padIndex) const;
@@ -244,7 +250,8 @@ public:
    void setPadPitchShift   (int padIndex, float semitones);
    void setPadStretchRatio (int padIndex, float ratio);
    void setPadGain         (int padIndex, float linearGain);
-   void setPadADSR         (int padIndex, const ADSR::Parameters& p);
+   void setPadFadeIn(int padIndex, float timeSeconds, TrackingSamplerVoice::FadeCurve curve = TrackingSamplerVoice::FadeCurve::Linear);
+   void setPadFadeOut(int padIndex, float timeSeconds, TrackingSamplerVoice::FadeCurve curve = TrackingSamplerVoice::FadeCurve::Linear);
    void setPadDirection    (int padIndex, TrackingSamplerVoice::Direction d);
    void setPadPlayMode     (int padIndex, TrackingSamplerVoice::PlayMode m);
 

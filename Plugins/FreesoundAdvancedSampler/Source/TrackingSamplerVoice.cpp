@@ -7,7 +7,7 @@
 TrackingSamplerVoice::TrackingSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner)
     : processor(owner)
 {
-    adsr.setParameters(adsrParams);
+    // No ADSR initialization needed anymore
 }
 
 void TrackingSamplerVoice::resetRuntimeState()
@@ -29,6 +29,55 @@ void TrackingSamplerVoice::resetRuntimeState()
     firstRender = true;
 }
 
+float TrackingSamplerVoice::calculateFadeMultiplier(float normalizedPosition, float fadeTime, FadeCurve curve, bool isFadeIn) const
+{
+    if (fadeTime <= 0.0f) return 1.0f;
+
+    double sampleDuration = (endSample - startSample) / currentSampleRate;
+    if (sampleDuration <= 0.0) return 1.0f;
+
+    float fadeRatio = fadeTime / (float)sampleDuration;
+    fadeRatio = jlimit(0.0f, 1.0f, fadeRatio);
+
+    float t = 0.0f;
+
+    if (isFadeIn)
+    {
+        // Fade-in: t goes from 0 to 1 during the fade-in period
+        if (normalizedPosition >= fadeRatio) return 1.0f;
+        t = normalizedPosition / fadeRatio;
+    }
+    else
+    {
+        // Fade-out: t goes from 1 to 0 during the fade-out period
+        float fadeOutStart = 1.0f - fadeRatio;
+        if (normalizedPosition <= fadeOutStart) return 1.0f;
+        t = 1.0f - ((normalizedPosition - fadeOutStart) / fadeRatio);
+    }
+
+    t = jlimit(0.0f, 1.0f, t);
+
+    // Apply curve shaping
+    switch (curve)
+    {
+        case FadeCurve::Linear:
+            return t;
+
+        case FadeCurve::Exponential:
+            return t * t; // Quadratic (starts slow, ends fast)
+
+        case FadeCurve::Logarithmic:
+            return std::sqrt(t); // Square root (starts fast, ends slow)
+
+        case FadeCurve::SCurve:
+            // Smooth S-curve using cosine
+            return 0.5f * (1.0f - std::cos(t * MathConstants<float>::pi));
+
+        default:
+            return t;
+    }
+}
+
 void TrackingSamplerVoice::startNote (int midiNoteNumber,
                                       float velocity,
                                       SynthesiserSound* sound,
@@ -39,6 +88,7 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
 
     noteHeld = true;                // <— NEW: start gating flag
     currentNoteNumber = midiNoteNumber;
+    currentSampleRate = getSampleRate();
 
     // Reset/capture source info
     sourceBuffer   = nullptr;
@@ -111,9 +161,16 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
     setPitchShiftSemitones(cfg.pitchShiftSemitones);
     setStretchRatio(cfg.stretchRatio);
     setGain(cfg.gain);
-    setADSR(cfg.adsr);
     setOnsetDirection(cfg.direction);
     setPlayMode(cfg.playMode);
+
+    // NEW: Set up fade parameters from config
+    setFadeIn(cfg.fadeInTime, cfg.fadeInCurve);
+    setFadeOut(cfg.fadeOutTime, cfg.fadeOutCurve);
+
+    // TEST: Hardcoded fade values (remove this later)
+    // setFadeIn(1.f, FadeCurve::SCurve);    // 0.5 second S-curve fade-in
+    // setFadeOut(1.0f, FadeCurve::Linear);   // 1.0 second linear fade-out
 
     // Decide initial direction & position
     playDirection = (onsetDirection == Direction::Forward ? +1 : -1);
@@ -130,12 +187,7 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
     }
 
     samplePosition = juce::jlimit(startSample, juce::jmax(startSample, endSample - 1.0), chosenStart);
-    firstRender    = false;  // <— NEW: we’ll drive from samplePosition directly
-
-    // Envelope
-    adsr.setSampleRate(getSampleRate());
-    adsr.setParameters(adsrParams);
-    adsr.noteOn();
+    firstRender    = false;  // <— NEW: we'll drive from samplePosition directly
 
     // Pad playback state
     if (padIdx >= 0 && padIdx < 16)
@@ -149,6 +201,8 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
     }
 
     processor.notifyNoteStarted(midiNoteNumber, velocity);
+
+    DBG("Voice started with " + String(fadeInTime, 2) + "s fade-in, " + String(fadeOutTime, 2) + "s fade-out");
 }
 
 void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
@@ -171,10 +225,6 @@ void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
         processor.notifyNoteStopped(currentNoteNumber);
     }
 
-    // Drive our envelope tail if used
-    if (allowTailOff)
-        adsr.noteOff();
-
     // If tail is NOT allowed, fully clear this voice immediately
     if (!allowTailOff)
     {
@@ -187,14 +237,50 @@ void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
     SamplerVoice::stopNote(velocity, allowTailOff);
 }
 
-
-void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer,
-                                           int startSampleOut,
-                                           int numSamples)
+void TrackingSamplerVoice::renderNextBlock (AudioBuffer<float>& outputBuffer,
+                                            int startSampleOut,
+                                            int numSamples)
 {
     // Render audio first so isVoiceActive() reflects this block
     SamplerVoice::renderNextBlock(outputBuffer, startSampleOut, numSamples);
 
+    // Apply fade curves
+    if (currentNoteNumber >= 0 && isVoiceActive() && sourceBuffer != nullptr)
+    {
+        const double span = std::max(1.0, endSample - startSample);
+
+        for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
+        {
+            float* channelData = outputBuffer.getWritePointer(channel, startSampleOut);
+
+            for (int sample = 0; sample < numSamples; ++sample)
+            {
+                // Calculate current position (0.0 to 1.0 across the active span)
+                double currentPos = samplePosition + sample;
+                double posInSpan = std::clamp(currentPos - startSample, 0.0, span);
+                float normalizedPos = (float)(posInSpan / span);
+
+                // Calculate fade multipliers
+                float fadeInMult = calculateFadeMultiplier(normalizedPos, fadeInTime, fadeInCurve, true);
+                float fadeOutMult = calculateFadeMultiplier(normalizedPos, fadeOutTime, fadeOutCurve, false);
+
+                // Apply both fades (multiplicative)
+                float totalFade = fadeInMult * fadeOutMult * gain;
+                channelData[sample] *= totalFade;
+
+                // Debug occasionally
+                static int debugCounter = 0;
+                if (++debugCounter % 5000 == 0 && currentNoteNumber == 36) // Pad 1 only
+                {
+                    DBG("Pos: " + String(normalizedPos, 3) +
+                        " FadeIn: " + String(fadeInMult, 3) +
+                        " FadeOut: " + String(fadeOutMult, 3));
+                }
+            }
+        }
+    }
+
+    // Continue with existing position tracking...
     if (currentNoteNumber < 0 || sampleLength <= 0.0)
         return;
 
@@ -257,7 +343,7 @@ void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer,
     processor.notifyPlayheadPositionChanged(currentNoteNumber, pos);
 }
 
-// ===================== TrackingPreviewSamplerVoice (unchanged) =====================
+// ===================== TrackingPreviewSamplerVoice (updated with sample rate fix) =====================
 
 TrackingPreviewSamplerVoice::TrackingPreviewSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner)
     : processor(owner) {}
@@ -317,7 +403,6 @@ void TrackingPreviewSamplerVoice::stopNote(float velocity, bool allowTailOff)
     }
     SamplerVoice::stopNote(velocity, allowTailOff);
 }
-
 
 void TrackingPreviewSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
