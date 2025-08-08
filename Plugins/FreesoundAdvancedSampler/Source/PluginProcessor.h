@@ -14,6 +14,7 @@
 #include "FreesoundAPI/FreesoundAPI.h"
 #include "AudioDownloadManager.h"
 #include "SampleCollectionManager.h"
+#include "TrackingSamplerVoice.h"
 
 using namespace juce;
 
@@ -177,7 +178,6 @@ public:
    // NEW: Playhead Continuation Methods
    void updatePadSampleWithPlayheadContinuation(int padIndex, const String& newFreesoundId);
    bool shouldContinuePlayback(int padIndex, double newSampleLength);
-   void continuePlaybackFromPosition(int padIndex, float position, double newSampleLength);
 
    // Window size methods
    void setWindowSize(int width, int height)
@@ -206,6 +206,17 @@ public:
    void rebuildAllSources();
    void clearSoundCache();
 
+   // Playback state tracking - made public for voice access
+   std::array<PlaybackState, 16> padPlaybackStates;
+
+   // Notification methods for voices to call
+   void notifyNoteStarted(int noteNumber, float velocity);
+   void notifyNoteStopped(int noteNumber);
+   void notifyPlayheadPositionChanged(int noteNumber, float position);
+   void notifyPreviewStarted(const String& freesoundId);
+   void notifyPreviewStopped(const String& freesoundId);
+   void notifyPreviewPlayheadPositionChanged(const String& freesoundId, float position);
+
 private:
    // NEW: Unified Collection Manager (replaces PresetManager and BookmarkManager)
    std::unique_ptr<SampleCollectionManager> collectionManager;
@@ -216,19 +227,6 @@ private:
 
    // NEW: Current Pad State (16 pads mapped to freesound IDs)
    Array<String> currentPadFreesoundIds;
-
-   // NEW: Playback State Tracking for Continuation
-   struct PlaybackState {
-       bool isPlaying = false;
-       float currentPosition = 0.0f;  // 0.0 to 1.0
-       double samplePosition = 0.0;   // Actual sample position
-       int noteNumber = -1;
-       float velocity = 0.0f;
-       double sampleLength = 0.0;
-   };
-
-   // Track playback state for each pad
-   std::array<PlaybackState, 16> padPlaybackStates;
 
    // Window and panel state
    int savedWindowWidth = 800;
@@ -285,53 +283,8 @@ private:
    void validateSamplerState();
    #endif
 
-   //==============================================================================
-   // Enhanced sampler voice class for playback tracking
-   class TrackingSamplerVoice : public SamplerVoice
-   {
-   public:
-       TrackingSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner);
-
-       void startNote(int midiNoteNumber, float velocity, SynthesiserSound*, int currentPitchWheelPosition) override;
-       void stopNote(float velocity, bool allowTailOff) override;
-       void renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
-
-       // NEW: Method to start from a specific position
-       void startNoteFromPosition(int midiNoteNumber, float velocity, SynthesiserSound* sound,
-                                 int currentPitchWheelPosition, double startPosition);
-
-   private:
-       FreesoundAdvancedSamplerAudioProcessor& processor;
-       int currentNoteNumber = -1;
-       double samplePosition = 0.0;
-       double sampleLength = 0.0;
-       double startOffset = 0.0; // NEW: Starting offset for continuation
-   };
-
-   // Enhanced preview sampler voice class for playback tracking of preview samples
-   class TrackingPreviewSamplerVoice : public SamplerVoice
-   {
-   public:
-   	TrackingPreviewSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner);
-
-   	void startNote(int midiNoteNumber, float velocity, SynthesiserSound*, int currentPitchWheelPosition) override;
-   	void stopNote(float velocity, bool allowTailOff) override;
-   	void renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override;
-
-   private:
-   	FreesoundAdvancedSamplerAudioProcessor& processor;
-   	String currentFreesoundId;
-   	double samplePosition = 0.0;
-   	double sampleLength = 0.0;
-   };
-
    ListenerList<PreviewPlaybackListener> previewPlaybackListeners;
    String currentPreviewFreesoundId; // Track which sample is currently previewing
-
-   // Preview notification methods
-   void notifyPreviewStarted(const String& freesoundId);
-   void notifyPreviewStopped(const String& freesoundId);
-   void notifyPreviewPlayheadPositionChanged(const String& freesoundId, float position);
 
    AudioDownloadManager downloadManager;
    ListenerList<DownloadListener> downloadListeners;
@@ -350,16 +303,8 @@ private:
    Synthesiser previewSampler;
    AudioFormatManager previewAudioFormatManager;
 
-   // Methods for playback tracking
-   void notifyNoteStarted(int noteNumber, float velocity);
-   void notifyNoteStopped(int noteNumber);
-   void notifyPlayheadPositionChanged(int noteNumber, float position);
-
    void savePluginState(XmlElement& xml);
    void loadPluginState(const XmlElement& xml);
-
-   friend class TrackingSamplerVoice;
-   friend class TrackingPreviewSamplerVoice;
 
    //==============================================================================
    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreesoundAdvancedSamplerAudioProcessor)

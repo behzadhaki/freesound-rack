@@ -31,6 +31,7 @@ target_sources(${BaseTargetName} PRIVATE
         Source/MasterSearchPanel.cpp
         Source/BookmarkViewerComponent.cpp
         Source/SampleCollectionManager.cpp
+        Source/TrackingSamplerVoice.cpp
 )
 
 target_compile_definitions(${BaseTargetName}
