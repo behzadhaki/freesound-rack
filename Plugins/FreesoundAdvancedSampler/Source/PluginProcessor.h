@@ -332,7 +332,7 @@ private:
    ListenerList<DownloadListener> downloadListeners;
    ListenerList<PlaybackListener> playbackListeners;
 
-   Synthesiser sampler;
+   MonoPerNoteSynth sampler;
    AudioFormatManager audioFormatManager;
    MidiBuffer midiFromEditor;
    long midicounter;

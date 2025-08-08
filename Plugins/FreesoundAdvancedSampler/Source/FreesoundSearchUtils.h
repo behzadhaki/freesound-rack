@@ -23,7 +23,7 @@ inline std::pair<Array<FSSound>, std::vector<juce::StringArray>> makeQuerySearch
 
         SoundList list = client.textSearch(
             masterQuery,
-            "duration:[0 TO 0.5]",
+            "duration:[0 TO 4.0]",
             "score",
             1,
             1,

@@ -34,9 +34,10 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
                                       SynthesiserSound* sound,
                                       int currentPitchWheelPosition)
 {
-    // Let the base class do its bookkeeping (voice active, etc.)
+    // Base bookkeeping
     SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
 
+    noteHeld = true;                // <— NEW: start gating flag
     currentNoteNumber = midiNoteNumber;
 
     // Reset/capture source info
@@ -46,7 +47,6 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
 
     if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound))
     {
-        // Your SamplerSound subclass should expose raw audio via getAudioData()
         if (auto* data = samplerSound->getAudioData())
         {
             sourceBuffer   = data;
@@ -55,11 +55,10 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
         }
     }
 
-    // Safety: if no buffer available, just bail (base class will treat as silent)
     if (sourceBuffer == nullptr || sampleLength <= 0.0)
         return;
 
-    // ===== Pull per-pad config from the processor =====
+    // === Apply per-pad config ===
     const int padIdx = midiNoteNumber - 36;
     const auto& cfg  = processor.getPadPlaybackConfig(padIdx);
 
@@ -70,9 +69,8 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
         return 0.0;
     };
 
-    // Start/end (support normalized [0..1] OR absolute samples)
     double startS = cfg.startSample;
-    double endS   = cfg.endSample;         // -1 means "full length"
+    double endS   = cfg.endSample;         // -1 => full length
 
     const bool startLooksNorm = (startS >= 0.0 && startS <= 1.0);
     const bool endLooksNorm   = (endS   >= 0.0 && endS   <= 1.0);
@@ -101,15 +99,15 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
         const bool tempLooksNorm = (cfg.tempStartSample >= 0.0 && cfg.tempStartSample <= 1.0);
         tempStartSample = tempLooksNorm ? normToSamps(cfg.tempStartSample)
                                         : juce::jlimit(0.0, sampleLength, cfg.tempStartSample);
-        tempStartArmed  = true; // we'll consume it below when we pick the initial position
+        tempStartArmed  = true;
     }
     else
     {
-        tempStartArmed = false;
+        tempStartArmed  = false;
         tempStartSample = 0.0;
     }
 
-    // Signal & transport setup
+    // Signal & transport
     setPitchShiftSemitones(cfg.pitchShiftSemitones);
     setStretchRatio(cfg.stretchRatio);
     setGain(cfg.gain);
@@ -117,60 +115,48 @@ void TrackingSamplerVoice::startNote (int midiNoteNumber,
     setOnsetDirection(cfg.direction);
     setPlayMode(cfg.playMode);
 
-    // ===== Decide initial direction and starting position =====
+    // Decide initial direction & position
     playDirection = (onsetDirection == Direction::Forward ? +1 : -1);
 
-    // Choose start index: temporary start (if armed) wins for the first trigger
     double chosenStart = startSample;
     if (tempStartArmed)
     {
-        chosenStart  = juce::jlimit(startSample, endSample, tempStartSample);
+        chosenStart   = juce::jlimit(startSample, endSample, tempStartSample);
         tempStartArmed = false; // one-shot consumed
     }
     else if (playDirection < 0)
     {
-        // Reverse onset with no temp start: begin at the end
         chosenStart = juce::jlimit(startSample, endSample, endSample - 1.0);
     }
 
     samplePosition = juce::jlimit(startSample, juce::jmax(startSample, endSample - 1.0), chosenStart);
-    firstRender    = true;
+    firstRender    = false;  // <— NEW: we’ll drive from samplePosition directly
 
-    // ===== ADSR =====
+    // Envelope
     adsr.setSampleRate(getSampleRate());
     adsr.setParameters(adsrParams);
     adsr.noteOn();
 
-    // ===== Playback state & UI notifications (preserve your behavior) =====
-    bool isContinuation = false;
-
+    // Pad playback state
     if (padIdx >= 0 && padIdx < 16)
     {
         auto& state = processor.padPlaybackStates[padIdx];
-
-        // If pad was already playing and has a stored position, continue from there (normalized over full file)
-        if (state.isPlaying && state.currentPosition > 0.0f && sampleLength > 0.0)
-        {
-            samplePosition = juce::jlimit(0.0, sampleLength, (double)state.currentPosition * sampleLength);
-            isContinuation = true;
-        }
-
-        state.isPlaying    = true;
-        state.noteNumber   = midiNoteNumber;
-        state.sampleLength = sampleLength;
-        state.velocity     = velocity;
-        if (!isContinuation)
-            state.currentPosition = 0.0f; // start-of-file normalized
+        state.isPlaying     = true;
+        state.noteNumber    = midiNoteNumber;
+        state.sampleLength  = sampleLength;
+        state.velocity      = velocity;
+        state.currentPosition = 0.0f;
     }
 
     processor.notifyNoteStarted(midiNoteNumber, velocity);
 }
 
-void TrackingSamplerVoice::stopNote(float velocity, bool allowTailOff)
+void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
 {
+    noteHeld = false;   // <— NEW: freeze UI immediately after this block
+
     if (currentNoteNumber >= 0)
     {
-        // Immediate UI state clear (preserves your current semantics)
         const int padIndex = currentNoteNumber - 36;
         if (padIndex >= 0 && padIndex < 16)
         {
@@ -180,142 +166,73 @@ void TrackingSamplerVoice::stopNote(float velocity, bool allowTailOff)
             state.currentFreesoundId = "";
         }
 
-        // Envelope tail or hard stop
-        if (allowTailOff)
-        {
-            adsr.noteOff();
-        }
-        else
-        {
-            processor.notifyNoteStopped(currentNoteNumber);
-            currentNoteNumber = -1;
-            samplePosition = 0.0;
-            firstRender = true;
-            clearCurrentNote();
-        }
+        // Snap UI now; audio may tail off separately
+        processor.notifyPlayheadPositionChanged(currentNoteNumber, 0.0f);
+        processor.notifyNoteStopped(currentNoteNumber);
+    }
+
+    // Drive our envelope tail if used
+    if (allowTailOff)
+        adsr.noteOff();
+
+    // If tail is NOT allowed, fully clear this voice immediately
+    if (!allowTailOff)
+    {
+        currentNoteNumber = -1;
+        samplePosition = 0.0;
+        firstRender = true;
+        clearCurrentNote();
     }
 
     SamplerVoice::stopNote(velocity, allowTailOff);
 }
 
-void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSampleOut, int numSamples)
+
+void TrackingSamplerVoice::renderNextBlock (AudioBuffer<float>& outputBuffer,
+                                            int startSampleOut,
+                                            int numSamples)
 {
-    if (currentNoteNumber < 0 || sourceBuffer == nullptr || sampleLength <= 0.0)
+    // Render audio first so isVoiceActive() reflects this block
+    SamplerVoice::renderNextBlock(outputBuffer, startSampleOut, numSamples);
+
+    if (currentNoteNumber < 0 || sampleLength <= 0.0)
         return;
 
-    // Render loop with naive linear interpolation, multi-channel aware.
-    const int outChans = outputBuffer.getNumChannels();
-    const int srcChans = jmax(1, sourceChannels);
-    const float overallGain = gain;
+    const int padIndex = currentNoteNumber - 36;
+    if (padIndex < 0 || padIndex >= 16)
+        return;
 
-    const double incBase = currentIncrement();
-    const double startIdx = startSample;
-    const double endIdx   = endSample; // exclusive boundary
+    auto& state = processor.padPlaybackStates[padIndex];
 
-    auto advance = [&](double& pos, int& dir)
+    // If the JUCE voice has actually finished (natural end or forced), finalize once.
+    if (!isVoiceActive())
     {
-        pos += (incBase * dir);
-    };
+        state.isPlaying = false;
+        state.currentPosition = 0.0f;
 
-    auto hitForwardEnd = [&](double pos) { return pos >= (endIdx - 1.0); };
-    auto hitReverseEnd = [&](double pos) { return pos <= (startIdx);     };
+        processor.notifyPlayheadPositionChanged(currentNoteNumber, 1.0f);
+        processor.notifyNoteStopped(currentNoteNumber);
 
-    for (int i = 0; i < numSamples; ++i)
-    {
-        // If ADSR is finished after a prior noteOff, stop the voice.
-        if (! adsr.isActive())
-        {
-            processor.notifyPlayheadPositionChanged(currentNoteNumber, 1.0f);
-            processor.notifyNoteStopped(currentNoteNumber);
-            currentNoteNumber = -1;
-            firstRender = true;
-            clearCurrentNote();
-            return;
-        }
-
-        // Boundary handling BEFORE reading if we'd interpolate past edges
-        if (playDirection > 0 && hitForwardEnd(samplePosition))
-        {
-            if (playMode == PlayMode::Normal)
-            {
-                adsr.noteOff();
-                // render silence for remaining samples (tail handled by ADSR next calls)
-            }
-            else if (playMode == PlayMode::Loop)
-            {
-                samplePosition = startIdx;
-            }
-            else // PingPong
-            {
-                playDirection = -1;
-                samplePosition = jlimit(startIdx, endIdx - 1.0, samplePosition);
-            }
-        }
-        else if (playDirection < 0 && hitReverseEnd(samplePosition))
-        {
-            if (playMode == PlayMode::Normal)
-            {
-                adsr.noteOff();
-            }
-            else if (playMode == PlayMode::Loop)
-            {
-                samplePosition = endIdx - 1.0;
-            }
-            else // PingPong
-            {
-                playDirection = +1;
-                samplePosition = jlimit(startIdx, endIdx - 1.0, samplePosition);
-            }
-        }
-
-        // Safe index + frac
-        int idx = (int) jlimit(0.0, sampleLength - 1.0, std::floor(samplePosition));
-        const double frac = jlimit(0.0, 1.0, samplePosition - (double)idx);
-
-        // Read & interpolate each channel
-        const float env = adsr.getNextSample();
-        const float g   = overallGain * env;
-
-        for (int ch = 0; ch < outChans; ++ch)
-        {
-            const int srcCh = (ch < srcChans ? ch : srcChans - 1);
-            const float* src = sourceBuffer->getReadPointer(srcCh);
-
-            const int idx2 = jmin(idx + 1, (int)sampleLength - 1);
-            const float s0 = src[idx];
-            const float s1 = src[idx2];
-            const float s  = s0 + (float)((s1 - s0) * frac);
-
-            outputBuffer.addSample(ch, startSampleOut + i, s * g);
-        }
-
-        // Advance
-        advance(samplePosition, playDirection);
+        currentNoteNumber = -1;
+        samplePosition = 0.0;
+        firstRender = true;
+        return;
     }
 
-    // Update UI tracking (normalized over full sample for continuity with your UI)
-    if (currentNoteNumber >= 0)
-    {
-        const int padIndex = currentNoteNumber - 36;
-        const float normPos = (float) jlimit(0.0, 1.0, samplePosition / sampleLength);
+    // NOTE-HELD GATE: if mouse/note released, stop advancing the visual cursor
+    if (!noteHeld)
+        return;
 
-        if (padIndex >= 0 && padIndex < 16)
-        {
-            auto& st = processor.padPlaybackStates[padIndex];
-            st.currentPosition = normPos;
-        }
+    // Advance in host-sample domain (UI will rescale by fileSR/hostSR)
+    samplePosition += (double) numSamples;
 
-        processor.notifyPlayheadPositionChanged(currentNoteNumber, normPos);
+    // Normalize over the active span [startSample, endSample)
+    const double span = std::max(1.0, endSample - startSample);
+    const double posInSpan = std::clamp(samplePosition - startSample, 0.0, span);
+    const float pos = jlimit(0.0f, 1.0f, (float)(posInSpan / span));
 
-        // Fire NoteOff when ADSR just ended (handled at top of next block too)
-        if (!adsr.isActive())
-        {
-            processor.notifyNoteStopped(currentNoteNumber);
-            currentNoteNumber = -1;
-            firstRender = true;
-            clearCurrentNote();
-        }
-    }
+    state.currentPosition = pos;
+    processor.notifyPlayheadPositionChanged(currentNoteNumber, pos);
 }
 
 // ===================== TrackingPreviewSamplerVoice (unchanged) =====================

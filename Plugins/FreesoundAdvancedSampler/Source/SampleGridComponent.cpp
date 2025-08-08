@@ -432,12 +432,15 @@ void SamplePad::mouseUp(const MouseEvent& event)
 
         if (waveformBounds.contains(event.getMouseDownPosition()) && processor)
         {
-            int noteNumber = padIndex + 36;
+            const int noteNumber = padIndex + 36;
             processor->addNoteOffToMidiBuffer(noteNumber);
+
+            // NEW: stop the visual immediately; processor will still send the official stop
+            setIsPlaying(false);
+            setPlayheadPosition(0.0f);
         }
     }
 
-    // Reset cursor
     setMouseCursor(MouseCursor::NormalCursor);
 }
 
@@ -688,21 +691,27 @@ void SamplePad::setSample(const File& audioFile, const String& name, const Strin
 
 void SamplePad::setPlayheadPosition(float position)
 {
-
-    // // Adjust position using metadata sample rate and processor sample rate
-    position = (position * fileSourceSampleRate) / processorSampleRate;
+    // Convert from host-domain 0..1 to source-domain 0..1 so the cursor matches files with different SR
+    float corrected = position;
+    if (processorSampleRate > 0.0f) // avoid div-by-zero
+        corrected = position * (fileSourceSampleRate / processorSampleRate);
 
     Component::SafePointer<SamplePad> safeThis(this);
 
-    MessageManager::callAsync([safeThis, position]()
+    MessageManager::callAsync([safeThis, corrected]()
     {
         if (safeThis != nullptr && safeThis->isShowing())
         {
-            safeThis->playheadPosition = jlimit(0.0f, 1.0f, position);
+            // Ignore late updates after we've stopped, but allow explicit zero to snap the line away
+            if (!safeThis->isPlaying && corrected > 0.0f)
+                return;
+
+            safeThis->playheadPosition = jlimit(0.0f, 1.0f, corrected);
             safeThis->repaint();
         }
     });
 }
+
 
 void SamplePad::setIsPlaying(bool playing)
 {
@@ -886,15 +895,17 @@ void SamplePad::setPreviewPlayheadPosition(float position)
     if (padMode != PadMode::Preview)
         return;
 
-    position = (position * fileSourceSampleRate) / processorSampleRate;
+    float corrected = position;
+    if (processorSampleRate > 0.0f)
+        corrected = position * (fileSourceSampleRate / processorSampleRate);
 
     Component::SafePointer<SamplePad> safeThis(this);
 
-    MessageManager::callAsync([safeThis, position]()
+    MessageManager::callAsync([safeThis, corrected]()
     {
         if (safeThis != nullptr && safeThis->isShowing())
         {
-            safeThis->previewPlayheadPosition = jlimit(0.0f, 1.0f, position);
+            safeThis->previewPlayheadPosition = jlimit(0.0f, 1.0f, corrected);
             safeThis->repaint();
         }
     });
@@ -2106,6 +2117,7 @@ void SampleGridComponent::setProcessor(FreesoundAdvancedSamplerAudioProcessor* p
 
     if (processor)
     {
+        // give access to the processor to update the playhead position
         processor->addPlaybackListener(this);
     }
 

@@ -813,25 +813,21 @@ void FreesoundAdvancedSamplerAudioProcessor::validateSamplerState()
 }
 #endif
 
-void FreesoundAdvancedSamplerAudioProcessor::addNoteOnToMidiBuffer(int notenumber)
+void FreesoundAdvancedSamplerAudioProcessor::addNoteOnToMidiBuffer(int noteNumber)
 {
-   MidiMessage message = MidiMessage::noteOn(10, notenumber, (uint8)100);
-   double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
-   message.setTimeStamp(timestamp);
+    // Option A (simple): rely on MonoPerNoteSynth to pre-kill
+    midiFromEditor.addEvent(juce::MidiMessage::noteOn(10, noteNumber, (juce::uint8)100), 0);
 
-   auto sampleNumber = (int)(timestamp * getSampleRate());
-   midiFromEditor.addEvent(message,sampleNumber);
+    // Option B (paranoid): explicitly send Off then On at the same sample
+    // midiFromEditor.addEvent(juce::MidiMessage::noteOff(10, noteNumber), 0);
+    // midiFromEditor.addEvent(juce::MidiMessage::noteOn (10, noteNumber, (juce::uint8)100), 0);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::addNoteOffToMidiBuffer(int noteNumber)
 {
-   MidiMessage message = MidiMessage::noteOff(10, noteNumber, (uint8)0);
-   double timestamp = Time::getMillisecondCounterHiRes() * 0.001 - getStartTime();
-   message.setTimeStamp(timestamp);
-
-   auto sampleNumber = (int)(timestamp * getSampleRate());
-   midiFromEditor.addEvent(message,sampleNumber);
+    midiFromEditor.addEvent(juce::MidiMessage::noteOff(10, noteNumber), 0);
 }
+
 
 double FreesoundAdvancedSamplerAudioProcessor::getStartTime(){
    return startTime;

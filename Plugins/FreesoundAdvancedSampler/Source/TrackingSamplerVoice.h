@@ -5,6 +5,31 @@ using namespace juce;
 
 class FreesoundAdvancedSamplerAudioProcessor;
 
+// Mono-per-note Synthesiser: guarantees only one voice plays for a (channel,note)
+struct MonoPerNoteSynth : public juce::Synthesiser
+{
+    void noteOn (int midiChannel, int midiNoteNumber, float velocity) override
+    {
+        // Velocity 0 = note-off (per MIDI spec)
+        if (velocity <= 0.0f)
+        {
+            noteOff(midiChannel, midiNoteNumber, 0.0f, false);
+            return;
+        }
+
+        // Kill any existing voice for this note before retriggering
+        for (int i = 0; i < getNumVoices(); ++i)
+        {
+            auto* v = getVoice(i);
+            if (v->isVoiceActive() && v->getCurrentlyPlayingNote() == midiNoteNumber)
+                v->stopNote(0.0f, false); // hard stop so no overlap
+        }
+
+        Synthesiser::noteOn(midiChannel, midiNoteNumber, velocity);
+    }
+};
+
+
 //==============================================================================
 // Playback State Structure
 //==============================================================================
@@ -71,6 +96,7 @@ private:
     int    currentNoteNumber = -1;
     double samplePosition    = 0.0;   // absolute within full buffer
     double sampleLength      = 0.0;
+    bool noteHeld = true;
     bool   firstRender       = true;
 
     // ---- New playback config/state ----
@@ -82,6 +108,7 @@ private:
     float  pitchShiftSemitones = 0.0f;
     float  stretchRatio        = 1.0f;
     float  gain                = 1.0f;
+    double sourceSampleRate = 0.0;
 
     ADSR                 adsr;
     ADSR::Parameters     adsrParams { 0.0f, 0.0f, 1.0f, 0.0f };
