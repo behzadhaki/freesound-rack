@@ -155,4 +155,6 @@ private:
     String currentFreesoundId;
     double samplePosition = 0.0;
     double sampleLength   = 0.0;
+    double sourceSampleRate = 0.0;  // NEW: Track source sample rate
 };
+

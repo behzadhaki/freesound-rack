@@ -275,7 +275,30 @@ void TrackingPreviewSamplerVoice::startNote(int midiNoteNumber, float velocity, 
             samplePosition = 0.0;
 
             if (auto* data = samplerSound->getAudioData())
+            {
                 sampleLength = data->getNumSamples();
+
+                // NEW: Get source sample rate from the audio file
+                if (auto* cm = processor.getCollectionManager())
+                {
+                    File audioFile = cm->getSampleFile(currentFreesoundId);
+                    if (audioFile.existsAsFile())
+                    {
+                        AudioFormatManager tempFormatManager;
+                        tempFormatManager.registerBasicFormats();
+
+                        std::unique_ptr<AudioFormatReader> reader(tempFormatManager.createReaderFor(audioFile));
+                        if (reader)
+                        {
+                            sourceSampleRate = reader->sampleRate;
+                        }
+                    }
+                }
+
+                // Fallback to default if we couldn't get the source sample rate
+                if (sourceSampleRate <= 0.0)
+                    sourceSampleRate = 44100.0;
+            }
 
             processor.notifyPreviewStarted(currentFreesoundId);
         }
@@ -290,9 +313,11 @@ void TrackingPreviewSamplerVoice::stopNote(float velocity, bool allowTailOff)
         currentFreesoundId = {};
         samplePosition = 0.0;
         sampleLength = 0.0;
+        sourceSampleRate = 0.0;  // NEW: Reset source sample rate
     }
     SamplerVoice::stopNote(velocity, allowTailOff);
 }
+
 
 void TrackingPreviewSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer, int startSample, int numSamples)
 {
@@ -300,7 +325,17 @@ void TrackingPreviewSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuff
 
     if (currentFreesoundId.isNotEmpty() && sampleLength > 0 && isVoiceActive())
     {
-        samplePosition += numSamples;
+        // FIXED: Apply sample rate correction like the main voice
+        double currentHostSampleRate = processor.getSampleRate();
+        double actualIncrement = (double)numSamples;
+
+        if (currentHostSampleRate > 0.0 && sourceSampleRate > 0.0 && sourceSampleRate != currentHostSampleRate)
+        {
+            // Convert host samples to source samples
+            actualIncrement = (double)numSamples * (sourceSampleRate / currentHostSampleRate);
+        }
+
+        samplePosition += actualIncrement;
         float position = (float) (samplePosition / sampleLength);
         processor.notifyPreviewPlayheadPositionChanged(currentFreesoundId, jlimit(0.0f, 1.0f, position));
         if (position >= 0.99f)
