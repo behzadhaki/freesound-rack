@@ -212,6 +212,7 @@ public:
 		using Direction = TrackingSamplerVoice::Direction;
 		using PlayMode  = TrackingSamplerVoice::PlayMode;
 		using FadeCurve = TrackingSamplerVoice::FadeCurve;
+		using TriggerMode = TrackingSamplerVoice::TriggerMode;
 
 		// If <= 1.0 treated as normalized [0..1]; if > 1.0 treated as absolute samples.
 		double startSample     = 0.0;   // default 0
@@ -231,10 +232,10 @@ public:
 
 		// Transport
 		Direction direction = Direction::Forward;
-		PlayMode  playMode  = PlayMode::Normal;
+		PlayMode  playMode  = PlayMode::PingPong;
 
 		// Trigger mode
-		TrackingSamplerVoice::TriggerMode triggerMode = TrackingSamplerVoice::TriggerMode::TriggerNormal;
+		TriggerMode triggerMode = TriggerMode::Gate;
 	};
 
    // Read-only access for voices
