@@ -232,6 +232,9 @@ public:
 		// Transport
 		Direction direction = Direction::Forward;
 		PlayMode  playMode  = PlayMode::Normal;
+
+		// Trigger mode
+		TrackingSamplerVoice::TriggerMode triggerMode = TrackingSamplerVoice::TriggerMode::TriggerNormal;
 	};
 
    // Read-only access for voices

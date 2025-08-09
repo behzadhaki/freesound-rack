@@ -79,10 +79,44 @@ float TrackingSamplerVoice::calculateFadeMultiplier(float normalizedPosition, fl
 }
 
 
-void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
+void TrackingSamplerVoice::stopNote(float velocity, bool allowTailOff)
 {
-    noteHeld = false;   // <— NEW: freeze UI immediately after this block
+    noteHeld = false;   // Always mark as not held
 
+    // Handle different trigger modes
+    if (triggerMode == TriggerMode::Gate)
+    {
+        // Gate mode: Stop immediately when note is released
+        allowTailOff = false;  // Force immediate stop
+    }
+    else if (triggerMode == TriggerMode::TriggerNormal)
+    {
+        // TriggerNormal: Let the sample play to completion
+        // Don't actually stop the voice, just mark noteHeld as false
+        // The voice will stop naturally when it reaches the end (or loops forever)
+
+        // Update UI to show note is released but audio continues
+        if (currentNoteNumber >= 0)
+        {
+            const int padIndex = currentNoteNumber - 36;
+            if (padIndex >= 0 && padIndex < 16)
+            {
+                // Just update UI, don't stop playback
+                processor.notifyPlayheadPositionChanged(currentNoteNumber, 0.0f);
+            }
+        }
+
+        // Don't call base class stopNote for TriggerNormal - let it play out
+        return;
+    }
+    else if (triggerMode == TriggerMode::TriggerOnOff)
+    {
+        // TriggerOnOff: Similar to TriggerNormal, plays to completion
+        // The actual stop is handled by the next note-on
+        return;
+    }
+
+    // For Gate mode, proceed with stopping
     if (currentNoteNumber >= 0)
     {
         const int padIndex = currentNoteNumber - 36;
@@ -111,7 +145,6 @@ void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
     SamplerVoice::stopNote(velocity, allowTailOff);
 }
 
-// Fixed renderNextBlock implementation for TrackingSamplerVoice
 void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer,
                                           int startSampleOut,
                                           int numSamples)
@@ -156,36 +189,50 @@ void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer,
     // Process audio with our custom parameters
     for (int i = 0; i < numSamples; ++i)
     {
+        // Check if we should stop based on trigger mode
+        if (triggerMode == TriggerMode::Gate && !noteHeld)
+        {
+            // In Gate mode, stop immediately when note is released
+            clearCurrentNote();
+            break;
+        }
+
         // Check boundaries based on play mode
         bool shouldStop = false;
 
         if (playMode == PlayMode::Normal)
         {
             // Normal mode - stop at boundaries
-            if (playDirection > 0 && samplePosition >= actualEndSample - 1)
+            // FIXED: For reverse onset, we go from end to start
+            if (onsetDirection == Direction::Forward)
             {
-                shouldStop = true;
+                if (samplePosition >= actualEndSample - 1)
+                    shouldStop = true;
             }
-            else if (playDirection < 0 && samplePosition <= actualStartSample)
+            else // Reverse onset
             {
-                shouldStop = true;
+                if (samplePosition <= actualStartSample)
+                    shouldStop = true;
             }
         }
         else if (playMode == PlayMode::Loop)
         {
-            // Loop mode - wrap around
-            if (playDirection > 0 && samplePosition >= actualEndSample - 1)
+            // Loop mode - wrap around maintaining onset direction
+            if (onsetDirection == Direction::Forward)
             {
-                samplePosition = actualStartSample;
+                if (samplePosition >= actualEndSample - 1)
+                    samplePosition = actualStartSample;
             }
-            else if (playDirection < 0 && samplePosition <= actualStartSample)
+            else // Reverse onset
             {
-                samplePosition = actualEndSample - 1.0;
+                if (samplePosition <= actualStartSample)
+                    samplePosition = actualEndSample - 1.0;
             }
         }
         else if (playMode == PlayMode::PingPong)
         {
             // Ping-pong mode - reverse direction at boundaries
+            // This already works correctly for both onset directions
             if (samplePosition >= actualEndSample - 1 && playDirection > 0)
             {
                 playDirection = -1;
@@ -287,6 +334,28 @@ void TrackingSamplerVoice::startNote(int midiNoteNumber,
                                     SynthesiserSound* sound,
                                     int currentPitchWheelPosition)
 {
+    // Apply per-pad config FIRST to get trigger mode
+    const int padIdx = midiNoteNumber - 36;
+    const auto& cfg = processor.getPadPlaybackConfig(padIdx);
+
+    // Handle TriggerOnOff mode - check if this should stop instead of start
+    if (cfg.triggerMode == TriggerMode::TriggerOnOff)
+    {
+        // Check if a voice is already playing for this pad
+        bool alreadyPlaying = false;
+        if (padIdx >= 0 && padIdx < 16)
+        {
+            alreadyPlaying = processor.padPlaybackStates[padIdx].isPlaying;
+        }
+
+        if (alreadyPlaying)
+        {
+            // Stop the current note instead of starting a new one
+            stopNote(0.0f, false);
+            return;
+        }
+    }
+
     // Call base class to set up basic voice state
     // But we'll override the rendering
     SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
@@ -312,10 +381,6 @@ void TrackingSamplerVoice::startNote(int midiNoteNumber,
 
     if (sourceBuffer == nullptr || sampleLength <= 0.0)
         return;
-
-    // Apply per-pad config
-    const int padIdx = midiNoteNumber - 36;
-    const auto& cfg = processor.getPadPlaybackConfig(padIdx);
 
     // Normalize values if needed
     auto normToSamps = [this](double n) -> double
@@ -367,19 +432,23 @@ void TrackingSamplerVoice::startNote(int midiNoteNumber,
     }
 
     // Apply all parameters (no stretchRatio)
-    pitchShiftSemitones = cfg.pitchShiftSemitones;   // working
-    gain = cfg.gain;            // working
-    onsetDirection = cfg.direction;
-    playMode = cfg.playMode;  // all working BUT they always work in a non gated manner. Onset triggers playback indefinitely
+    // FIXME - some not working correctly yet
+    pitchShiftSemitones = cfg.pitchShiftSemitones;
+    gain = cfg.gain;
+    onsetDirection = cfg.direction; // Reverse not working
+    playMode = cfg.playMode;
+    triggerMode = cfg.triggerMode; //TriggerOnOff not working
     fadeInTime = cfg.fadeInTime;
     fadeInCurve = cfg.fadeInCurve;
     fadeOutTime = cfg.fadeOutTime;
     fadeOutCurve = cfg.fadeOutCurve;
 
-    // Set initial direction based on onset direction
+    // CRITICAL FIX: Set initial direction AND maintain it based on onset direction
+    // For Normal mode with Reverse onset, we play the whole sample in reverse
+    // For Loop/PingPong modes, the direction can change during playback
     playDirection = (cfg.direction == Direction::Forward) ? 1 : -1;
 
-    // Set initial position based on direction and start point
+    // Set initial position based on direction
     double chosenStart = startSample;
 
     if (tempStartArmed)
@@ -387,9 +456,9 @@ void TrackingSamplerVoice::startNote(int midiNoteNumber,
         chosenStart = juce::jlimit(startSample, endSample - 1.0, tempStartSample);
         tempStartArmed = false; // one-shot consumed
     }
-    else if (playDirection < 0)
+    else if (cfg.direction == Direction::Reverse)
     {
-        // For reverse playback, start from the end - 1
+        // For reverse playback, ALWAYS start from the end - 1
         chosenStart = endSample - 1.0;
     }
     else
@@ -414,10 +483,12 @@ void TrackingSamplerVoice::startNote(int midiNoteNumber,
 
     processor.notifyNoteStarted(midiNoteNumber, velocity);
 
-    DBG("Voice started - Direction: " + String(playDirection) +
+    DBG("Voice started - Onset Direction: " + String(cfg.direction == Direction::Forward ? "Forward" : "Reverse") +
+        ", PlayDirection: " + String(playDirection) +
         ", Start: " + String(samplePosition) + " (startSample: " + String(startSample) + ")" +
         ", Range: " + String(startSample) + " to " + String(endSample) +
         ", Mode: " + String((int)playMode) +
+        ", Trigger: " + String((int)triggerMode) +
         ", Pitch: " + String(pitchShiftSemitones, 1) + " semitones" +
         ", Gain: " + String(gain, 2));
 }

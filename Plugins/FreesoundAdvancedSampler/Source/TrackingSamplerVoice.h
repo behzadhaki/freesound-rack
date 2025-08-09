@@ -47,9 +47,12 @@ class TrackingSamplerVoice : public SamplerVoice
 public:
     enum class Direction { Forward, Reverse };
     enum class PlayMode  { Normal, Loop, PingPong };
-
-    // NEW: Fade curve types
     enum class FadeCurve { Linear, Exponential, Logarithmic, SCurve };
+    enum class TriggerMode {
+        TriggerNormal,  // Play full duration on note on (current behavior)
+        TriggerOnOff,   // Alternating note on triggers start/stop
+        Gate            // Play only while key is held
+    };
 
     TrackingSamplerVoice(FreesoundAdvancedSamplerAudioProcessor& owner);
 
@@ -66,6 +69,7 @@ public:
     void setGain               (float g)                { gain = jlimit(0.0f, 4.0f, g); }
     void setOnsetDirection     (Direction d)            { onsetDirection = d; }
     void setPlayMode           (PlayMode m)             { playMode = m; }
+    void setTriggerMode(TriggerMode m) { triggerMode = m; }
 
     // NEW: Fade controls (in seconds)
     void setFadeIn(float timeSeconds, FadeCurve curve = FadeCurve::Linear) {
@@ -113,6 +117,8 @@ private:
     double sourceSampleRate = 0.0;
     Direction onsetDirection = Direction::Forward;
     PlayMode  playMode       = PlayMode::Normal;
+    TriggerMode triggerMode = TriggerMode::TriggerNormal;
+    bool isAlternateTrigger = false;  // For TriggerOnOff mode
     int       playDirection  = +1;
     double internalSamplePosition = 0.0;  // Our own position tracker
     bool shouldLoop = false;
