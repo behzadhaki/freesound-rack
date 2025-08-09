@@ -78,132 +78,6 @@ float TrackingSamplerVoice::calculateFadeMultiplier(float normalizedPosition, fl
     }
 }
 
-void TrackingSamplerVoice::startNote (int midiNoteNumber,
-                                      float velocity,
-                                      SynthesiserSound* sound,
-                                      int currentPitchWheelPosition)
-{
-    // Base bookkeeping
-    SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
-
-    noteHeld = true;                // <— NEW: start gating flag
-    currentNoteNumber = midiNoteNumber;
-    currentSampleRate = getSampleRate();
-
-    // Reset/capture source info
-    sourceBuffer   = nullptr;
-    sourceChannels = 0;
-    sampleLength   = 0.0;
-
-    if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound))
-    {
-        if (auto* data = samplerSound->getAudioData())
-        {
-            sourceBuffer   = data;
-            sourceChannels = sourceBuffer->getNumChannels();
-            sampleLength   = sourceBuffer->getNumSamples();
-        }
-    }
-
-    if (sourceBuffer == nullptr || sampleLength <= 0.0)
-        return;
-
-    // === Apply per-pad config ===
-    const int padIdx = midiNoteNumber - 36;
-    const auto& cfg  = processor.getPadPlaybackConfig(padIdx);
-
-    auto normToSamps = [this](double n) -> double
-    {
-        if (sampleLength > 0.0)
-            return juce::jlimit(0.0, sampleLength, n * sampleLength);
-        return 0.0;
-    };
-
-    double startS = cfg.startSample;
-    double endS   = cfg.endSample;         // -1 => full length
-
-    const bool startLooksNorm = (startS >= 0.0 && startS <= 1.0);
-    const bool endLooksNorm   = (endS   >= 0.0 && endS   <= 1.0);
-
-    if (startLooksNorm && (endS < 0.0 || endLooksNorm))
-    {
-        startS = normToSamps(startS);
-        endS   = (endS < 0.0 ? sampleLength : normToSamps(endS));
-    }
-    else
-    {
-        startS = juce::jlimit(0.0, sampleLength, startS);
-        if (endS < 0.0) endS = sampleLength;
-        endS   = juce::jlimit(0.0, sampleLength, endS);
-    }
-
-    if (endS < startS)
-        std::swap(startS, endS);
-
-    startSample = startS;
-    endSample   = endS;
-
-    // Temporary start (consumed once)
-    if (cfg.tempStartArmed)
-    {
-        const bool tempLooksNorm = (cfg.tempStartSample >= 0.0 && cfg.tempStartSample <= 1.0);
-        tempStartSample = tempLooksNorm ? normToSamps(cfg.tempStartSample)
-                                        : juce::jlimit(0.0, sampleLength, cfg.tempStartSample);
-        tempStartArmed  = true;
-    }
-    else
-    {
-        tempStartArmed  = false;
-        tempStartSample = 0.0;
-    }
-
-    // Signal & transport
-    setPitchShiftSemitones(cfg.pitchShiftSemitones);
-    setStretchRatio(cfg.stretchRatio);
-    setGain(cfg.gain);
-    setOnsetDirection(cfg.direction);
-    setPlayMode(cfg.playMode);
-
-    // NEW: Set up fade parameters from config
-    setFadeIn(cfg.fadeInTime, cfg.fadeInCurve);
-    setFadeOut(cfg.fadeOutTime, cfg.fadeOutCurve);
-
-    // TEST: Hardcoded fade values (remove this later)
-    // setFadeIn(1.f, FadeCurve::SCurve);    // 0.5 second S-curve fade-in
-    // setFadeOut(1.0f, FadeCurve::Linear);   // 1.0 second linear fade-out
-
-    // Decide initial direction & position
-    playDirection = (onsetDirection == Direction::Forward ? +1 : -1);
-
-    double chosenStart = startSample;
-    if (tempStartArmed)
-    {
-        chosenStart   = juce::jlimit(startSample, endSample, tempStartSample);
-        tempStartArmed = false; // one-shot consumed
-    }
-    else if (playDirection < 0)
-    {
-        chosenStart = juce::jlimit(startSample, endSample, endSample - 1.0);
-    }
-
-    samplePosition = juce::jlimit(startSample, juce::jmax(startSample, endSample - 1.0), chosenStart);
-    firstRender    = false;  // <— NEW: we'll drive from samplePosition directly
-
-    // Pad playback state
-    if (padIdx >= 0 && padIdx < 16)
-    {
-        auto& state = processor.padPlaybackStates[padIdx];
-        state.isPlaying     = true;
-        state.noteNumber    = midiNoteNumber;
-        state.sampleLength  = sampleLength;
-        state.velocity      = velocity;
-        state.currentPosition = 0.0f;
-    }
-
-    processor.notifyNoteStarted(midiNoteNumber, velocity);
-
-    DBG("Voice started with " + String(fadeInTime, 2) + "s fade-in, " + String(fadeOutTime, 2) + "s fade-out");
-}
 
 void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
 {
@@ -237,110 +111,315 @@ void TrackingSamplerVoice::stopNote (float velocity, bool allowTailOff)
     SamplerVoice::stopNote(velocity, allowTailOff);
 }
 
-void TrackingSamplerVoice::renderNextBlock (AudioBuffer<float>& outputBuffer,
-                                            int startSampleOut,
-                                            int numSamples)
+// Fixed renderNextBlock implementation for TrackingSamplerVoice
+void TrackingSamplerVoice::renderNextBlock(AudioBuffer<float>& outputBuffer,
+                                          int startSampleOut,
+                                          int numSamples)
 {
-    // Render audio first so isVoiceActive() reflects this block
-    SamplerVoice::renderNextBlock(outputBuffer, startSampleOut, numSamples);
+    // CRITICAL: Do NOT call base class renderNextBlock - we're replacing it entirely
+    // SamplerVoice::renderNextBlock(outputBuffer, startSampleOut, numSamples); // REMOVE THIS LINE
 
-    // Apply fade curves
-    if (currentNoteNumber >= 0 && isVoiceActive() && sourceBuffer != nullptr)
+    // Check if we should be playing
+    if (!isVoiceActive() || getCurrentlyPlayingSound() == nullptr)
+        return;
+
+    auto* sound = dynamic_cast<SamplerSound*>(getCurrentlyPlayingSound().get());
+    if (!sound || !sourceBuffer)
+        return;
+
+    // Calculate the actual playback range
+    double actualStartSample = startSample;
+    double actualEndSample = (endSample < 0) ? sampleLength : endSample;
+
+    // Ensure valid range
+    if (actualEndSample <= actualStartSample)
     {
-        const double span = std::max(1.0, endSample - startSample);
+        actualEndSample = sampleLength;
+    }
+
+    const double span = std::max(1.0, actualEndSample - actualStartSample);
+
+    // Get pad index for sample rate calculation
+    const int padIndex = currentNoteNumber - 36;
+
+    // Get the correct sample rate ratio
+    double sourceSampleRate = 44100.0; // Default fallback
+    if (padIndex >= 0 && padIndex < 16)
+    {
+        sourceSampleRate = processor.getSourceSampleRate(padIndex);
+        if (sourceSampleRate <= 0.0) sourceSampleRate = 44100.0;
+    }
+
+    // Calculate the sample rate ratio for proper playback speed
+    double sampleRateRatio = sourceSampleRate / currentSampleRate;
+
+    // Process audio with our custom parameters
+    for (int i = 0; i < numSamples; ++i)
+    {
+        // Check boundaries based on play mode
+        bool shouldStop = false;
+
+        if (playMode == PlayMode::Normal)
+        {
+            // Normal mode - stop at boundaries
+            if (playDirection > 0 && samplePosition >= actualEndSample - 1)
+            {
+                shouldStop = true;
+            }
+            else if (playDirection < 0 && samplePosition <= actualStartSample)
+            {
+                shouldStop = true;
+            }
+        }
+        else if (playMode == PlayMode::Loop)
+        {
+            // Loop mode - wrap around
+            if (playDirection > 0 && samplePosition >= actualEndSample - 1)
+            {
+                samplePosition = actualStartSample;
+            }
+            else if (playDirection < 0 && samplePosition <= actualStartSample)
+            {
+                samplePosition = actualEndSample - 1.0;
+            }
+        }
+        else if (playMode == PlayMode::PingPong)
+        {
+            // Ping-pong mode - reverse direction at boundaries
+            if (samplePosition >= actualEndSample - 1 && playDirection > 0)
+            {
+                playDirection = -1;
+                samplePosition = actualEndSample - 2.0;
+            }
+            else if (samplePosition <= actualStartSample && playDirection < 0)
+            {
+                playDirection = 1;
+                samplePosition = actualStartSample + 1.0;
+            }
+        }
+
+        if (shouldStop)
+        {
+            clearCurrentNote();
+            break;
+        }
+
+        // Calculate normalized position for fades
+        double posInSpan = std::clamp(samplePosition - actualStartSample, 0.0, span);
+        float normalizedPos = (float)(posInSpan / span);
+
+        // Calculate fade multipliers
+        float fadeInMult = calculateFadeMultiplier(normalizedPos, fadeInTime, fadeInCurve, true);
+        float fadeOutMult = calculateFadeMultiplier(normalizedPos, fadeOutTime, fadeOutCurve, false);
+        float totalFade = fadeInMult * fadeOutMult * gain;
+
+        // Get sample value with interpolation
+        int sourceSampleIndex = (int)samplePosition;
+        float fraction = (float)(samplePosition - sourceSampleIndex);
+
+        // Clamp to valid range
+        sourceSampleIndex = jlimit(0, (int)sampleLength - 2, sourceSampleIndex);
 
         for (int channel = 0; channel < outputBuffer.getNumChannels(); ++channel)
         {
+            int sourceChannel = channel % sourceChannels;
+
+            // Linear interpolation between samples
+            float sample1 = sourceBuffer->getSample(sourceChannel, sourceSampleIndex);
+            float sample2 = sourceBuffer->getSample(sourceChannel, sourceSampleIndex + 1);
+            float interpolatedSample = sample1 + fraction * (sample2 - sample1);
+
+            // Apply total gain and fades
+            interpolatedSample *= totalFade;
+
+            // Add to output buffer (not addSample - we want to set it)
             float* channelData = outputBuffer.getWritePointer(channel, startSampleOut);
+            channelData[i] += interpolatedSample;
+        }
 
-            for (int sample = 0; sample < numSamples; ++sample)
+        // Advance position based on pitch shift AND sample rate ratio
+        double pitchRatio = std::pow(2.0, pitchShiftSemitones / 12.0);
+
+        // Combined ratio: pitch shift * sample rate correction
+        double combinedRatio = pitchRatio * sampleRateRatio;
+
+        samplePosition += playDirection * combinedRatio;
+
+        // Clamp position to valid range
+        samplePosition = jlimit(0.0, sampleLength - 1.0, samplePosition);
+    }
+
+    // Update playhead tracking for UI
+    if (currentNoteNumber >= 0 && sampleLength > 0.0)
+    {
+        // padIndex already declared above
+        if (padIndex >= 0 && padIndex < 16)
+        {
+            auto& state = processor.padPlaybackStates[padIndex];
+
+            // Check if voice has finished
+            if (!isVoiceActive())
             {
-                // Calculate current position (0.0 to 1.0 across the active span)
-                double currentPos = samplePosition + sample;
-                double posInSpan = std::clamp(currentPos - startSample, 0.0, span);
-                float normalizedPos = (float)(posInSpan / span);
+                state.isPlaying = false;
+                state.currentPosition = 0.0f;
+                processor.notifyPlayheadPositionChanged(currentNoteNumber, 0.0f);
+                processor.notifyNoteStopped(currentNoteNumber);
+                currentNoteNumber = -1;
+                samplePosition = 0.0;
+                firstRender = true;
+            }
+            else if (noteHeld)  // Only update position if note is held
+            {
+                // Calculate normalized position for UI
+                const double posInSpan = std::clamp(samplePosition - actualStartSample, 0.0, span);
+                const float pos = jlimit(0.0f, 1.0f, (float)(posInSpan / span));
 
-                // Calculate fade multipliers
-                float fadeInMult = calculateFadeMultiplier(normalizedPos, fadeInTime, fadeInCurve, true);
-                float fadeOutMult = calculateFadeMultiplier(normalizedPos, fadeOutTime, fadeOutCurve, false);
-
-                // Apply both fades (multiplicative)
-                float totalFade = fadeInMult * fadeOutMult * gain;
-                channelData[sample] *= totalFade;
-
-                // Debug occasionally
-                static int debugCounter = 0;
-                if (++debugCounter % 5000 == 0 && currentNoteNumber == 36) // Pad 1 only
-                {
-                    DBG("Pos: " + String(normalizedPos, 3) +
-                        " FadeIn: " + String(fadeInMult, 3) +
-                        " FadeOut: " + String(fadeOutMult, 3));
-                }
+                state.currentPosition = pos;
+                processor.notifyPlayheadPositionChanged(currentNoteNumber, pos);
             }
         }
     }
+}
 
-    // Continue with existing position tracking...
-    if (currentNoteNumber < 0 || sampleLength <= 0.0)
-        return;
+// Updated startNote to match the actual parameters
+void TrackingSamplerVoice::startNote(int midiNoteNumber,
+                                    float velocity,
+                                    SynthesiserSound* sound,
+                                    int currentPitchWheelPosition)
+{
+    // Call base class to set up basic voice state
+    // But we'll override the rendering
+    SamplerVoice::startNote(midiNoteNumber, velocity, sound, currentPitchWheelPosition);
 
-    const int padIndex = currentNoteNumber - 36;
-    if (padIndex < 0 || padIndex >= 16)
-        return;
+    noteHeld = true;
+    currentNoteNumber = midiNoteNumber;
+    currentSampleRate = getSampleRate();
 
-    auto& state = processor.padPlaybackStates[padIndex];
+    // Reset/capture source info
+    sourceBuffer = nullptr;
+    sourceChannels = 0;
+    sampleLength = 0.0;
 
-    // If the JUCE voice has actually finished (natural end or forced), finalize once.
-    if (!isVoiceActive())
+    if (auto* samplerSound = dynamic_cast<SamplerSound*>(sound))
     {
-        state.isPlaying = false;
-        state.currentPosition = 0.0f;
-
-        processor.notifyPlayheadPositionChanged(currentNoteNumber, 1.0f);
-        processor.notifyNoteStopped(currentNoteNumber);
-
-        currentNoteNumber = -1;
-        samplePosition = 0.0;
-        firstRender = true;
-        return;
-    }
-
-    // NOTE-HELD GATE: if mouse/note released, stop advancing the visual cursor
-    if (!noteHeld)
-        return;
-
-    // CRITICAL FIX: Calculate position based on ACTUAL sample rate relationship
-    // Don't advance by host samples - advance by the actual playback increment
-
-    // Get the current sample rate from the processor
-    double currentHostSampleRate = processor.getSampleRate();
-
-    // Calculate how much we've actually advanced in the source file
-    double actualIncrement = (double)numSamples;
-
-    // If we have source sample rate info, adjust the increment
-    if (sourceBuffer && currentHostSampleRate > 0.0)
-    {
-        // Get the source sample rate from the file
-        // (This should be stored when the sample is loaded)
-        double sourceSampleRate = processor.getSourceSampleRate(padIndex);
-
-        if (sourceSampleRate > 0.0 && sourceSampleRate != currentHostSampleRate)
+        if (auto* data = samplerSound->getAudioData())
         {
-            // Convert host samples to source samples
-            actualIncrement = (double)numSamples * (sourceSampleRate / currentHostSampleRate);
+            sourceBuffer = data;
+            sourceChannels = sourceBuffer->getNumChannels();
+            sampleLength = sourceBuffer->getNumSamples();
         }
     }
 
-    samplePosition += actualIncrement;
+    if (sourceBuffer == nullptr || sampleLength <= 0.0)
+        return;
 
-    // Normalize over the active span [startSample, endSample)
-    const double span = std::max(1.0, endSample - startSample);
-    const double posInSpan = std::clamp(samplePosition - startSample, 0.0, span);
-    const float pos = jlimit(0.0f, 1.0f, (float)(posInSpan / span));
+    // Apply per-pad config
+    const int padIdx = midiNoteNumber - 36;
+    const auto& cfg = processor.getPadPlaybackConfig(padIdx);
 
-    state.currentPosition = pos;
-    processor.notifyPlayheadPositionChanged(currentNoteNumber, pos);
+    // Normalize values if needed
+    auto normToSamps = [this](double n) -> double
+    {
+        if (sampleLength > 0.0)
+            return juce::jlimit(0.0, sampleLength - 1.0, n * sampleLength);
+        return 0.0;
+    };
+
+    double startS = cfg.startSample;
+    double endS = cfg.endSample;
+
+    const bool startLooksNorm = (startS >= 0.0 && startS <= 1.0);
+    const bool endLooksNorm = (endS >= 0.0 && endS <= 1.0);
+
+    if (startLooksNorm && (endS < 0.0 || endLooksNorm))
+    {
+        startS = normToSamps(startS);
+        endS = (endS < 0.0 ? sampleLength : normToSamps(endS));
+    }
+    else
+    {
+        startS = juce::jlimit(0.0, sampleLength - 1.0, startS);
+        if (endS < 0.0) endS = sampleLength;
+        endS = juce::jlimit(0.0, sampleLength, endS);
+    }
+
+    if (endS <= startS)
+    {
+        endS = sampleLength;
+        startS = 0.0;
+    }
+
+    startSample = startS;
+    endSample = endS;
+
+    // Handle temporary start
+    if (cfg.tempStartArmed)
+    {
+        const bool tempLooksNorm = (cfg.tempStartSample >= 0.0 && cfg.tempStartSample <= 1.0);
+        tempStartSample = tempLooksNorm ? normToSamps(cfg.tempStartSample)
+                                        : juce::jlimit(0.0, sampleLength - 1.0, cfg.tempStartSample);
+        tempStartArmed = true;
+    }
+    else
+    {
+        tempStartArmed = false;
+        tempStartSample = 0.0;
+    }
+
+    // Apply all parameters (no stretchRatio)
+    pitchShiftSemitones = cfg.pitchShiftSemitones;   // working
+    gain = cfg.gain;            // working
+    onsetDirection = cfg.direction;
+    playMode = cfg.playMode;  // all working BUT they always work in a non gated manner. Onset triggers playback indefinitely
+    fadeInTime = cfg.fadeInTime;
+    fadeInCurve = cfg.fadeInCurve;
+    fadeOutTime = cfg.fadeOutTime;
+    fadeOutCurve = cfg.fadeOutCurve;
+
+    // Set initial direction based on onset direction
+    playDirection = (cfg.direction == Direction::Forward) ? 1 : -1;
+
+    // Set initial position based on direction and start point
+    double chosenStart = startSample;
+
+    if (tempStartArmed)
+    {
+        chosenStart = juce::jlimit(startSample, endSample - 1.0, tempStartSample);
+        tempStartArmed = false; // one-shot consumed
+    }
+    else if (playDirection < 0)
+    {
+        // For reverse playback, start from the end - 1
+        chosenStart = endSample - 1.0;
+    }
+    else
+    {
+        // For forward playback, start from the configured start
+        chosenStart = startSample;
+    }
+
+    samplePosition = juce::jlimit(0.0, sampleLength - 1.0, chosenStart);
+    firstRender = false;
+
+    // Update pad state
+    if (padIdx >= 0 && padIdx < 16)
+    {
+        auto& state = processor.padPlaybackStates[padIdx];
+        state.isPlaying = true;
+        state.noteNumber = midiNoteNumber;
+        state.sampleLength = sampleLength;
+        state.velocity = velocity;
+        state.currentPosition = 0.0f;
+    }
+
+    processor.notifyNoteStarted(midiNoteNumber, velocity);
+
+    DBG("Voice started - Direction: " + String(playDirection) +
+        ", Start: " + String(samplePosition) + " (startSample: " + String(startSample) + ")" +
+        ", Range: " + String(startSample) + " to " + String(endSample) +
+        ", Mode: " + String((int)playMode) +
+        ", Pitch: " + String(pitchShiftSemitones, 1) + " semitones" +
+        ", Gain: " + String(gain, 2));
 }
 
 // ===================== TrackingPreviewSamplerVoice (updated with sample rate fix) =====================

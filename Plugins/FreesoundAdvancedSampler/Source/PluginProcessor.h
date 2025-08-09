@@ -221,7 +221,6 @@ public:
 
 		// Signal & envelope
 		float  pitchShiftSemitones = 0.0f;
-		float  stretchRatio        = 1.0f;
 		float  gain                = 1.0f;
 
 		// NEW: Fade system (replaces ADSR)

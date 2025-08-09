@@ -63,7 +63,6 @@ public:
     void setEndSample          (double e)               { endSample   = std::max(0.0, e); }
     void setTemporaryStart     (double s)               { tempStartSample = std::max(0.0, s); tempStartArmed = true; }
     void setPitchShiftSemitones(float st)               { pitchShiftSemitones = st; }
-    void setStretchRatio       (float r)                { stretchRatio = std::max(0.001f, r); }
     void setGain               (float g)                { gain = jlimit(0.0f, 4.0f, g); }
     void setOnsetDirection     (Direction d)            { onsetDirection = d; }
     void setPlayMode           (PlayMode m)             { playMode = m; }
@@ -115,6 +114,14 @@ private:
     Direction onsetDirection = Direction::Forward;
     PlayMode  playMode       = PlayMode::Normal;
     int       playDirection  = +1;
+    double internalSamplePosition = 0.0;  // Our own position tracker
+    bool shouldLoop = false;
+    int loopDirection = 1;  // For ping-pong mode
+    int currentlyPlayingNote = -1;
+    SynthesiserSound::Ptr currentlyPlayingSound;
+    float lgain = 0, rgain = 0;
+    bool keyIsDown = false;
+    bool sostenutoPedalDown = false;
 
     // Cached source
     AudioBuffer<float>* sourceBuffer = nullptr;

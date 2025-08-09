@@ -291,7 +291,6 @@ void FreesoundAdvancedSamplerAudioProcessor::savePluginState(XmlElement& xml)
         padXml->setAttribute("tempStartN", cfg.tempStartArmed ? toNorm(cfg.tempStartSample) : -1.0);
 
         padXml->setAttribute("pitch",   cfg.pitchShiftSemitones);
-        padXml->setAttribute("stretch", cfg.stretchRatio);
         padXml->setAttribute("gain",    cfg.gain);
 
         // NEW: Save fade parameters instead of ADSR
@@ -338,7 +337,6 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
                 setPadTemporaryStartNormalized(padIndex, (float)tempStartN);
 
             const float pitch   = (float) padXml->getDoubleAttribute("pitch",   0.0);
-            const float stretch = (float) padXml->getDoubleAttribute("stretch", 1.0);
             const float gain    = (float) padXml->getDoubleAttribute("gain",    1.0);
 
             const int dirVal  = padXml->getIntAttribute("direction", (int)TrackingSamplerVoice::Direction::Forward);
@@ -351,7 +349,6 @@ void FreesoundAdvancedSamplerAudioProcessor::loadPluginState(const XmlElement& x
             const int   fadeOutCurve = padXml->getIntAttribute("fadeOutCurve", (int)TrackingSamplerVoice::FadeCurve::Linear);
 
             setPadPitchShift(padIndex, pitch);
-            setPadStretchRatio(padIndex, stretch);
             setPadGain(padIndex, gain);
 
             // NEW: Set fade parameters instead of ADSR
@@ -1442,11 +1439,6 @@ void FreesoundAdvancedSamplerAudioProcessor::setPadTemporaryStartNormalized (int
 void FreesoundAdvancedSamplerAudioProcessor::setPadPitchShift (int padIndex, float semitones)
 {
     padConfigs[(size_t)faClampPad(padIndex)].pitchShiftSemitones = semitones;
-}
-
-void FreesoundAdvancedSamplerAudioProcessor::setPadStretchRatio (int padIndex, float ratio)
-{
-    padConfigs[(size_t)faClampPad(padIndex)].stretchRatio = juce::jmax(0.001f, ratio);
 }
 
 void FreesoundAdvancedSamplerAudioProcessor::setPadGain (int padIndex, float linearGain)
