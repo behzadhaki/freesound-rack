@@ -538,7 +538,7 @@
 				);
 				INSTALL_PATH = "/usr/bin";
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
-				PRODUCT_BUNDLE_IDENTIFIER = com.MusicTechnologyGroup.FreesoundAPIDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.BehzadHaki.FreesoundAPIDemo;
 				PRODUCT_NAME = "FreesoundAPI-Demo";
 				USE_HEADERMAP = NO;
 			};
@@ -580,7 +580,7 @@
 				INSTALL_PATH = "/usr/bin";
 				LLVM_LTO = YES;
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
-				PRODUCT_BUNDLE_IDENTIFIER = com.MusicTechnologyGroup.FreesoundAPIDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.BehzadHaki.FreesoundAPIDemo;
 				PRODUCT_NAME = "FreesoundAPI-Demo";
 				USE_HEADERMAP = NO;
 			};

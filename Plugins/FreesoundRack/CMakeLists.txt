@@ -1,6 +1,6 @@
-project(FreesoundAdvancedSampler VERSION 0.0.1)
+project(FreesoundRack VERSION 0.0.1)
 
-set (BaseTargetName FreesoundAdvancedSampler)
+set (BaseTargetName FreesoundRack)
 
 juce_add_plugin("${BaseTargetName}"
         # VERSION ...                               # Set this if the plugin version is different to the project version
@@ -16,7 +16,7 @@ juce_add_plugin("${BaseTargetName}"
         PLUGIN_MANUFACTURER_CODE BZHA
         PLUGIN_CODE FrAS
         FORMATS AU VST3 Standalone
-        PRODUCT_NAME "Freesound Advanced Sampler")
+        PRODUCT_NAME "Freesound Rack")
 
 
 target_sources(${BaseTargetName} PRIVATE
