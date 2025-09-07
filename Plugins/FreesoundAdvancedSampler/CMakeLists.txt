@@ -6,14 +6,14 @@ juce_add_plugin("${BaseTargetName}"
         # VERSION ...                               # Set this if the plugin version is different to the project version
         # ICON_BIG ...                              # ICON_* arguments specify a path to an image file to use as an icon for the Standalone
         # ICON_SMALL ...
-        COMPANY_NAME "MusicTechnologyGroup"
+        COMPANY_NAME "BehzadHaki"
         IS_SYNTH FALSE
         NEEDS_MIDI_INPUT TRUE
-        NEEDS_MIDI_OUTPUT FALSE
+        AU_MAIN_TYPE kAudioUnitType_MusicDevice
         IS_MIDI_EFFECT FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         COPY_PLUGIN_AFTER_BUILD TRUE`
-        PLUGIN_MANUFACTURER_CODE Juce
+        PLUGIN_MANUFACTURER_CODE BZHA
         PLUGIN_CODE FrAS
         FORMATS AU VST3 Standalone
         PRODUCT_NAME "Freesound Advanced Sampler")
